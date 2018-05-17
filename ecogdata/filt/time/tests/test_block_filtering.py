@@ -68,8 +68,8 @@ def test_filtfilt_nd():
     assert_true( (f1==f2).all() )
 
 def test_parfilt():
-    from sandbox.split_methods import bfilter as bfilter_p
-    from sandbox.array_split import shared_copy
+    from ecogdata.parallel.split_methods import bfilter as bfilter_p
+    from ecogdata.parallel.array_split import shared_copy
     r = np.random.randn(20, 2000)
     b, a = butter_bp(lo=30, hi=100, Fs=1000)
     zi = lfilter_zi(b, a)
@@ -85,8 +85,8 @@ def test_parfilt():
     assert_true( (f1==f2).all() )
 
 def test_parfiltfilt():
-    from sandbox.split_methods import filtfilt as filtfilt_p
-    from sandbox.array_split import shared_copy
+    from ecogdata.parallel.split_methods import filtfilt as filtfilt_p
+    from ecogdata.parallel.array_split import shared_copy
     r = np.random.randn(20, 2000)
     b, a = butter_bp(lo=30, hi=100, Fs=1000)
 

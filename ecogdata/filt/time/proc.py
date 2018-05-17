@@ -61,7 +61,7 @@ def filter_array(
     
     """
     b, a = _get_poles_zeros(ftype, **design_kwargs)
-    from sandbox.split_methods import bfilter
+    from ecogdata.parallel.split_methods import bfilter
     def_args = get_default_args(bfilter)
     # reset these
     def_args['bsize'] = 10000
@@ -258,7 +258,7 @@ def ma_highpass(x, fc, progress=False, fir_filt=False):
     Implement a stable FIR highpass filter using a moving average.
     """
 
-    from sandbox.split_methods import convolve1d
+    from ecogdata.parallel.split_methods import convolve1d
     n = int(round(fc ** -1.0))
     if not n%2:
         n += 1
