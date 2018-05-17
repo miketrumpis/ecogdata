@@ -6,6 +6,7 @@ from ecogdata.util import mkdir_p
 from .tdms import tdms_to_hdf5
 from . import DataPathError
 
+
 def try_saved(exp_path, test, bandpass):
     try:
         dset = load_bunch(os.path.join(exp_path, test+'_proc.h5'), '/')
@@ -19,6 +20,7 @@ def try_saved(exp_path, test, bandpass):
             'saved data bandpass does not match requested bandpass'
             )
     return dset
+
 
 def convert_tdms(test, remote, local, accepted=('.h5',), clear=False):
     "Convert from TDMS files on-demand, i.e. if no acceptable file is found."
@@ -52,7 +54,8 @@ def convert_tdms(test, remote, local, accepted=('.h5',), clear=False):
             os.unlink(h5_file)
         return
     return cleanup
-        
+
+
 def tdms_info(info):
     "Recover strings from MATLAB-converted TDMS files"
     def _arr_to_str(arr):
@@ -66,4 +69,4 @@ def tdms_info(info):
             if sk.lower() in field.lower() and not isinstance(arr, str):
                 clean_info[field] = _arr_to_str(arr)
     return clean_info
-        
+

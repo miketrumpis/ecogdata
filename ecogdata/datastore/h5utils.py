@@ -10,7 +10,9 @@ from contextlib import closing
 from ecogdata.util import Bunch
 from ecogdata.parallel.array_split import shared_ndarray
 
+
 _h5_seq_types = (str, list, int, float, complex, bool)
+
 
 class HDF5Bunch(Bunch):
     
@@ -32,6 +34,7 @@ class HDF5Bunch(Bunch):
         
     def __del__(self):
         self.close()
+
 
 def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0):
     """
@@ -121,6 +124,7 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0):
             )
     return
 
+
 def load_bunch(f, path='/', shared_arrays=(), load=True, scan=False):
     """
     Load a saved bunch, or an arbitrary collection of arrays into a
@@ -151,6 +155,7 @@ def load_bunch(f, path='/', shared_arrays=(), load=True, scan=False):
     return traverse_table(
         f, path=path, shared_paths=shared_arrays, load=load, scan=scan
         )
+
 
 def traverse_table(f, path='/', load=True, scan=False, shared_paths=()):
     # Walk nodes and stuff arrays into the bunch.
@@ -240,5 +245,3 @@ def traverse_table(f, path='/', load=True, scan=False, shared_paths=()):
         gbunch[attr] = this_node._v_attrs[attr]
             
     return gbunch
-
-

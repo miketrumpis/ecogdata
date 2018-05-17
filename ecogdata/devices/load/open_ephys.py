@@ -5,7 +5,6 @@ from builtins import str
 from builtins import map
 from builtins import range
 import os.path as osp
-import sys
 from glob import glob
 import gc
 
@@ -22,6 +21,7 @@ except ImportError:
 
 import numpy as np
 import tables
+from tempfile import NamedTemporaryFile
 
 from ecogdata.trigger_fun import process_trigger
 from ecogdata.filt.time import cheby2_bp, butter_bp, notch_all, downsample
@@ -34,9 +34,11 @@ from . import _OpenEphys as OE
 from ecogdata.devices.units import convert_scale
 from ecogdata.devices.electrode_pinouts import get_electrode_map
 
-_srates = (1000, 1250, 1500, 2000, 2500, 3000, 1e4/3, 
+
+_srates = (1000, 1250, 1500, 2000, 2500, 3000, 1e4/3,
            4000, 5000, 6250, 8000, 10000, 12500, 15000,
            20000, 25000, 30000)
+
 
 def get_robust_samplingrate(rec_path):
     settings = glob( osp.join(rec_path, 'settings*.xml') )
@@ -64,6 +66,7 @@ def get_robust_samplingrate(rec_path):
     sr_code = int( editor.attrib['SampleRate'] )
     return float( _srates[sr_code-1] )
 
+
 def get_robust_recording(session_path, rec_pattern):
     import os
     rec_pattern = rec_pattern.strip(os.path.sep)
@@ -73,6 +76,7 @@ def get_robust_recording(session_path, rec_pattern):
         return []
     candidates = [x for x in subdirs if rec_pattern in x]
     return [osp.join(session_path, c) for c in candidates]
+
 
 def _prepare_paths(exp_path, test, rec_num):
     """Normalize some info about funky open-ephys paths"""
@@ -114,7 +118,6 @@ def _prepare_paths(exp_path, test, rec_num):
 
     return rec_path, rec_num
 
-from tempfile import NamedTemporaryFile
 
 def memmap_open_ephys_channels(
         exp_path, test, rec_num='auto', quantized=False, data_chans='all'
@@ -125,9 +128,6 @@ def memmap_open_ephys_channels(
     This option provides a way to load massive multi-channel datasets
     sampled at 20 kS/s. Channels are cached to disk in flat files and then
     loaded as "memmap" arrays. Down-sampling is not supported.
-
-                               
-
     """
 
     rec_path, rec_num = _prepare_paths(exp_path, test, rec_num)
@@ -199,6 +199,7 @@ def memmap_open_ephys_channels(
     dset.header = header
     dset.Fs = trueFs
     return dset
+
 
 def hdf5_open_ephys_channels(
         exp_path, test, hdf5_name, rec_num='auto',
@@ -298,7 +299,8 @@ def hdf5_open_ephys_channels(
                 start_chan += load_chans
                 if start_chan >= n_extra:
                     break
-    
+
+
 def load_open_ephys_channels(
         exp_path, test, rec_num='auto', shared_array=False,
         downsamp=1, target_Fs=-1, lowpass_ord=12, page_size=8,
@@ -459,6 +461,7 @@ def load_open_ephys_channels(
     return dset
     #### stop function, return ch_data, header
 
+
 def load_open_ephys(exp_path, test, electrode, 
                     bandpass=(), notches=(), units='uV',
                     snip_transient=True, rec_num='auto', 
@@ -536,8 +539,6 @@ def load_open_ephys(exp_path, test, electrode,
                 ecog_chans, Fs, lines=notches, inplace=True, filtfilt=True
                 )
 
-
-    
     ### advance index
     if snip_transient:
         if isinstance(snip_transient, bool):
@@ -573,6 +574,7 @@ def load_open_ephys(exp_path, test, electrode,
     dset.notches = notches
     dset.units = units
     return dset
+
 
 def load_open_ephys_impedance(
         exp_path, test, electrode, magphs=True,
@@ -623,6 +625,7 @@ def debounce_trigger(pos_edges):
         edge_mask[kill_mask] = False
 
     return pos_edges[edge_mask]
+
 
 def plot_Z(
         path_or_Z, electrode, minZ, maxZ, cmap, 
@@ -698,4 +701,3 @@ def plot_Z(
         cb.set_label(u'Impedance (k\u03A9)')
     f.tight_layout()
     return f
-

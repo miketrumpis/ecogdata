@@ -12,7 +12,6 @@ __all__ = ['MaskDB', 'merge_db']
 
 
 def _walk_paths(root, level=0):
-
     keys = sorted(root.keys())
     for k in keys:
         v = root[k]
@@ -20,11 +19,10 @@ def _walk_paths(root, level=0):
         if 'chan_mask' not in v:
             _walk_paths(v, level=level+1)
 
-def merge_db(source, dest):
 
+def merge_db(source, dest):
     src = load_bunch(source, '/', load=False)
     dst = load_bunch(dest, '/', load=False)
-
     def _merge_level(s_, d_, level='/'):
 
         if 'chan_mask' in s_:
@@ -59,6 +57,7 @@ def merge_db(source, dest):
             _merge_level(s_[sk], d_[sk], level + sk + '/')
 
     _merge_level(src, dst)
+
 
 class MaskDB(object):
 

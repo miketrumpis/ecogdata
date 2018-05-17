@@ -17,6 +17,7 @@ from .load.util import convert_tdms
 
 from ecogdata.parallel.array_split import shared_ndarray, shared_copy
 
+
 _loading = dict(
     wireless=load_wireless,
     blackrock=load_blackrock,
@@ -27,16 +28,20 @@ _loading = dict(
     oephys=load_open_ephys
     )
 
+
 for hs in mux_headstages:
     _loading[hs] = load_mux
+
 
 for hs in ('active',) + active_headstages:
     _loading[hs] = load_active
 
-_converts_tdms = ('stim_mux64', 'mux3', 'mux4', 
+
+_converts_tdms = ('stim_mux64', 'mux3', 'mux4',
                   'mux5', 'mux6', 'mux7', 'mux7_lg', 'active') + \
                   active_headstages
-    
+
+
 class Parameter(object):
     "A pass-thru parameter whose value is the command (a string)"
     
@@ -45,6 +50,7 @@ class Parameter(object):
 
     def value(self):
         return self.command
+
 
 class TypedParam(Parameter):
     "A simply typed parameter that can be evaluated by a 'type'"
@@ -61,7 +67,8 @@ class TypedParam(Parameter):
         
     def value(self):
         return self.ptype( self.command )
-    
+
+
 class BoolOrNum(Parameter):
     "A value that is a boolean (True, False) or a number"
 
@@ -84,6 +91,7 @@ class NSequence(Parameter):
                 return list(map(float, cmd.split(',')))
         return ()
 
+
 class NoneOrStr(Parameter):
     """
     A single value that is None (null) or something not null. 
@@ -92,6 +100,7 @@ class NoneOrStr(Parameter):
 
     def value(self):
         return None if self.command.lower() == 'none' else self.command
+
 
 # The keys for this look-up must be lower-case
 params_table = {
@@ -139,9 +148,11 @@ params_table = {
     'connectors' : NSequence,
     }
 
+
 def parse_load_param(name, command):
     p = params_table.get(name.lower(), Parameter)(command)
     return p.value()
+
 
 def uniform_bunch_case(b):
     b_lower = Bunch()
@@ -151,6 +162,7 @@ def uniform_bunch_case(b):
         else:
             b_lower[k] = v
     return b_lower
+
 
 def load_experiment_auto(session, test, **load_kwargs):
     """
@@ -252,7 +264,8 @@ def load_experiment_auto(session, test, **load_kwargs):
     dset.name = '.'.join( (session, test) ) # this should be a the unique ID (?)
     dset.headstage = headstage
     return dset
-            
+
+
 def load_experiment_manual(
         exp_path, test, headstage, electrode, *load_args, **load_kwargs
         ):
@@ -291,6 +304,7 @@ def load_experiment_manual(
     dset.headstage = headstage
     return dset
 
+
 def append_datasets(session, tests, **load_kwargs):
     """
     Append multiple data sets end-to-end to form a single set.
@@ -326,6 +340,7 @@ def append_datasets(session, tests, **load_kwargs):
     all_sets = [ load_experiment_auto(session, test, **load_kwargs)
                  for test in tests ]
     return join_datasets(all_sets)
+
 
 def join_datasets(all_sets, popdata=True, rasterize=True, shared_mem=True):
     """Append multiple pre-loaded datasets end-to-end to form a single set.
@@ -427,4 +442,3 @@ def join_datasets(all_sets, popdata=True, rasterize=True, shared_mem=True):
     del all_sets
     gc.collect()
     return full_set
-

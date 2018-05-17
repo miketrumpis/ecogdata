@@ -10,8 +10,10 @@ from numpy.ma import masked as NC
 from ecogdata.channel_map import ChannelMap, CoordinateChannelMap
 from ecogdata.util import mat_to_flat
 
+
 def _rev(n, coords):
     return [ NC if c is NC else (n - c - 1) for c in coords ]
+
 
 def marray(x, mask=None, **kwargs):
     if mask is not None:
@@ -19,6 +21,7 @@ def marray(x, mask=None, **kwargs):
     xf = [(-5 if x_ is NC else x_) for x_ in x]
     xm = [x_ is NC for x_ in x]
     return np.ma.masked_array(xf, mask=xm, **kwargs)
+
 
 def undo_gray_code(pinout, starting=0):
     # with Gray code, row order should be
@@ -38,7 +41,8 @@ def undo_gray_code(pinout, starting=0):
         cols = _rc_unmix[:,1].copy()
         )
     return pinout_gray
-    
+
+
 def unzip_encoded(coord_list, shift_index=True, skipchars='ioqs'):
     coord_list = [c.strip() for c in coord_list.strip().split(',')]
     row_set = set()
@@ -69,8 +73,8 @@ def unzip_encoded(coord_list, shift_index=True, skipchars='ioqs'):
     row_nums = [ NC if r is NC else az[r] for r in rows ]
     return row_nums, cols
 
-##### Try multi-stage mapping, e.g. site-to-zif merged with zif-to-digout
 
+##### Try multi-stage mapping, e.g. site-to-zif merged with zif-to-digout
 def connect_passive_map(
         geometry, electrode_map, daq_order,
         interconnects=(), reverse_cols=True, pitch=1.0
@@ -117,7 +121,7 @@ def connect_passive_map(
                  'pitch' : pitch }
     return map_dict
 
-    
+
 
 # New electrode-to-data tables are created by specifying
 # 1) electrode-site to initial pinout lookup
@@ -156,11 +160,12 @@ rat_varspace_by_zif_rc = list(zip(
     ))
 rat_varspace_by_zif_lut = dict( list(zip( list(range(1, 62)), rat_varspace_by_zif_rc )) )
 
-#for reference electrodes 
+# for reference electrodes
 rat_refelectrode_by_zif = """~R1, H3, H4, G3, G1, G2, G4, F3, F1, F2, F4, E3, E1, E2, E4, D1, B1, A1, C1, D2, B2, A2, C2, D3, B3, A3, C3, D4, B4, A4, C4, C5, A5, B5, D5, C6, A6, B6, D6, C7, A7, B7, D7, C8, B8, D8, E5, E7, E8, E6, F5, F7, F8, F6, G5, G7, G8, G6, H5, H6, ~R2"""
 rat_refelectrode_by_zif_rc = list(zip( *unzip_encoded(rat_refelectrode_by_zif) ))
 rat_refelectrode_by_zif_lut = dict( list(zip( list(range(1, 62)), rat_refelectrode_by_zif_rc )) )
-#R1 and R2 are the same - reference electrodes
+
+# R1 and R2 are the same - reference electrodes
     
 # These are the present set of lookups by recording system
 # (these are the final pinout-to-data maps)
@@ -190,7 +195,7 @@ zif_by_intan64 = [32, None, 34, 48, 36, 50, 38, 52, 40, 54, 42, 56, 44, 58,
                   11, 19, 13, 17, 15, 16, 2, 18, 4, 20, 6, 22, 8, 24, 10,
                   26, 12, 28, 14, 30, None]
 
-    
+
 ## PSV 244 Array
 # **** MUX 1 ****
 # each entry is a list of row or column coordinates, in order of
@@ -239,6 +244,7 @@ psv_244_mux1 = {
                  15, 13, 14, NC],
     'pitch' : 0.75
     }
+
 
 # **** MUX 3 ****
 # Each entry is a list of row or column coordinates associated with
@@ -296,7 +302,7 @@ psv_244_mux3 = {
                   12, 14, 13, 15, 11, 10, 12],
     'pitch' : 0.75
     }
-    
+
 
 psv_244_intan = dict(
     geometry = (16, 16),
@@ -336,6 +342,7 @@ psv_244_intan = dict(
                      12, 14, 10, 12, 11, 9, 15, 11, 13, 15, 14, NC])
     )
 
+
 psv_32 = dict(
     geometry = (6, 6),
     cols = _rev(6, [5, 4, 5, 4, 1, 0, 1, 0, 3, 1, 4, 2, 2, 3, 2, 3, 5, 
@@ -343,6 +350,7 @@ psv_32 = dict(
     rows = [4, 2, 2, 0, 3, 5, 1, 3, 1, 4, 5, 0, 4, 3, 2, 5, 5, 
             3, 3, 1, 2, 4, 0, 2, 0, 5, 4, 1, 5, 2, 3, 4]
     )
+
 
 psv_61 = dict(
     geometry = (8, 8),
@@ -374,6 +382,7 @@ psv_16_gerbil = dict(
                     NC, 5, NC])
     )
 
+
 psv_61_stim1 = dict(
     geometry = (8, 8),
     pitch=0.406,
@@ -384,6 +393,7 @@ psv_61_stim1 = dict(
                              6, 6, 7, 7, NC, 4, 3, 3, 2, 2, 1, 1, 
                              NC, 4, 5, 5, 6, 6, 7, 7, NC], dtype='i') - 1 )
     )
+
 
 psv_61_stim64 = dict(
     geometry = (8,8),
@@ -399,6 +409,7 @@ psv_61_stim64 = dict(
                              1, 1, 2, 2, 3, 3, 4, 4], dtype='i') - 1 )
     )
 
+
 psv_61_stim64_15row = dict(
     geometry = (8,8),
     pitch=0.406,
@@ -412,6 +423,7 @@ psv_61_stim64_15row = dict(
                              2, 2, 3, 3, 4, 4, 4, 2, 4, 1, 4, 1, 4, 
                              1, 1, 2, 2, 3, 3, 4, 4], dtype='i') - 1 )
     )
+
 
 psv_61_ddc = dict(
     geometry = (8,8),
@@ -428,6 +440,7 @@ psv_61_ddc = dict(
                               5, 5, 7, 6, 5, 4, 4, 4], dtype='i') )
     )
 
+
 # same as above, but without disconnected channels
 psv_61_15row = dict(
     geometry = (8, 8),
@@ -443,6 +456,7 @@ psv_61_15row = dict(
                     2, 1, 2, 1, 2, 0, 0, 1, 1, 2, 2, 3, 3])
 
     )
+
 
 psv_61_15row_gray = undo_gray_code(psv_61_15row, starting=1)
 # with Gray code, row order should be
@@ -463,11 +477,15 @@ psv_61_15row_gray = undo_gray_code(psv_61_15row, starting=1)
 # Note: Use "~RC" to indicate a grounded (non-data) channel
 psv_61_intan_encoded = """D5, ~A8, A5, E7, D6, E6, A6, F7, D7, F6, A7, G7, D8, G6, C8, H7, E5, E8, B8, F5, C7, F8, B7, G5, C6, G8, B6, H5, C5, H6, B5, ~H1, C4, H4, B4, H3, C3, G2, B3, G3, C2, F2, B2, F3, C1, E2, B1, E3, D1, H2, A1, G4, D2, G1, A2, F4, D3, F1, A3, E4, D4, E1, A4, ~H8"""
 
+
 psv_61_intan_rev_encoded = """~H1, B5, H6, C5, H5, B6, G8, C6, G5, B7, F8, C7, F5, B8, E8, E5, D1, H2, A1, G4, D2, G1, A2, F4, D3, F1, A3, E4, D4, E1, A4, ~H8, D5, ~A8, A5, E7, D6, E6, A6, F7, D7, F6, A7, G7, D8, G6, C8, H7, E3, B1, E2, C1, F3, B2, F2, C2, G3, B3, G2, C3, H3, B4, H4, C4"""
+
 
 psv_61_intan2_encoded = """C5, ~A8, A5, G5, E5, C8, B6, E8, D6, F6, C7, G6, A7, H6, E7, G7, F5, B8, D7, D8, B7, H5, E6, F7, A6, F8, C6, H7, D5, G8, B5, ~H1, C4, G1, A4, H2, E4, F1, B3, F2, D3, H4, C2, D1, A2, B1, E2, G4, F4, G2, D2, H3, B2, G3, E3, F3, A3, E1, C3, C1, D4, A1, B4, ~H8"""
 
+
 psv_61_intan2_rev_encoded = """~H1, B5, G8, D5, H7, C6, F8, A6, F7, E6, H5, B7, D8, D7, B8, F5, F4, G2, D2, H3, B2, G3, E3, F3, A3, E1, C3, C1, D4, A1, B4, ~H8, C5, ~A8, A5, G5, E5, C8, B6, E8, D6, F6, C7, G6, A7, H6, E7, G7, G4, E2, B1, A2, D1, C2, H4, D3, F2, B3, F1, E4, H2, A4, G1, C4"""
+
 
 psv_61_afe_encoded = """D5, A5, D6, A6, D7, A7, D8, C8, E7, E6, F7, F6, G7, G6, H7, G8, H6, H5, G5, F8, F5, E8, E5, B8, C7, B7, C6, B6, C5, B5, ~A8, ~H8, ~H1, C4, B4, C3, B3, C2, B2, C1, B1, E3, E2, F3, F2, G3, H3, H4, G2, H2, G4, G1, F4, F1, E4, E1, D1, ~A1, D2, A2, D3, A3, D4, A4"""
 
@@ -479,12 +497,14 @@ psv_61_afe = dict(
     cols = _rev(8, unzip_encoded(psv_61_afe_encoded)[1])
     )
 
+
 psv_61_intan = dict(
     geometry = (8, 8),
     pitch=0.406,
     rows = unzip_encoded(psv_61_intan_encoded)[0],
     cols = _rev(8, unzip_encoded(psv_61_intan_encoded)[1])
     )
+
 
 psv_61_intan_rev = dict(
     geometry = (8, 8),
@@ -493,6 +513,7 @@ psv_61_intan_rev = dict(
     cols = _rev(8, unzip_encoded(psv_61_intan_rev_encoded)[1])
     )
 
+
 psv_61_intan2 = dict(
     geometry = (8, 8),
     pitch=0.406,
@@ -500,12 +521,14 @@ psv_61_intan2 = dict(
     cols = _rev(8, unzip_encoded(psv_61_intan2_encoded)[1])
     )
 
+
 psv_61_intan2_rev = dict(
     geometry = (8, 8),
     pitch=0.406,
     rows = unzip_encoded(psv_61_intan2_rev_encoded)[0],
     cols = _rev(8, unzip_encoded(psv_61_intan2_rev_encoded)[1])
     )
+
 
 psv_61_omnetix = dict(
     geometry = (8,8),
@@ -520,6 +543,7 @@ psv_61_omnetix = dict(
                     4, 7, 4, 7, -2, 2, 1, 2, 1, 2, 1, 3, 2, 0, 0, 1, 1, 2, 
                     2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 4])
     )
+
 
 # this specifically maps to the recording with this note:
 #     "Connections: Bank A connected backwards (text not matched up), 
@@ -539,13 +563,15 @@ psv_61_omnetix_2014_11_27 = dict(
                     2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 4])
     )
 
+
 psv_61_wireless_sub = dict(
     geometry = (8,8),
     pitch=0.406,
     rows = [6, 6, 3, 0, 0, 3, 3, 7],
     cols = [4, 7, 6, 6, 3, 2, 0, 1],
     )
-    
+
+
 # This is the lookup from mux3 channel to ZIF pin..
 # ZIF pin counts go in zig-zag zipper order, so approximate this
 # by a (2,32) "array" shape
@@ -562,13 +588,16 @@ _mux3_rows, _mux3_cols = np.unravel_index(
 _mux3_rows = marray(_mux3_rows, _mux3_to_zif.mask, dtype='i')
 _mux3_cols = marray(_mux3_cols, _mux3_to_zif.mask, dtype='i')
 
+
 mux3_to_zif = dict(
     geometry = (2, 32),
     rows = _mux3_rows,
     cols = _mux3_cols
     )
 
+
 ratv4_mux6_encoded = """G1, G2, H3, G3, F3, E1, C1, A1, F4, B2, E3, A3, C3, D4, B4, G7, H6, G6, F6, E8, C8, G5, E7, A7, C7, D6, B6, E5, A5, C5, G8, H7, F8, F7, H5, D8, B8, F5, D7, B7, E6, A6, C6, D5, B5, H2, F1, F2, H4, D1, B1, G4, E2, A2, C2, D3, B3, E4, A4, C4"""
+
 
 ratv4_mux6 = dict(
     pitch=0.406,
@@ -576,6 +605,7 @@ ratv4_mux6 = dict(
     rows = unzip_encoded(ratv4_mux6_encoded)[0],
     cols = _rev(8, unzip_encoded(ratv4_mux6_encoded)[1])
 )
+
 
 aro_puzzle = dict(
     geometry = (16, 16),
@@ -618,6 +648,7 @@ aro_puzzle = dict(
              ) - 1,
     )
 
+
 # For June 5 2017 tests: single intan 64-channel recorded arm1 or arm2
 # from each of three puzzle pieces
 def _aro_intan_to_zif(zif_to_electrode):
@@ -641,8 +672,7 @@ def _aro_intan_to_zif(zif_to_electrode):
             irow.append( zrow[z-1] )
             icol.append( zcol[z-1] )
     return irow, icol
-    
-    
+
 
 _aro_left1 = """~REF, U9, T9, R9, P9, N9, M9, L9, K9, U8, U7, U6, U5, U4, U3, T8, T7, T6, T5, T4, T3, T2, R8, R7, R6, R5, R4, R3, R2, R1, P8, P7, P6, P5, P4, P3, P2, P1, N8, N7, N6, N5, N4, N3, N2, N1, M8, M7, M6, M5, ~Float"""
 _aro_left2 = """~Float, M4, M3, M2, M1, L8, L7, L6, L5, L4, L3, L2, L1, K8, K7, K6, K5, K4, K3, K2, K1, J8, J7, J6, J5, J4, J3, J2, J1, J9, H8, H7, H6, H5, H4, H3, H1, H2, H9, G9, G8, G7, G6, G1, G2, G5, G4, G3, F2, F1, ~Float"""
@@ -673,6 +703,7 @@ aro_puzzle_pieces = {
     'colsright2' : _aro_intan_to_zif(_aro_right2)[1],
     }
 
+
 ##### A couple of dummy maps to debug analog multiplexing headstages
 mux_15_passthru={
     'geometry' : (15, 4),
@@ -685,17 +716,12 @@ mux_16_passthru={
     'cols' : [(i/16 if i not in (0, 16, 32, 48) else NC) for i in range(64)],
     }
 
-    
-
-
 
 rat_v3_by_zif = """H4, H2, H3, G4, G2, G1, G3, F4, F2, F1, F3, E4, E2, E1, E3, D1, B1, A1, C1, D2, B2, A2, C2, D3, B3, A3, C3, D4, B4, A4, C4, D5, B5, A5, C5, D6, B6, A6, C6, D7, B7, A7, C7, D8, B8, C8, E5, E7, E8, E6, F5, F7, F8, F6, G5, G7, G8, G6, H5, H7, H6"""
 rat_v3_by_zif_rc = list(zip( *unzip_encoded(rat_v3_by_zif) ))
 rat_v3_by_zif_lut = dict( list(zip( list(range(1, 62)), rat_v3_by_zif_rc )) )
 
 
-
-    
 electrode_maps = dict(
     # new passive map construction
     ratv4_stim4=connect_passive_map( (8,8), rat_v4_by_zif_lut,
@@ -720,18 +746,14 @@ electrode_maps = dict(
         ),
     rat_refelectrode_intan=connect_passive_map( (8,8), rat_refelectrode_by_zif_lut, 
                                 zif_by_intan64, pitch=0.406 ),
- 
     # dummy maps
     mux_15_passthru=mux_15_passthru,
     mux_16_passthru=mux_16_passthru,
-    
     # old names
     psv_61_intan=connect_passive_map( (8,8), rat_v3_by_zif_lut,
                                       zif_by_intan64, pitch=0.406 ),
     psv_61_intan2=connect_passive_map( (8,8), rat_v4_by_zif_lut,
                                        zif_by_intan64, pitch=0.406 ),
-    
-    
     psv_244_mux1=psv_244_mux1, 
     psv_32=psv_32, 
     psv_61=psv_61,
@@ -749,9 +771,7 @@ electrode_maps = dict(
     psv_61_15row_gray=psv_61_15row_gray,
     psv_61_gray=psv_61_gray,
     psv_61_stim64_15row=psv_61_stim64_15row,
-    ## psv_61_intan=psv_61_intan,
     psv_61_intan_rev=psv_61_intan_rev,
-    ## psv_61_intan2=psv_61_intan2,
     psv_61_intan2_rev=psv_61_intan2_rev,
     psv_244_intan=psv_244_intan,
     aro_puzzle=aro_puzzle,
@@ -807,4 +827,3 @@ def get_electrode_map(name, connectors=()):
                                         pitch=pitch)
     return chan_map, disconnected
 
-    
