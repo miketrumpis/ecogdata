@@ -1,0 +1,25 @@
+# this config file contains system-wide defaults -- sparse so far
+
+[globals]
+
+# The filesytem location of this code
+local_proj: /Users/mike/work/exp_ana/
+
+# A primary (local) path for (TDMS/MAT/HDF5) recording files
+local_exp: /Users/mike/experiment_data/
+
+# An alternate path for (TDMS/MAT/HDF5) recording files,
+# e.g. a mounted network drive
+network_exp: nil
+
+# Path to stash computational results and the like
+stash_path: /Users/mike/work/cached_results/
+
+# This is a directory for experiment config files
+user_sessions: /Users/mike/tmp/sessions
+
+# Setting this to True deletes any converted TDMS files after loading
+clear_temp_converted: False
+
+# This is probably never used
+filter_highpass: 2
