@@ -8,7 +8,7 @@ from nose.tools import assert_equal
 import random, string
 
 def randomword(length):
-   return ''.join(random.choice(string.lowercase) for i in range(length))
+   return ''.join(random.choice(string.ascii_lowercase) for i in range(length))
 
 def test_sessions_to_delta():
     sessions = ['2016-07-01', '2016-07-02', '2016-07-17', '2016-07-05']
