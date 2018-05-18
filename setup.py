@@ -1,11 +1,10 @@
+from glob import glob
 from setuptools import setup, Extension, find_packages
 from numpy.distutils.command import build_src
-import Cython
 import Cython.Compiler.Main
 build_src.Pyrex = Cython
 build_src.have_pyrex = True
 from Cython.Distutils import build_ext
-import Cython
 import numpy
 
 try:
@@ -35,6 +34,7 @@ if __name__=='__main__':
         name = 'ecogdata',
         version = '0.1',
         packages = find_packages(),
+        scripts=glob('scripts/*.py'),
         ext_modules = [slepian_projection],
         cmdclass = {'build_ext': build_ext},
         install_requires=reqs
