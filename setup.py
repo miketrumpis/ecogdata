@@ -37,5 +37,4 @@ if __name__=='__main__':
         scripts=glob('scripts/*.py'),
         ext_modules = [slepian_projection],
         cmdclass = {'build_ext': build_ext},
-        install_requires=reqs
     )
