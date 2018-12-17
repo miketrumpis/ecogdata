@@ -3,46 +3,61 @@ standard_library.install_aliases()
 import os
 from configparser import ConfigParser, SafeConfigParser
 from ecogdata.util import Bunch
+from .config_decode import *
 
-def load_params():
+
+all_keys = {
+    'local_exp': Path,
+    'network_exp': Path,
+    'stash_path': Path,
+    'user_sessions': Path,
+    'clear_temp_converted': BoolOrNum,
+    'memory_limit': TypedParam.from_type(float),
+    'channel_mask': Path
+}
+
+
+def load_params(as_string=False):
     cfg = ConfigParser()
     # Look for custom global config in ~/.mjt_exp_conf.txt
     # If nothing found, use a default one here
-    cpath = os.path.join(
-        os.path.expanduser('~'), '.mjt_exp_conf.txt'
-        )
+    cpath = os.path.expanduser('~/.mjt_exp_conf.txt')
     if not os.path.exists(cpath):
         cpath = os.path.split(os.path.abspath(__file__))[0]
         cpath = os.path.join(cpath, 'global_config.txt')
     cfg.read(cpath)
 
-    _all_keys = ('local_exp', 'network_exp', 'stash_path', 'user_sessions',
-                 'clear_temp_converted', 'memory_limit', 'channel_mask')
-    # XXX: need to specify transform table for the various global data types
-    params = Bunch(
-        **dict([ (opt, cfg.get('globals', opt)) 
-                 for opt in cfg.options('globals') ])
-        )
-    for k in _all_keys:
+    params = Bunch()
+    for opt in cfg.options('globals'):
+        if as_string:
+            params[opt] = cfg.get('globals', opt)
+        else:
+            params[opt] = parse_param(opt, cfg.get('globals', opt), all_keys)
+    for k in all_keys:
         params.setdefault(k, '')
     return params
 
+
 def new_SafeConfigParser():
-    cp = SafeConfigParser(defaults=load_params())
+    cp = SafeConfigParser(defaults=load_params(as_string=True))
     # this hot-swap will preserve case in option names
     cp.optionxform = str
     return cp
 
+
 def data_path():
     return load_params().local_exp
 
-def network_path():
-    return load_params().network_path
 
-def project_path():
-    return load_params().local_proj
+def network_path():
+    return load_params().network_exp
+
 
 def cfg_to_bunch(cfg_file, section=''):
+    """Return session config info in Bunch (dictionary) form with interpolations
+    from the master config settings. Perform full evaluation on parameters known
+    here and leave subsequent evaluation downstream.
+    """
     cp = new_SafeConfigParser()
     cp.read(cfg_file)
     sections = [section] if section else cp.sections()
@@ -50,7 +65,8 @@ def cfg_to_bunch(cfg_file, section=''):
     for sec in sections:
         bsub = Bunch()
         opts = cp.options(sec)
-        bsub.update(( (o, cp.get(sec, o)) for o in opts ))
+        param_pairs = [(o, parse_param(o, cp.get(sec, o), all_keys)) for o in opts]
+        bsub.update(param_pairs)
         b[sec] = bsub
     b.sections = sections
     return b

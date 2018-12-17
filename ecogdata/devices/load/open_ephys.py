@@ -468,11 +468,137 @@ def load_open_ephys(exp_path, test, electrode,
                     trigger_idx=(), useFs=-1,
                     save_downsamp=True, use_stored=True, store_path='',
                     downsamp=1, memmap=False, connectors=(), **extra):
+    chan_map, gnd_chans, ref_chans = get_electrode_map(electrode, connectors=connectors)
+    all_chans = np.arange(len(chan_map) + len(gnd_chans) + len(ref_chans))
+    not_connected = np.union1d(gnd_chans, ref_chans)
+    el_chans = np.setdiff1d(all_chans, not_connected)
 
-    chan_map, gnd_chans = get_electrode_map(electrode, connectors=connectors)
-    el_chans = np.setdiff1d(
-        np.arange(len(chan_map) + len(gnd_chans)), gnd_chans
+    if memmap:
+        channel_data = memmap_open_ephys_channels(
+            exp_path, test, rec_num=rec_num,
+            data_chans=list(el_chans + 1), **extra
         )
+        ecog_chans = channel_data.chdata
+        ground_chans = ()
+        ref_chans = ()
+        snip_transient = False
+    else:
+        # Load Data/ADC/AUX channels (perhaps pre-computed downsample)
+        channel_data = load_open_ephys_channels(
+            exp_path, test, rec_num=rec_num, shared_array=False,
+            target_Fs=useFs, save_downsamp=save_downsamp,
+            use_stored=use_stored, store_path=store_path, **extra
+        )
+        ground_chans = channel_data.chdata[gnd_chans]
+        T = channel_data.chdata.shape[1]
+        if len(ref_chans):
+            ref_channels = shared_ndarray((len(ref_chans), T), typecode='d')
+            np.take(channel_data.chdata, ref_chans, axis=0, out=ref_channels)
+        else:
+            ref_channels = ()
+        ecog_chans = shared_ndarray((len(el_chans), T), typecode='d')
+        np.take(channel_data.chdata, el_chans, axis=0, out=ecog_chans)
+
+    Fs = channel_data.Fs
+
+    # Now do a pretty standard set of operations (some day will be
+    # "standardized" in a data loading class)
+    # * separate electrode / trigger / aux data
+    # * process trigger edges
+    # * bandpass filtering
+    # * advance starting index
+    # * convert units
+
+    if not np.iterable(trigger_idx):
+        trigger_idx = [trigger_idx]
+    if not len(trigger_idx):
+        trig_chan = ()
+    else:
+        try:
+            trig_chan = channel_data.adc[trigger_idx]
+        except:
+            print("No trig chans found")
+            trig_chan = ()
+
+    try:
+        stim_chan = channel_data.adc[max(trigger_idx) + 1];
+    except:
+        print("Stim chan not loaded")
+        stim_chan = ()
+
+    if len(trig_chan):
+        pos_edge, _ = process_trigger(trig_chan)
+    else:
+        pos_edge = ()
+
+    with parallel_controller.context(not memmap):
+        ### bandpass filter
+        if len(bandpass):
+            lo, hi = bandpass
+            (b, a) = butter_bp(lo=lo, hi=hi, Fs=Fs, ord=4)
+            filtfilt(ecog_chans, b, a)
+        ### notch filters
+        if len(notches):
+            notch_all(
+                ecog_chans, Fs, lines=notches, inplace=True, filtfilt=True
+            )
+
+    # Don't parallel filter reference channel(s)
+    if len(ref_channels):
+        ref_channels = np.atleast_2d(ref_channels)
+        with parallel_controller.context(False):
+            if len(bandpass):
+                lo, hi = bandpass
+                (b, a) = butter_bp(lo=lo, hi=hi, Fs=Fs, ord=4)
+                filtfilt(ref_channels, b, a)
+            ### notch filters
+            if len(notches):
+                notch_all(ecog_chans, Fs, lines=notches, inplace=True, filtfilt=True)
+        ref_channels = ref_channels.squeeze()
+
+    ### advance index
+    if snip_transient:
+        if isinstance(snip_transient, bool):
+            snip = int(5 * Fs)
+        else:
+            snip = int(snip_transient * Fs)
+
+        ecog_chans = ecog_chans[:, snip:].copy()
+        if len(ground_chans):
+            ground_chans = ground_chans[:, snip:].copy()
+        if len(ref_channels):
+            ref_channels = ref_channels[:, snip:].copy()
+        if len(trig_chan):
+            trig_chan = trig_chan[snip:].copy()
+            pos_edge -= snip
+            pos_edge = pos_edge[pos_edge > 0]
+        if len(stim_chan):
+            stim_chan = stim_chan[snip:].copy()
+
+    ### convert units
+    if units.lower() != 'uv':
+        convert_scale(ecog_chans, 'uv', units)
+
+    dset = Bunch()
+    dset.data = ecog_chans
+    if 'adc' in channel_data:
+        dset.adc = channel_data.adc  # added in for loading in behavior tables
+    dset.ground_chans = ground_chans
+    dset.ref_chans = ref_channels
+    dset.chan_map = chan_map
+    dset.pos_edge = pos_edge
+    dset.trig_chan = trig_chan
+    dset.stim_chan = stim_chan
+    dset.Fs = Fs
+    dset.bandpass = bandpass
+    dset.transient_snipped = snip_transient
+    dset.notches = notches
+    dset.units = units
+    return dset
+    chan_map, gnd_chans, ref_chans = get_electrode_map(electrode, connectors=connectors)
+    all_chans = np.arange(len(chan_map) + len(gnd_chans) + len(ref_chans))
+    not_connected = np.union1d(gnd_chans, ref_chans)
+    el_chans = np.setdiff1d(all_chans, not_connected)
 
     if memmap:
         channel_data = memmap_open_ephys_channels(
@@ -481,6 +607,7 @@ def load_open_ephys(exp_path, test, electrode,
             )
         ecog_chans = channel_data.chdata
         ground_chans = ()
+        ref_chans = ()
         snip_transient = False
     else:
         # Load Data/ADC/AUX channels (perhaps pre-computed downsample)
@@ -490,7 +617,14 @@ def load_open_ephys(exp_path, test, electrode,
             use_stored=use_stored, store_path=store_path, **extra
             )
         ground_chans = channel_data.chdata[gnd_chans]
-        ecog_chans = shared_copy( channel_data.chdata[el_chans] )
+        T = channel_data.chdata.shape[1]
+        if len(ref_chans):
+            ref_channels = shared_ndarray((len(ref_chans), T), typecode='d')
+            np.take(channel_data.chdata, ref_chans, axis=0, out=ref_channels)
+        else:
+            ref_channels = ()
+        ecog_chans = shared_ndarray((len(el_chans), T), typecode='d')
+        np.take(channel_data.chdata, el_chans, axis=0, out=ecog_chans)
 
     Fs = channel_data.Fs
 
@@ -539,6 +673,19 @@ def load_open_ephys(exp_path, test, electrode,
                 ecog_chans, Fs, lines=notches, inplace=True, filtfilt=True
                 )
 
+    # Don't parallel filter reference channel(s)
+    if len(ref_channels):
+        ref_channels = np.atleast_2d(ref_channels)
+        with parallel_controller.context(False):
+            if len(bandpass):
+                lo, hi = bandpass
+                (b, a) = butter_bp(lo=lo, hi=hi, Fs=Fs, ord=4)
+                filtfilt(ref_channels, b, a)
+            ### notch filters
+            if len(notches):
+                notch_all(ecog_chans, Fs, lines=notches, inplace=True, filtfilt=True)
+        ref_channels = ref_channels.squeeze()
+
     ### advance index
     if snip_transient:
         if isinstance(snip_transient, bool):
@@ -549,12 +696,15 @@ def load_open_ephys(exp_path, test, electrode,
         ecog_chans = ecog_chans[:, snip:].copy()
         if len(ground_chans):
             ground_chans = ground_chans[:, snip:].copy()
+        if len(ref_channels):
+            ref_channels = ref_channels[:, snip:].copy()
         if len(trig_chan):
             trig_chan = trig_chan[snip:].copy()
             pos_edge -= snip
             pos_edge = pos_edge[ pos_edge > 0 ]
         if len(stim_chan):
             stim_chan = stim_chan[snip:].copy()
+
 
     ### convert units
     if units.lower() != 'uv':
@@ -595,10 +745,9 @@ def load_open_ephys_impedance(
         mag[n] = float(ch.attrib['magnitude'])
         phs[n] = float(ch.attrib['phase'])
     
-    chan_map, gnd_chans = get_electrode_map(electrode,
-                                            connectors=electrode_connections)
+    chan_map, gnd_chans, ref_chans = get_electrode_map(electrode, connectors=electrode_connections)
     ix = np.arange(len(phs))
-    cx = np.setdiff1d(ix, gnd_chans)
+    cx = np.setdiff1d(ix, np.union1d(gnd_chans, ref_chans))
     chan_mag = mag[cx]
     chan_phs = phs[cx]
     if magphs:
@@ -646,7 +795,7 @@ def plot_Z(
         Z = Z[1] if phs else Z[0]
     else:
         Z = path_or_Z.copy()
-        chan_map, _ = get_electrode_map(electrode)
+        chan_map = get_electrode_map(electrode)[0]
     
     if not phs:
         Z *= 1e-3

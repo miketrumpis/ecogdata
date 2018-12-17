@@ -2,21 +2,20 @@ from __future__ import print_function
 from builtins import zip
 from builtins import map
 from builtins import range
-from builtins import object
-import os
 import numpy as np
 import gc
 import inspect
 
-from ecogdata.util import Bunch, ChannelMap, map_intersection, mat_to_flat
+from ecogdata.util import ChannelMap, map_intersection, mat_to_flat
 
 from ecogdata.expconfig import *
 from ecogdata.expconfig.exp_descr import join_experiments
 from .load import *
 from .load.util import convert_tdms
 
-from ecogdata.parallel.array_split import shared_ndarray, shared_copy
-
+from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.expconfig.config_decode import Parameter, TypedParam, BoolOrNum, NSequence, NoneOrStr, \
+    parse_param, uniform_bunch_case
 
 _loading = dict(
     wireless=load_wireless,
@@ -40,66 +39,6 @@ for hs in ('active',) + active_headstages:
 _converts_tdms = ('stim_mux64', 'mux3', 'mux4',
                   'mux5', 'mux6', 'mux7', 'mux7_lg', 'active') + \
                   active_headstages
-
-
-class Parameter(object):
-    "A pass-thru parameter whose value is the command (a string)"
-    
-    def __init__(self, command):
-        self.command = command
-
-    def value(self):
-        return self.command
-
-
-class TypedParam(Parameter):
-    "A simply typed parameter that can be evaluated by a 'type'"
-    
-    def __init__(self, command, ptype):
-        super(TypedParam, self).__init__(command)
-        self.ptype = ptype
-
-    @staticmethod
-    def from_type(ptype):
-        def _gen_param(command):
-            return TypedParam(command, ptype)
-        return _gen_param
-        
-    def value(self):
-        return self.ptype( self.command )
-
-
-class BoolOrNum(Parameter):
-    "A value that is a boolean (True, False) or a number"
-
-    def value(self):
-        cmd = self.command.lower()
-        if cmd in ('true', 'false'):
-            return cmd == 'true'
-        return float(self.command)
-
-class NSequence(Parameter):
-    "A sequence of numbers (integers if possible, else floats)"
-
-    def value(self):
-        cmd = self.command.strip('(').strip(')').strip('[').strip(']').strip(',')
-        cmd = cmd.replace(' ', '')
-        if len(cmd):
-            try:
-                return list(map(int, cmd.split(',')))
-            except ValueError:
-                return list(map(float, cmd.split(',')))
-        return ()
-
-
-class NoneOrStr(Parameter):
-    """
-    A single value that is None (null) or something not null. 
-    Will return a string here.
-    """
-
-    def value(self):
-        return None if self.command.lower() == 'none' else self.command
 
 
 # The keys for this look-up must be lower-case
@@ -149,19 +88,11 @@ params_table = {
     }
 
 
-def parse_load_param(name, command):
-    p = params_table.get(name.lower(), Parameter)(command)
-    return p.value()
 
-
-def uniform_bunch_case(b):
-    b_lower = Bunch()
-    for k, v in list(b.items()):
-        if isinstance(k, (str, str)):
-            b_lower[k.lower()] = v
-        else:
-            b_lower[k] = v
-    return b_lower
+post_load_params = {
+    'car': BoolOrNum,
+    'local_ref': BoolOrNum,
+}
 
 
 def load_experiment_auto(session, test, **load_kwargs):
@@ -183,27 +114,27 @@ def load_experiment_auto(session, test, **load_kwargs):
     
     """
 
-    if np.iterable(test) and not isinstance(test, (str, str)):
+    if np.iterable(test) and not isinstance(test, str):
         return append_datasets(session, test, **load_kwargs)
-    
+
     cfg = session_conf(session)
     test_info = cfg.session
     # fill in session info with any specific instructions for the test
-    test_info.update( cfg.get(test, {}) )
+    test_info.update(cfg.get(test, {}))
     # normalize all test_info parameter keys to be lower case so that
     # they will be detected for any case
     test_info = uniform_bunch_case(test_info)
-            
+
     electrode = test_info.electrode
     headstage = test_info.headstage
     if os.name == 'nt':
-        if test_info.exp_path[0] =='/':
+        if test_info.exp_path[0] == '/':
             test_info.exp_path = test_info.exp_path[1:]
-        if test_info.nwk_path[0] =='/':
+        if test_info.nwk_path[0] == '/':
             test_info.nwk_path = test_info.nwk_path[1:]
     exp_path = test_info.exp_path
     exp_path = exp_path.replace('//', '/')
-    
+
     load_fn = _loading[headstage]
 
     # try to parse some args
@@ -218,41 +149,47 @@ def load_experiment_auto(session, test, **load_kwargs):
         extra_pos_args = list()
         for n in extra_pos_names:
             try:
-                extra_pos_args.append( load_kwargs[n] )
+                extra_pos_args.append(load_kwargs[n])
             except KeyError:
                 extra_pos_args.append(
-                    parse_load_param(n, test_info[n.lower()])
-                    )
+                    parse_param(n, test_info[n.lower()], params_table)
+                )
     except KeyError:
         raise ValueError('A required load argument is missing')
 
     # now get keyword arguments
-    kws = dict( zip(args[n_pos:], vals) )
+    kws = dict(zip(args[n_pos:], vals))
     for n in kws.keys():
         if n in load_kwargs:
-            kws[n] = load_kwargs[n]
+            kws[n] = load_kwargs.pop(n)
         elif n.lower() in test_info:
-            kws[n] = parse_load_param(n, test_info[n.lower()])
+            kws[n] = parse_param(n, test_info[n.lower()], params_table)
+    # check to see if any meta-load parameters are present in the given kwargs or the session file
+    for n in post_load_params.keys():
+        if n in load_kwargs:
+            kws[n] = load_kwargs.pop(n)
+        elif n.lower() in test_info:
+            kws[n] = parse_param(n, test_info[n.lower()], post_load_params)
 
     if headstage in _converts_tdms:
-        clear = params.clear_temp_converted.lower() == 'true'
+        clear = params.clear_temp_converted
         post_fn = convert_tdms(
             test, test_info.nwk_path, test_info.exp_path,
             accepted=('.h5', '.mat'), clear=clear
-            )
-    
+        )
+
     try:
         exp_path = test_info.exp_path
         dset = load_experiment_manual(
             exp_path, test, headstage, electrode, *extra_pos_args, **kws
-            )
-        
+        )
+
     except (IOError, DataPathError) as e:
         try:
             exp_path = test_info.nwk_path
             dset = load_experiment_manual(
                 exp_path, test, headstage, electrode, *extra_pos_args, **kws
-                )
+            )
         except (IOError, DataPathError) as e:
             raise DataPathError('Recording not found')
 
@@ -260,8 +197,8 @@ def load_experiment_auto(session, test, **load_kwargs):
         post_fn()
 
     dset.exp = build_experiment(session, test, dset.pos_edge)
-    #dset.name = '.'.join( (os.path.basename(exp_path), test) )
-    dset.name = '.'.join( (session, test) ) # this should be a the unique ID (?)
+    # dset.name = '.'.join( (os.path.basename(exp_path), test) )
+    dset.name = '.'.join((session, test))  # this should be a the unique ID (?)
     dset.headstage = headstage
     return dset
 
@@ -291,16 +228,44 @@ def load_experiment_manual(
         Designated name of electrode.
 
     """
-    
+
     load_fn = _loading[headstage]
     load_args = (exp_path, test, electrode) + load_args
-    
+    post_proc_args = dict()
+    for k in post_load_params:
+        post_proc_args[k] = load_kwargs.pop(k, None)
+
     dset = load_fn(*load_args, **load_kwargs)
-    # experiment will have to be constructed separately, 
+    # experiment will have to be constructed separately,
     # or go through session database system
-    
+    com_avg = post_proc_args.pop('car', False)
+    if com_avg:
+        mn = dset.data.mean(0)
+        dset.data -= mn
+
+    # Local ref either goes to reference data (if the electrode has reference
+    # channels), or it can be supplied as a channel number
+    local_ref = post_proc_args.pop('local_ref', None)
+    if isinstance(local_ref, bool):
+        if local_ref:
+            if 'ref_chans' in dset:
+                ref = np.atleast_2d(dset.ref_chans).mean(0)
+            else:
+                print('Local re-ref triggered, but no reference channels available')
+                ref = None
+        else:
+            # need to reset this b/c isinstance(False, int) evals to true!!
+            local_ref = None
+            ref = None
+    elif isinstance(local_ref, int):
+        ref = dset.data[local_ref]
+    else:
+        ref = None
+    if ref is not None:
+        dset.data -= ref
+
     dset.exp = None
-    dset.name = '.'.join( (os.path.basename(exp_path), test) )
+    dset.name = '.'.join((os.path.basename(exp_path), test))
     dset.headstage = headstage
     return dset
 

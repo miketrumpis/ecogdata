@@ -1,13 +1,14 @@
 from builtins import map
 from builtins import range
 import os
+import gc
 from collections import namedtuple
 import numpy as np
 import ecogdata.filt.time as ft
 import ecogdata.util as ut
 from ecogdata.datastore import load_bunch
 from ecogdata.trigger_fun import process_trigger
-from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.array_split import shared_copy
 
 from ..units import convert_scale
 from .util import tdms_info
@@ -136,7 +137,7 @@ def slice_style(cmd_str):
         raise NotImplementedError('slicing not known')
 
 def rawload_active(
-        exp_path, test, gain, shm=True,
+        exp_path, test, gain, shm=False,
         bnc=(), unmix=None, row_cmd=''
         ):
     # splits the raw TDMS file into channel data and BNC data
@@ -163,6 +164,7 @@ def rawload_active(
     else:
         demux = raw_load.data.reshape(nchan, nrow, -1)
 
+    del raw_load['data']
     if unmix is None:
         extra = range(ncol_load, nchan)
         unmix = DAQunmix(slice(0, ncol_load), slice(None), extra, ())
@@ -178,6 +180,9 @@ def rawload_active(
 
     # get electrode channels
     cdata = demux[col_slice]
+    del demux
+    while gc.collect():
+        pass
     cdata = cdata[:, row_slice, :]
     f = row_cmd.find('avg')
     if f >= 0:
@@ -191,13 +196,12 @@ def rawload_active(
     else:
         nrow = cdata.shape[1]
     if shm:
-        shp = cdata.shape
-        data = shared_ndarray( 
-            (shp[0]*shp[1], shp[2]), typecode=cdata.dtype.char
-            )
-        data[:] = cdata.reshape(data.shape)
+        data = shared_copy(cdata)
     else:
         data = cdata.copy()
+    del cdata
+    while gc.collect():
+        pass
     data.shape = (-1, data.shape[-1])
     data /= gain
     ncol = data.shape[0] / nrow

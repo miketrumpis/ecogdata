@@ -42,9 +42,7 @@ def load_blackrock(
     nsx_path = p.join(exp_path, 'blackrock')
 
     ## Get array-to-channel pinouts
-    chan_map, disconnected = epins.get_electrode_map(
-        electrode, connectors=connections
-        )
+    chan_map, disconnected = epins.get_electrode_map(electrode, connectors=connections)[:2]
 
     # try preproc path first to see if this run has already been downsampled
     load_nsx = True

@@ -57,12 +57,12 @@ def load_afe_aug21(
         convert_scale(data_chans, 'v', units)
 
     ## # only use this one electrode (for now)
-    chan_map, disconnected = epins.get_electrode_map('psv_61_afe')
+    chan_map, disconnected = epins.get_electrode_map('psv_61_afe')[:2]
     connected = np.setdiff1d(np.arange(n_data), disconnected)
     disconnected = disconnected[ disconnected < n_data ]
         
     data = shared_ndarray( (len(connected), data_chans.shape[-1]) )
-    data[:,:] = data_chans[connected]
+    data[:, :] = data_chans[connected]
     ground_chans = data_chans[disconnected]
 
     del data_chans
@@ -149,7 +149,7 @@ def load_afe(
         convert_scale(data, 'v', units)
 
     # only use this one electrode (for now)
-    chan_map, disconnected = epins.get_electrode_map('psv_61_afe')
+    chan_map, disconnected = epins.get_electrode_map('psv_61_afe')[:2]
     connected = np.setdiff1d(np.arange(n_data), disconnected)
     disconnected = disconnected[ disconnected < n_data ]
     

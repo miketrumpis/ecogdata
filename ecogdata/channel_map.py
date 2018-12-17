@@ -31,14 +31,30 @@ class ChannelMap(list):
         self.pitch = pitch
         self._combs = None
 
+
+    @classmethod
+    def from_index(cls, ij, shape, col_major=True, pitch=1.0):
+        """Return a ChannelMap from a list of matrix index pairs (e.g. [(0, 3), (2, 1), ...])
+        and a matrix shape (e.g. (5, 5)).
+        """
+
+        from .util import mat_to_flat
+        i, j = zip(*ij)
+        map = mat_to_flat(shape, i, j, col_major=col_major)
+        return cls(map, shape, col_major=col_major, pitch=pitch)
+
+
     @classmethod
     def from_mask(cls, mask, col_major=True, pitch=1.0):
-        # create a ChannelMap from a binary grid
+        """Create a ChannelMap from a binary grid. Note: the data channels must be aligned
+        with the column-major or row-major raster order of this binary mask
+        """
+
         i, j = mask.nonzero()
+        ij = zip(i, j)
         geo = mask.shape
-        from .util import mat_to_flat
-        map = mat_to_flat(geo, i, j, col_major=col_major)
-        return cls(map, geo, col_major=col_major, pitch=pitch)
+        return cls.from_index(ij, geo, col_major=col_major, pitch=pitch)
+
 
     @property
     def site_combinations(self):
@@ -173,7 +189,7 @@ class ChannelMap(list):
             array.fill(fill)
         slicing = [slice(None)] * len(shape)
         slicing[axis] = self.as_row_major()[:]
-        array[slicing] = data
+        array[tuple(slicing)] = data
         shape.pop(axis)
         shape.insert(axis, self.geometry[1])
         shape.insert(axis, self.geometry[0])
@@ -437,8 +453,8 @@ def channel_combinations(chan_map, scale=1.0, precision=4):
     npair = spmisc.comb(len(chan_map),2,exact=1)
     chan_combs.p1 = np.empty(npair, 'i')
     chan_combs.p2 = np.empty(npair, 'i')
-    chan_combs.idx1 = np.empty((npair,2), 'i')
-    chan_combs.idx2 = np.empty((npair,2), 'i')
+    chan_combs.idx1 = np.empty((npair, 2), 'd')
+    chan_combs.idx2 = np.empty((npair, 2), 'd')
     chan_combs.dist = np.empty(npair)
     ii, jj = chan_map.to_mat()
     # Distances are measured between grid locations (i1,j1) to (i2,j2)
@@ -457,4 +473,10 @@ def channel_combinations(chan_map, scale=1.0, precision=4):
     d = np.abs( chan_combs.idx1 - chan_combs.idx2 ) * s_
     dist = ( d**2 ).sum(1) ** 0.5
     chan_combs.dist = np.round(dist, decimals=precision)
+    idx1 = chan_combs.idx1.astype('i')
+    if (idx1 == chan_combs.idx1).all():
+        chan_combs.idx1 = idx1
+    idx2 = chan_combs.idx2.astype('i')
+    if (idx2 == chan_combs.idx2).all():
+        chan_combs.idx2 = idx2
     return chan_combs

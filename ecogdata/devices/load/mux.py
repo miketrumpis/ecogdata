@@ -7,7 +7,7 @@ import ecogdata.filt.time as ft
 import ecogdata.util as ut
 from ecogdata.datastore import load_bunch, save_bunch
 from ecogdata.trigger_fun import process_trigger
-from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.array_split import shared_ndarray, shared_copy, parallel_controller
 from ecogdata.parallel.split_methods import filtfilt
 import ecogdata.devices.electrode_pinouts as epins
 
@@ -177,9 +177,7 @@ def load_mux(
 
     ## Realize channel mapping
 
-    chan_map, disconnected = epins.get_electrode_map(
-        electrode, connectors=mux_connectors
-        )
+    chan_map, disconnected, reference = epins.get_electrode_map(electrode, connectors=mux_connectors)
 
     ## Data channels
 
@@ -202,23 +200,30 @@ def load_mux(
         convert_scale(rec_chans, 'v', units)
     
     g_chans = disconnected
-    d_chans = np.setdiff1d(np.arange(ncol_data*nrow), g_chans)
+    r_chans = reference
+    d_chans = np.setdiff1d(np.arange(ncol_data*nrow), np.union1d(g_chans, r_chans))
 
-    data_chans = shared_ndarray((len(d_chans), rec_chans.shape[-1]))
-    data_chans[:,:] = rec_chans[d_chans]
-    gnd_data = rec_chans[g_chans]
+    data_chans = shared_copy(rec_chans[d_chans])
+    if len(g_chans):
+        gnd_data = rec_chans[g_chans]
+    else:
+        gnd_data = ()
+    if len(r_chans):
+        ref_data = rec_chans[r_chans]
+    else:
+        ref_data = ()
     del rec_chans
     del channels
-    
+
     # do highpass filtering for stationarity
     if bandpass:
         # manually remove DC from channels before filtering
         if bandpass[0] > 0:
-            data_chans -= data_chans.mean(1)[:,None]
+            data_chans -= data_chans.mean(1)[:, None]
             # do a high order highpass to really crush the crappy 
             # low frequency noise
             b, a = ft.butter_bp(lo=bandpass[0], Fs=Fs, ord=5)
-            #b, a = ft.cheby1_bp(0.5, lo=bandpass[0], Fs=Fs, ord=5)
+            # b, a = ft.cheby1_bp(0.5, lo=bandpass[0], Fs=Fs, ord=5)
         else:
             b = [1]
             a = [1]
@@ -226,18 +231,21 @@ def load_mux(
             b_lp, a_lp = ft.butter_bp(hi=bandpass[1], Fs=Fs, ord=3)
             b = np.convolve(b, b_lp)
             a = np.convolve(a, a_lp)
-        
-        ## ft.filter_array(
-        ##     data_chans, 
-        ##     design_kwargs=dict(lo=bandpass[0], hi=bandpass[1], Fs=Fs),
-        ##     filt_kwargs=dict(filtfilt=True)
-        ##     )
+
         filtfilt(data_chans, b, a)
+        if len(ref_data):
+            with parallel_controller.context(False):
+                ref_data = np.atleast_2d(ref_data)
+                filtfilt(ref_data, b, a)
+                ref_data = ref_data.squeeze()
 
     if notches:
-        ft.notch_all(
-            data_chans, Fs, lines=notches, inplace=True, filtfilt=True
-            )
+        ft.notch_all(data_chans, Fs, lines=notches, inplace=True, filtfilt=True)
+        if len(ref_data):
+            with parallel_controller.context(False):
+                ref_data = np.atleast_2d(ref_data)
+                ft.notch_all(ref_data, Fs, lines=notches, inplace=True, filtfilt=True)
+                ref_data = ref_data.squeeze()
 
     if snip_transient:
         if isinstance(snip_transient, bool):
@@ -247,11 +255,13 @@ def load_mux(
         if len(pos_edge):
             snip_len = max(0, min(snip_len, pos_edge[0] - int(Fs)))
             pos_edge = pos_edge - snip_len
-            trig = trig[...,snip_len:].copy()
-        data_chans = data_chans[...,snip_len:].copy()
-        gnd_data = gnd_data[...,snip_len:].copy()
+            trig = trig[..., snip_len:].copy()
+        data_chans = data_chans[..., snip_len:].copy()
+        gnd_data = gnd_data[..., snip_len:].copy()
+        if len(ref_data):
+            ref_data = ref_data[..., snip_len:].copy()
         if len(bnc):
-            bnc = bnc[...,snip_len*nrow:].copy()
+            bnc = bnc[..., snip_len*nrow:].copy()
 
     # do blockwise detrending for stationarity
     ## detrend_window = int(round(0.750*Fs))
@@ -260,6 +270,7 @@ def load_mux(
     dset.pos_edge = pos_edge
     dset.data = data_chans
     dset.ground_chans = gnd_data
+    dset.ref_chans = ref_data
     dset.bnc = bnc
     dset.chan_map = chan_map
     dset.Fs = Fs

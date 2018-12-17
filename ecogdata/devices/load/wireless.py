@@ -14,7 +14,7 @@ def load_cooked(exp_path, test, electrode, **kwargs):
     Fs = 500.0
 
     #chan_map = ChannelMap( range(1,9), (2,5), col_major=False )
-    chan_map, _ = epins.get_electrode_map(electrode)
+    chan_map = epins.get_electrode_map(electrode)[0]
 
     bandpass = (2,-1)
     return data, trigs, Fs, chan_map, bandpass

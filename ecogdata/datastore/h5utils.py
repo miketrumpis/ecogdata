@@ -5,14 +5,15 @@ import numpy as np
 import tables
 from tables import NoSuchNodeError
 import os
+import types
 from contextlib import closing
 
 from ecogdata.util import Bunch
 from ecogdata.parallel.array_split import shared_ndarray
 
 
-_h5_seq_types = (str, list, int, float, complex, bool)
-
+_h5_seq_types = types.StringTypes + (types.ListType, types.IntType, types.FloatType, types.ComplexType,
+                                     types.BooleanType)
 
 class HDF5Bunch(Bunch):
     
@@ -100,7 +101,7 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0):
                 path, key, atom=atom, shape=val.shape, filters=filters
                 )
             ca[:] = val
-        elif isinstance(val, _h5_seq_types):
+        elif type(val) in _h5_seq_types:
             try:
                 f.create_array(path, key, val)
             except (TypeError, ValueError) as e:
