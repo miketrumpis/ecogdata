@@ -5,6 +5,7 @@ from builtins import str
 from builtins import map
 from builtins import range
 import os.path as osp
+import six
 from glob import glob
 import gc
 
@@ -95,7 +96,7 @@ def _prepare_paths(exp_path, test, rec_num):
     # * a single integer
     # * a sequence of integer/strings
     # make it finally a sequence of strings
-    if isinstance(rec_num, (str, str)) or isinstance(rec_num, (int, int)):
+    if isinstance(rec_num, six.string_types) or isinstance(rec_num, six.integer_types):
         rec_num = (rec_num,)
     if np.iterable(rec_num):
         rec_num = [ str(r) for r in rec_num ]
@@ -783,7 +784,7 @@ def plot_Z(
         ):
     # from ecogana.anacode.colormaps import nancmap
 
-    if isinstance(path_or_Z, (str, str)):
+    if isinstance(path_or_Z, six.string_types):
         path = osp.abspath(path_or_Z)
         path, test = osp.split(path)
         if not len(title):

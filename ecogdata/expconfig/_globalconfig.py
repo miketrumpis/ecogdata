@@ -1,7 +1,11 @@
 from future import standard_library
 standard_library.install_aliases()
 import os
-from configparser import ConfigParser, SafeConfigParser
+import six
+if six.PY3:
+    from configparser import ConfigParser, SafeConfigParser
+else:
+    from ConfigParser import ConfigParser, SafeConfigParser
 from ecogdata.util import Bunch
 from .config_decode import *
 

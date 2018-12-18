@@ -6,9 +6,13 @@ standard_library.install_aliases()
 from builtins import zip
 from builtins import str
 from builtins import range
+import six
 import tables
 import numpy as np
-import configparser
+if six.PY3:
+    import configparser
+else:
+    import ConfigParser as configparser
 import os
 import tempfile
 import nptdms
