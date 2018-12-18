@@ -16,6 +16,7 @@ except AttributeError:
 
 dirs = list(numpy_include_dirs)
 
+
 slepian_projection = Extension(
     'ecogdata.filt.time._slepian_projection',
     ['ecogdata/filt/time/_slepian_projection.pyx'],
@@ -24,10 +25,6 @@ slepian_projection = Extension(
     extra_compile_args=['-O3']
     )
 
-with open('requirements.txt') as f:
-    reqs = f.readlines()
-    reqs = map(str.strip, reqs)
-    reqs = filter(None, reqs)
 
 if __name__=='__main__':
     setup(
