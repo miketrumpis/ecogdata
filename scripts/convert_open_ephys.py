@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+from glob import glob
 from ecogdata.devices.load.open_ephys import load_open_ephys_channels
 from ecogdata.expconfig import session_conf
 
@@ -9,8 +10,17 @@ def convert_directory(path, target_Fs, recordings=(), store_path=''):
         recordings = []
         for d in os.listdir(path):
             full_path = os.path.join(path, d)
-            if os.path.isdir(full_path) and len(os.listdir(full_path)) > 5:
+            # if the sub-item is itself a directory and has continuous files, then convert it
+            if os.path.isdir(full_path) and glob(os.path.join(full_path, '*.continuous')):
+                print('Adding {} to convert'.format(d))
                 recordings.append(d)
+        # if the recordings list is still empty, check to see if the path given is the full data path
+        if not recordings:
+            if glob(os.path.join(path, '*.continuous')):
+                if path[-1] == os.path.sep:
+                    path = path[:-1]
+                path, rec = os.path.split(path)
+                recordings = (rec,)
 
     for rec in recordings:
         _ = load_open_ephys_channels(

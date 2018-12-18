@@ -267,31 +267,3 @@ def input_as_2d(in_arr=0, out_arr=-1):
             return x
     return _wrap
 
-class RelocatedImport(object):
-    def __init__(self, thing, new_module):
-        self.new_module = new_module
-        self.thing = thing
-        self.data = WeakKeyDictionary()
-
-    def __get__(self, instance, owner):
-        print(str(self.thing) + ' should now be imported from ' \
-          + self.new_module)
-        pkg = importlib.import_module(self.new_module)
-        try:
-            obj = getattr(pkg, self.thing)
-        except AttributeError:
-            return None
-        return self.data.get(instance, obj)
-
-class _MovedImports(object):
-    #from .channel_map import ChannelMap, mat_to_flat, flat_to_mat, flat_to_flat
-    ChannelMap = RelocatedImport('ChannelMap', 'ecogdata.channel_map')
-    map_intersection = RelocatedImport(
-        'map_intersection', 'ecogdata.channel_map')
-    channel_combinations = RelocatedImport(
-        'channel_combinations', 'ecogdata.channel_map')
-
-_MV = _MovedImports()    
-ChannelMap = _MV.ChannelMap
-map_intersection = _MV.map_intersection
-channel_combinations = _MV.channel_combinations

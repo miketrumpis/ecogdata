@@ -5,15 +5,15 @@ import numpy as np
 import tables
 from tables import NoSuchNodeError
 import os
-import types
+import six
 from contextlib import closing
 
 from ecogdata.util import Bunch
 from ecogdata.parallel.array_split import shared_ndarray
 
 
-_h5_seq_types = types.StringTypes + (types.ListType, types.IntType, types.FloatType, types.ComplexType,
-                                     types.BooleanType)
+_h5_seq_types = six.string_types + six.integer_types + (type(1.0), type(1j), type(True), type([]))
+
 
 class HDF5Bunch(Bunch):
     

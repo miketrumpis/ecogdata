@@ -1,7 +1,8 @@
 import os.path as osp
 import numpy as np
 import scipy.io as sio
-from ecogdata.util import ChannelMap, Bunch, mat_to_flat
+from ecogdata.channel_map import ChannelMap
+from ecogdata.util import Bunch, mat_to_flat
 
 from ecogdata.parallel.array_split import shared_copy
 from ecogdata.parallel.split_methods import filtfilt
