@@ -12,6 +12,9 @@ def convert_directory(path, target_Fs, recordings=(), store_path=''):
             full_path = os.path.join(path, d)
             # if the sub-item is itself a directory and has continuous files, then convert it
             if os.path.isdir(full_path) and glob(os.path.join(full_path, '*.continuous')):
+                # skip the AFP droppings
+                if d == '.AppleDouble':
+                    continue
                 print('Adding {} to convert'.format(d))
                 recordings.append(d)
         # if the recordings list is still empty, check to see if the path given is the full data path
