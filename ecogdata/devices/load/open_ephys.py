@@ -637,8 +637,6 @@ def load_open_ephys(exp_path, test, electrode,
     # * advance starting index 
     # * convert units
 
-
-    
     if not np.iterable(trigger_idx):
         trigger_idx = [trigger_idx]
     if not len(trigger_idx):
