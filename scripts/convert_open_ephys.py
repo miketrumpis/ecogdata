@@ -28,7 +28,7 @@ def convert_directory(path, target_Fs, recordings=(), store_path=''):
     for rec in recordings:
         _ = load_open_ephys_channels(
             path, rec, target_Fs=target_Fs, store_path=store_path,
-            save_downsamp=True, use_stored=True
+            save_downsamp=True, use_stored=False
         )
 
 def run_convert(args):
