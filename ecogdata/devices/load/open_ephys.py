@@ -129,6 +129,9 @@ def memmap_open_ephys_channels(
     This option provides a way to load massive multi-channel datasets
     sampled at 20 kS/s. Channels are cached to disk in flat files and then
     loaded as "memmap" arrays. Down-sampling is not supported.
+
+    TODO: reference channels are not supported
+    
     """
 
     rec_path, rec_num = _prepare_paths(exp_path, test, rec_num)
@@ -604,11 +607,11 @@ def load_open_ephys(exp_path, test, electrode,
     if memmap:
         channel_data = memmap_open_ephys_channels(
             exp_path, test, rec_num=rec_num,
-            data_chans=list(el_chans+1), **extra
+            data_chans=list(el_chans + 1), **extra
             )
         ecog_chans = channel_data.chdata
         ground_chans = ()
-        ref_chans = ()
+        ref_channels = ()
         snip_transient = False
     else:
         # Load Data/ADC/AUX channels (perhaps pre-computed downsample)
