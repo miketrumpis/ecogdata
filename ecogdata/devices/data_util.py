@@ -44,7 +44,7 @@ _converts_tdms = ('stim_mux64', 'mux3', 'mux4',
 # The keys for this look-up must be lower-case
 params_table = {
     # common args
-    'exp_path' : Parameter,
+    'exp_path' : Path,
     'test' : Parameter,
     'electrode' : Parameter,
     # (mostly) common kwargs
@@ -81,7 +81,7 @@ params_table = {
     'trigger_idx' : NSequence,
     'usefs' : TypedParam.from_type(float),
     'save_downsamp' : BoolOrNum,
-    'store_path' : Parameter,
+    'store_path' : Path,
     'use_stored' : BoolOrNum,
     'memmap' : BoolOrNum,
     'connectors' : NSequence,
