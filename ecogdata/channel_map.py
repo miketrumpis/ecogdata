@@ -296,11 +296,14 @@ class CoordinateChannelMap(ChannelMap):
         """
         list.__init__(self)
         self[:] = coordinates
-        if isinstance(geometry, (str, str)) and geometry.lower() == 'auto':
-            yy, xx = list(zip(*self))
-            # repurpose geometry to specify rectangle (??)
-            # maintain "matrix" style coordinates, i.e. (y, x) <==> (i, j)
-            self.geometry = (min(yy), max(yy), min(xx), max(xx))
+        yy, xx = zip(*self)
+        self.boundary = (min(yy), max(yy), min(xx), max(xx))
+        if isinstance(geometry, (str, unicode)) and geometry.lower() == 'auto':
+            y_gap = max(yy) - min(yy)
+            x_gap = max(xx) - min(xx)
+            self._combs = channel_combinations(self, scale=self.pitch)
+            min_pitch = self._combs.dist.min()
+            self.geometry = int(np.round(y_gap / min_pitch)), int(np.round(x_gap / min_pitch))
         else:
             self.geometry = geometry
         self._combs = None
@@ -317,9 +320,9 @@ class CoordinateChannelMap(ChannelMap):
         chans = []
         for s in sites:
             dist = np.apply_along_axis(
-                np.linalg.norm, 1, coords - s #np.array([y, x])
+                np.linalg.norm, 1, coords - s
                 )
-            chans.append( np.argmin( dist ) )
+            chans.append(np.argmin(dist))
         return np.array(chans).squeeze()
 
     def rlookup(self, c):
@@ -345,7 +348,7 @@ class CoordinateChannelMap(ChannelMap):
 
     def image(
             self, arr=None, cbar=True, ax=None, interpolate='linear',
-            grid_pts=100, norm=None, clim=None, cmap='gray',
+            grid_pts=None, norm=None, clim=None, cmap='viridis',
             scatter_kw={}, contour_kw={}
             ):
         y, x = self.to_mat()
@@ -371,12 +374,14 @@ class CoordinateChannelMap(ChannelMap):
             arrg, coords = self.embed(arr, interpolate=interpolate,
                                       grid_pts=grid_pts, grid_coords=True)
             xg, yg = coords
-            CS = ax.contourf(xg, yg, arrg, 10, clim=clim,
+            CS = ax.contourf(xg, yg, arrg, 10, vmin=clim[0], vmax=clim[1],
                              cmap=cmap, norm=norm, **contour_kw)
             if cbar:
                 cb = f.colorbar(CS, ax=ax, use_gridspec=True)
                 cb.solids.set_edgecolor('face')
 
+        scatter_kw.setdefault('edgecolors', 'k')
+        scatter_kw.setdefault('linewidths', 1.0)
         sct = ax.scatter(x, y, c=arr, norm=norm, cmap=cmap, **scatter_kw)
         if cbar:
             if not interpolate:
@@ -386,7 +391,7 @@ class CoordinateChannelMap(ChannelMap):
         return f
             
     def embed(
-            self, data, axis=0, interpolate='linear', grid_pts=100,
+            self, data, axis=0, interpolate='linear', grid_pts=None,
             grid_coords=False
             ):
         """
@@ -395,13 +400,16 @@ class CoordinateChannelMap(ChannelMap):
         """
         y, x = self.to_mat()
         triang = Triangulation(x, y)
-        g = self.geometry
-        yg = np.linspace(g[0], g[1], grid_pts)
-        xg = np.linspace(g[2], g[3], grid_pts)
+        g = self.boundary
+        if grid_pts is None:
+            grid_pts = self.geometry
+        elif not np.iterable(grid_pts):
+            grid_pts = (grid_pts, grid_pts)
+        else:
+            pass
+        yg = np.linspace(g[0], g[1], grid_pts[0])
+        xg = np.linspace(g[2], g[3], grid_pts[1])
         xg, yg = np.meshgrid(xg, yg, indexing='xy')
-        #xg = xg.ravel()
-        #yg = yg.ravel()
-        #arrg = griddata(x, y, arr, xg, yg)
         def f(x, interp_mode):
             xgr = xg.ravel()
             ygr = yg.ravel()
@@ -409,8 +417,7 @@ class CoordinateChannelMap(ChannelMap):
                 interp = LinearTriInterpolator(triang, x)
             else:
                 interp = CubicTriInterpolator(triang, x)
-            return interp(xgr, ygr).reshape(grid_pts, grid_pts)
-        #arrg = interp(xg.ravel(), yg.ravel()).reshape(grid_pts, grid_pts)
+            return interp(xgr, ygr).reshape(grid_pts)
         arrg = np.apply_along_axis(f, axis, data, interpolate)
         return ( arrg, (xg, yg) ) if grid_coords else arrg
     
