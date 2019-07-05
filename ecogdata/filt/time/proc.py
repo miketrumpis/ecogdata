@@ -7,7 +7,7 @@ from builtins import range
 import numpy as np
 from .design import butter_bp, cheby1_bp, cheby2_bp, notch
 from ecogdata.util import get_default_args, input_as_2d
-from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.array_split import shared_ndarray, shared_copy
 import scipy.signal as signal
 from nitime.algorithms.autoregressive import AR_est_YW
 
@@ -72,8 +72,7 @@ def filter_array(
         return arr
     else:
         # still use bfilter for memory efficiency
-        arr_f = shared_ndarray(arr.shape)
-        arr_f[:] = arr
+        arr_f = shared_copy(arr)
         bfilter(b, a, arr_f, **def_args)
         return arr_f
 
@@ -107,8 +106,7 @@ def notch_all(
     
     """
     if not inplace:
-        arr_f = shared_ndarray(arr.shape)
-        arr_f[:] = arr
+        arr_f = shared_copy(arr)
     else:
         arr_f = arr
 
