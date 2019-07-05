@@ -39,6 +39,7 @@ def find_conf(conf, extra_paths=None):
     session, _ = osp.splitext(session)
 
     for test_path in extra_paths:
+        test_path = os.path.expanduser(test_path)
         p1 = osp.join(test_path, session + '.txt')
         if osp.exists(p1):
             return p1
