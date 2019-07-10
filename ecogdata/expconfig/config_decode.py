@@ -76,6 +76,9 @@ class Path(NoneOrStr):
     def value(self):
         val = super(Path, self).value()
         if val is not None:
+            # catch one pernicious corner case
+            if val[0] == os.path.sep and val[1] == '~':
+                val = val[1:]
             val = os.path.expanduser(val)
         return val
 

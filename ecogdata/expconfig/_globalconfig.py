@@ -57,7 +57,7 @@ def network_path():
     return load_params().network_exp
 
 
-def cfg_to_bunch(cfg_file, section=''):
+def cfg_to_bunch(cfg_file, section='', params_table=None):
     """Return session config info in Bunch (dictionary) form with interpolations
     from the master config settings. Perform full evaluation on parameters known
     here and leave subsequent evaluation downstream.
@@ -66,10 +66,13 @@ def cfg_to_bunch(cfg_file, section=''):
     cp.read(cfg_file)
     sections = [section] if section else cp.sections()
     b = Bunch()
+    if params_table is None:
+        params_table = {}
+    params_table.update(all_keys)
     for sec in sections:
         bsub = Bunch()
         opts = cp.options(sec)
-        param_pairs = [(o, parse_param(o, cp.get(sec, o), all_keys)) for o in opts]
+        param_pairs = [(o, parse_param(o, cp.get(sec, o), params_table)) for o in opts]
         bsub.update(param_pairs)
         b[sec] = bsub
     b.sections = sections
