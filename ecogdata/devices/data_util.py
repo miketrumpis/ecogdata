@@ -14,8 +14,7 @@ from .load import *
 from .load.util import convert_tdms
 
 from ecogdata.parallel.array_split import shared_ndarray
-from ecogdata.expconfig.config_decode import Parameter, TypedParam, BoolOrNum, NSequence, NoneOrStr, \
-    parse_param, uniform_bunch_case
+from ecogdata.expconfig.config_decode import Parameter, TypedParam, BoolOrNum, NSequence, NoneOrStr, uniform_bunch_case
 
 _loading = dict(
     wireless=load_wireless,
@@ -117,7 +116,7 @@ def load_experiment_auto(session, test, **load_kwargs):
     if np.iterable(test) and not isinstance(test, str):
         return append_datasets(session, test, **load_kwargs)
 
-    cfg = session_conf(session)
+    cfg = session_conf(session, params_table=params_table)
     test_info = cfg.session
     # fill in session info with any specific instructions for the test
     test_info.update(cfg.get(test, {}))
@@ -132,8 +131,10 @@ def load_experiment_auto(session, test, **load_kwargs):
             test_info.exp_path = test_info.exp_path[1:]
         if test_info.nwk_path[0] == '/':
             test_info.nwk_path = test_info.nwk_path[1:]
-    exp_path = test_info.exp_path
-    exp_path = exp_path.replace('//', '/')
+    test_info.exp_path = test_info.exp_path.replace('//', '/')
+
+    # finally update test info with kwargs which have top priority
+    test_info.update(load_kwargs)
 
     load_fn = _loading[headstage]
 
@@ -148,28 +149,19 @@ def load_experiment_auto(session, test, **load_kwargs):
     try:
         extra_pos_args = list()
         for n in extra_pos_names:
-            try:
-                extra_pos_args.append(load_kwargs[n])
-            except KeyError:
-                extra_pos_args.append(
-                    parse_param(n, test_info[n.lower()], params_table)
-                )
+            extra_pos_args.append(test_info[n.lower()])
     except KeyError:
-        raise ValueError('A required load argument is missing')
+        raise ValueError('A required load argument is missing: {}'.format(n))
 
     # now get keyword arguments
     kws = dict(zip(args[n_pos:], vals))
     for n in kws.keys():
-        if n in load_kwargs:
-            kws[n] = load_kwargs.pop(n)
-        elif n.lower() in test_info:
-            kws[n] = parse_param(n, test_info[n.lower()], params_table)
+        if n.lower() in test_info:
+            kws[n] = test_info.get(n)
     # check to see if any meta-load parameters are present in the given kwargs or the session file
     for n in post_load_params.keys():
-        if n in load_kwargs:
-            kws[n] = load_kwargs.pop(n)
-        elif n.lower() in test_info:
-            kws[n] = parse_param(n, test_info[n.lower()], post_load_params)
+        if n.lower() in test_info:
+            kws[n] = test_info.get(n)
 
     if headstage in _converts_tdms:
         clear = params.clear_temp_converted
@@ -197,7 +189,6 @@ def load_experiment_auto(session, test, **load_kwargs):
         post_fn()
 
     dset.exp = build_experiment(session, test, dset.pos_edge)
-    # dset.name = '.'.join( (os.path.basename(exp_path), test) )
     dset.name = '.'.join((session, test))  # this should be a the unique ID (?)
     dset.headstage = headstage
     return dset
@@ -302,8 +293,7 @@ def append_datasets(session, tests, **load_kwargs):
             # assume it's already good
             pass
     
-    all_sets = [ load_experiment_auto(session, test, **load_kwargs)
-                 for test in tests ]
+    all_sets = [load_experiment_auto(session, test, **load_kwargs) for test in tests]
     return join_datasets(all_sets)
 
 
@@ -335,15 +325,13 @@ def join_datasets(all_sets, popdata=True, rasterize=True, shared_mem=True):
     d_len = np.sum(all_len)
     full_map = map_intersection([d.chan_map for d in all_sets])
     nchan = full_map.sum()
-    full_exp = join_experiments(
-        [dset.exp for dset in all_sets], np.cumsum(all_len)
-        )
+    full_exp = join_experiments([dset.exp for dset in all_sets], np.cumsum(all_len))
     ii, jj = full_map.nonzero()
 
     if shared_mem:
-        full_data = shared_ndarray( (nchan, d_len) )
+        full_data = shared_ndarray((nchan, d_len))
     else:
-        full_data = np.empty( (nchan, d_len) )
+        full_data = np.empty((nchan, d_len))
     offsets = np.r_[0, np.cumsum(all_len)]
     for n in range(len(all_sets)):
         data = all_sets[n].pop('data') if popdata else all_sets[n].data
@@ -357,10 +345,10 @@ def join_datasets(all_sets, popdata=True, rasterize=True, shared_mem=True):
         # [ cmap.lookup(i,j) for i,j in zip( ii, jj ) ]
         if rasterize:
             #idx = [cmap.index(i) for i in cmap.subset(full_map)]
-            idx = [ cmap.lookup(i,j) for i,j in zip( ii, jj ) ]
+            idx = [cmap.lookup(i,j) for i,j in zip( ii, jj )]
         else:
             idx = [i for i in range(len(data)) if full_map[cmap.rlookup(i)]]
-        full_data[:,offsets[n]:offsets[n+1]] = data[idx]
+        full_data[:, offsets[n]:offsets[n+1]] = data[idx]
         del data
         gc.collect()
 
@@ -395,10 +383,8 @@ def join_datasets(all_sets, popdata=True, rasterize=True, shared_mem=True):
 
     # get remaining keys after 
     # {'data', 'bnc', 'exp', 'ground_chans', 'name'}
-    keys = set( all_sets[0].keys() )
-    keys.difference_update(
-        ('data', 'exp', 'name', 'chan_map') + non_data_series
-        )
+    keys = set(all_sets[0].keys())
+    keys.difference_update(('data', 'exp', 'name', 'chan_map') + non_data_series)
     for k in keys:
         print(k)
         full_set[k] = all_sets[0].get(k)
