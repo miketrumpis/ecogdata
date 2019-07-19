@@ -759,24 +759,24 @@ rat_v3_by_zif_lut = dict(zip(range(1, 62), rat_v3_by_zif_rc))
 electrode_maps = dict(
     # new passive map construction
     ratv5_intan=connect_passive_map((8, 8), rat_v5_by_zif_lut,
-                                    zif_by_intan64, pitch=0.406),
+                                    zif_by_intan64, pitch=0.420),
     ratv4_stim4=connect_passive_map((8, 8), rat_v4_by_zif_lut,
-                                    zif_by_stim4, pitch=0.406),
+                                    zif_by_stim4, pitch=0.420),
     ratv4_mux6=connect_passive_map((8, 8), rat_v4_by_zif_lut,
                                    zif_by_mux6, pitch=0.406),
     ratv4_mux6_15row=connect_passive_map((8, 8), rat_v4_by_zif_lut,
-                                         zif_by_mux6_15row, pitch=0.406),
+                                         zif_by_mux6_15row, pitch=0.420),
     ratv4_intan=connect_passive_map((8, 8), rat_v4_by_zif_lut,
-                                    zif_by_intan64, pitch=0.406),
+                                    zif_by_intan64, pitch=0.420),
 
     ratv3_stim4=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                    zif_by_stim4, pitch=0.406),
+                                    zif_by_stim4, pitch=0.420),
     ratv3_mux6=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                   zif_by_mux6, pitch=0.406),
+                                   zif_by_mux6, pitch=0.420),
     ratv3_mux6_15row=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                         zif_by_mux6_15row, pitch=0.406),
+                                         zif_by_mux6_15row, pitch=0.420),
     ratv3_intan=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                    zif_by_intan64, pitch=0.406),
+                                    zif_by_intan64, pitch=0.420),
     rat_varspace_intan=connect_passive_map(
         'auto', rat_varspace_by_zif_lut, zif_by_intan64
     ),
@@ -789,9 +789,9 @@ electrode_maps = dict(
 
     # old names
     psv_61_intan=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                     zif_by_intan64, pitch=0.406),
+                                     zif_by_intan64, pitch=0.420),
     psv_61_intan2=connect_passive_map((8, 8), rat_v4_by_zif_lut,
-                                      zif_by_intan64, pitch=0.406),
+                                      zif_by_intan64, pitch=0.420),
 
     psv_244_mux1=psv_244_mux1,
     psv_32=psv_32,
