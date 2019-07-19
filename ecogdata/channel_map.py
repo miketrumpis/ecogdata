@@ -445,32 +445,31 @@ def channel_combinations(chan_map, scale=1.0, precision=4):
         Lists of channel # and grid location of electrode pairs and
         distance between each pair.
     """
-    
-    combs = itertools.combinations(np.arange(len(chan_map)), 2)
+
+    combs = np.array(list(itertools.combinations(range(len(chan_map)), 2)))
+    combs = combs[combs[:, 1] > combs[:, 0]]
     from .util import Bunch
     chan_combs = Bunch()
-    npair = spmisc.comb(len(chan_map),2,exact=1)
+    npair = len(combs)
     chan_combs.p1 = np.empty(npair, 'i')
     chan_combs.p2 = np.empty(npair, 'i')
     chan_combs.idx1 = np.empty((npair, 2), 'd')
     chan_combs.idx2 = np.empty((npair, 2), 'd')
     chan_combs.dist = np.empty(npair)
     ii, jj = chan_map.to_mat()
+    chan_combs.p1 = combs[:, 0]
+    chan_combs.p2 = combs[:, 1]
+    chan_combs.idx1 = np.c_[np.take(ii, combs[:, 0]), np.take(jj, combs[:, 0])]
+    chan_combs.idx2 = np.c_[np.take(ii, combs[:, 1]), np.take(jj, combs[:, 1])]
     # Distances are measured between grid locations (i1,j1) to (i2,j2)
     # Define a (s1,s2) scaling to multiply these distances
     if np.iterable(scale):
-        s_ = np.array( scale[::-1] )
+        s_ = np.array(scale[::-1])
     else:
-        s_ = np.array( [scale, scale] )
-    for n, c in enumerate(combs):
-        c0, c1 = c
-        chan_combs.p1[n] = c0
-        chan_combs.p2[n] = c1
-        chan_combs.idx1[n] = ii[c0], jj[c0]
-        chan_combs.idx2[n] = ii[c1], jj[c1]
+        s_ = np.array([scale, scale])
 
-    d = np.abs( chan_combs.idx1 - chan_combs.idx2 ) * s_
-    dist = ( d**2 ).sum(1) ** 0.5
+    d = np.abs(chan_combs.idx1 - chan_combs.idx2) * s_
+    dist = (d ** 2).sum(1) ** 0.5
     chan_combs.dist = np.round(dist, decimals=precision)
     idx1 = chan_combs.idx1.astype('i')
     if (idx1 == chan_combs.idx1).all():
