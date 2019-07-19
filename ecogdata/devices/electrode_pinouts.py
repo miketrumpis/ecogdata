@@ -49,6 +49,27 @@ def undo_gray_code(pinout, starting=0):
 
 
 def unzip_encoded(coord_list, shift_index=True, skipchars='ioqs'):
+    """
+    Transform a comma-separated list of electrode coordinates from "A3, H1, C8, ..."
+    to row-column coordinates [(0, 2), (7, 0), (2, 7), ...]. Coordinates named "ref"
+    or "gnd" will be marked as such. This method should accommodate multiple-letter
+    codes like "AA1", "AAA1", ...
+
+    Parameters
+    ----------
+    coord_list: str
+        "Encoded" coordinates
+    shift_index: bool
+        Whether to shift to zero-based indexing
+    skipchars: str
+        Do not enumerate these reserved letters (remove them from the "alphabet" of location codes)
+
+    Returns
+    -------
+    rows: list
+    cols: list
+    """
+
     coord_list = [c.strip() for c in coord_list.strip().split(',')]
     row_set = set()
     rows = []
@@ -75,6 +96,7 @@ def unzip_encoded(coord_list, shift_index=True, skipchars='ioqs'):
             print('weird coordinate:', coord)
             cols.append(OTHER)
             continue
+        # subtract 1 from the column number if shifting to zero-based
         cols.append(int(m.group()) - int(shift_index))
 
     az = []
@@ -85,7 +107,9 @@ def unzip_encoded(coord_list, shift_index=True, skipchars='ioqs'):
         for skip in skipchars:
             az.remove(skip * rep)
         rep += 1
-    az = dict([(alpha, num) for num, alpha in enumerate(az)])
+    # add 1 to the enumeration if not shifting to zero-based
+    row_base = int(not shift_index)
+    az = dict([(alpha, num + row_base) for num, alpha in enumerate(az)])
     row_nums = [r if r in NonSignalChannels else az[r] for r in rows]
     return row_nums, cols
 
@@ -190,6 +214,16 @@ F7, F8, F6, G5, G7, G8, G6, H5, H6, REF"""
 rat_refelectrode_by_zif_rc = zip(*unzip_encoded(rat_refelectrode_by_zif))
 rat_refelectrode_by_zif_lut = dict(zip(range(1, 62), rat_refelectrode_by_zif_rc))
 # R1 and R2 are the same - reference electrodes
+
+# Microlead (rat v5)
+rat_v5_by_zif = """E4, H3, H2, H4, G1, G4, G2, F1, G3, F4, E1, F2, F3, D1, E2, E3, C1, D2, D3, B1, A1, C2, B2, A2, 
+C3, B3, A3, C4, B4, A4, D4, D5, A5, B5, C5, A6, B6, C6, A7, B7, C7, B8, D6, D7, C8, E6, E7, D8, F6, F7, E8, F5, G6, 
+F8, G7, G5, G8, H5, H7, H6, E5"""
+# convert to a list of (row, col) coordinates
+rat_v5_by_zif_rc = zip(*unzip_encoded(rat_v5_by_zif))
+# create a zif-to-grid lookup
+rat_v5_by_zif_lut = dict(zip(range(1, 62), rat_v5_by_zif_rc))
+
 
 # These are the present set of lookups by recording system
 # (these are the final pinout-to-data maps)
@@ -666,12 +700,21 @@ def _aro_intan_to_zif(zif_to_electrode):
     return irow, icol
 
 
-_aro_left1 = """REF, U9, T9, R9, P9, N9, M9, L9, K9, U8, U7, U6, U5, U4, U3, T8, T7, T6, T5, T4, T3, T2, R8, R7, R6, R5, R4, R3, R2, R1, P8, P7, P6, P5, P4, P3, P2, P1, N8, N7, N6, N5, N4, N3, N2, N1, M8, M7, M6, M5, ~Float"""
-_aro_left2 = """~Float, M4, M3, M2, M1, L8, L7, L6, L5, L4, L3, L2, L1, K8, K7, K6, K5, K4, K3, K2, K1, J8, J7, J6, J5, J4, J3, J2, J1, J9, H8, H7, H6, H5, H4, H3, H1, H2, H9, G9, G8, G7, G6, G1, G2, G5, G4, G3, F2, F1, ~Float"""
-_aro_center1 = """~Float, C1, D1, E1, B2, C2, D2, E2, A3, B3, C3, D3, E3, F3, A4, B4, C4, D4, E4, F4, A5, B5, C5, D5, E5, F5, A6, B6, C6, D6, E6, F6, A7, B7, C7, D7, E7, F7, F8, A8, B8, C8, D8, E8, F9, E9, A9, B9, C9, D9, ~Float"""
-_aro_center2 = """~Float, D10, C10, B10, A10, E10, F10, E11, D11, C11, B11, A11, F11, F12, E12, D12, C12, B12, A12, F13, E13, D13, C13, B13, A13, F14, E14, D14, C14, B14, A14, F15, E15, D15, C15, B15, A15, F16, E16, D16, C16, B16, A16, E17, D17, C17, B17, E18, D18, C18, ~Float"""
-_aro_right1 = """~Float, F18, F17, G16, G15, G14, G17, G18, G13, G12, G11, G10, H10, H17, H18, H16, H15, H14, H13, H12, H11, J10, J18, J17, J16, J15, J14, J13, J12, J11, K18, K17, K16, K15, K14, K13, K12, K11, L18, L17, L16, L15, L14, L13, L12, L11, M18, M17, M16, M15, ~Float"""
-_aro_right2 = """~Float, M14, M13, M12, M11, N18, N17, N16, N15, N14, N13, N12, N11, P18, P17, P16, P15, P14, P13, P12, P11, R18, R17, R16, R15, R14, R13, R12, R11, T17, T16, T15, T14, T13, T12, T11, U16, U15, U14, U13, U12, U11, K10, L10, M10, N10, P10, R10, T10, U10, REF"""
+_aro_left1 = """REF, U9, T9, R9, P9, N9, M9, L9, K9, U8, U7, U6, U5, U4, U3, T8, T7, T6, T5, T4, T3, T2, R8, R7, R6, 
+R5, R4, R3, R2, R1, P8, P7, P6, P5, P4, P3, P2, P1, N8, N7, N6, N5, N4, N3, N2, N1, M8, M7, M6, M5, ~Float"""
+_aro_left2 = """~Float, M4, M3, M2, M1, L8, L7, L6, L5, L4, L3, L2, L1, K8, K7, K6, K5, K4, K3, K2, K1, J8, J7, J6, 
+J5, J4, J3, J2, J1, J9, H8, H7, H6, H5, H4, H3, H1, H2, H9, G9, G8, G7, G6, G1, G2, G5, G4, G3, F2, F1, ~Float"""
+_aro_center1 = """~Float, C1, D1, E1, B2, C2, D2, E2, A3, B3, C3, D3, E3, F3, A4, B4, C4, D4, E4, F4, A5, B5, C5, D5, 
+E5, F5, A6, B6, C6, D6, E6, F6, A7, B7, C7, D7, E7, F7, F8, A8, B8, C8, D8, E8, F9, E9, A9, B9, C9, D9, ~Float"""
+_aro_center2 = """~Float, D10, C10, B10, A10, E10, F10, E11, D11, C11, B11, A11, F11, F12, E12, D12, C12, B12, A12, 
+F13, E13, D13, C13, B13, A13, F14, E14, D14, C14, B14, A14, F15, E15, D15, C15, B15, A15, F16, E16, D16, C16, B16, 
+A16, E17, D17, C17, B17, E18, D18, C18, ~Float"""
+_aro_right1 = """~Float, F18, F17, G16, G15, G14, G17, G18, G13, G12, G11, G10, H10, H17, H18, H16, H15, H14, H13, 
+H12, H11, J10, J18, J17, J16, J15, J14, J13, J12, J11, K18, K17, K16, K15, K14, K13, K12, K11, L18, L17, L16, L15, 
+L14, L13, L12, L11, M18, M17, M16, M15, ~Float"""
+_aro_right2 = """~Float, M14, M13, M12, M11, N18, N17, N16, N15, N14, N13, N12, N11, P18, P17, P16, P15, P14, P13, 
+P12, P11, R18, R17, R16, R15, R14, R13, R12, R11, T17, T16, T15, T14, T13, T12, T11, U16, U15, U14, U13, U12, U11, 
+K10, L10, M10, N10, P10, R10, T10, U10, REF"""
 
 aro_puzzle_pieces = {
     'geometry': (17, 18),
@@ -707,12 +750,16 @@ mux_16_passthru = {
     'cols': [(i / 16 if i not in (0, 16, 32, 48) else GND) for i in range(64)],
 }
 
-rat_v3_by_zif = """H4, H2, H3, G4, G2, G1, G3, F4, F2, F1, F3, E4, E2, E1, E3, D1, B1, A1, C1, D2, B2, A2, C2, D3, B3, A3, C3, D4, B4, A4, C4, D5, B5, A5, C5, D6, B6, A6, C6, D7, B7, A7, C7, D8, B8, C8, E5, E7, E8, E6, F5, F7, F8, F6, G5, G7, G8, G6, H5, H7, H6"""
+rat_v3_by_zif = """H4, H2, H3, G4, G2, G1, G3, F4, F2, F1, F3, E4, E2, E1, E3, D1, B1, A1, C1, D2, B2, A2, C2, D3, 
+B3, A3, C3, D4, B4, A4, C4, D5, B5, A5, C5, D6, B6, A6, C6, D7, B7, A7, C7, D8, B8, C8, E5, E7, E8, E6, F5, F7, F8, 
+F6, G5, G7, G8, G6, H5, H7, H6"""
 rat_v3_by_zif_rc = zip(*unzip_encoded(rat_v3_by_zif))
 rat_v3_by_zif_lut = dict(zip(range(1, 62), rat_v3_by_zif_rc))
 
 electrode_maps = dict(
     # new passive map construction
+    ratv5_intan=connect_passive_map((8, 8), rat_v5_by_zif_lut,
+                                    zif_by_intan64, pitch=0.406),
     ratv4_stim4=connect_passive_map((8, 8), rat_v4_by_zif_lut,
                                     zif_by_stim4, pitch=0.406),
     ratv4_mux6=connect_passive_map((8, 8), rat_v4_by_zif_lut,
