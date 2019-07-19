@@ -440,13 +440,17 @@ class CoordinateChannelMap(ChannelMap):
     # many methods no longer make sense with coordinates
     def as_col_major(self):
         raise NotImplementedError
+
     def as_row_major(self):
         raise NotImplementedError
+
     @classmethod
     def from_mask(cls, *args, **kwargs):
         raise NotImplementedError
+
     def as_channels(self, *args, **kwargs):
         raise NotImplementedError
+
     def interpolated(self, *args, **kwargs):
         raise NotImplementedError
     
