@@ -6,7 +6,8 @@ import numpy as np
 import gc
 import inspect
 
-from ecogdata.util import ChannelMap, map_intersection, mat_to_flat
+from ecogdata.util import mat_to_flat
+from ecogdata.channel_map import ChannelMap, map_intersection
 
 from ecogdata.expconfig import *
 from ecogdata.expconfig.exp_descr import join_experiments
@@ -43,47 +44,47 @@ _converts_tdms = ('stim_mux64', 'mux3', 'mux4',
 # The keys for this look-up must be lower-case
 params_table = {
     # common args
-    'exp_path' : Path,
-    'test' : Parameter,
-    'electrode' : Parameter,
+    'exp_path': Path,
+    'test': Parameter,
+    'electrode': Parameter,
     # (mostly) common kwargs
-    'bandpass' : NSequence,
-    'notches' : NSequence,
-    'trigger' : TypedParam.from_type(int),
-    'snip_transient' : BoolOrNum,
-    'units' : Parameter,
-    'save' : BoolOrNum,
-    'bnc' : NSequence,
+    'bandpass': NSequence,
+    'notches': NSequence,
+    'trigger': TypedParam.from_type(int),
+    'snip_transient': BoolOrNum,
+    'units': Parameter,
+    'save': BoolOrNum,
+    'bnc': NSequence,
     # active
-    'daq' : Parameter,
-    'headstage' : Parameter,
-    'row_order' : NSequence,
+    'daq': Parameter,
+    'headstage': Parameter,
+    'row_order': NSequence,
     # afe 
-    'n_data' : TypedParam.from_type(int),
-    'range_code' : TypedParam.from_type(int),
-    'cycle_rate' : TypedParam.from_type(float),
+    'n_data': TypedParam.from_type(int),
+    'range_code': TypedParam.from_type(int),
+    'cycle_rate': TypedParam.from_type(float),
     # mux-ish
-    'mux_version' : Parameter,
-    'mux_notches' : NSequence,
-    'mux_connectors' : NSequence,
-    'ni_daq_variant' : Parameter,
+    'mux_version': Parameter,
+    'mux_notches': NSequence,
+    'mux_connectors': NSequence,
+    'ni_daq_variant': Parameter,
     # blackrock
-    'page_size' : TypedParam.from_type(int),    
-    'connections' : NSequence,
-    'lowpass_ord' : TypedParam.from_type(int),
+    'page_size': TypedParam.from_type(int),
+    'connections': NSequence,
+    'lowpass_ord': TypedParam.from_type(int),
     # ddc
-    'drange' : TypedParam.from_type(int),
-    'fs' : TypedParam.from_type(float),
+    'drange': TypedParam.from_type(int),
+    'fs': TypedParam.from_type(float),
     # open ephys -- this case is tricky in general, but can be ducked here
-    'rec_num' : NoneOrStr,
-    'downsamp' : TypedParam.from_type(int),
-    'trigger_idx' : NSequence,
-    'usefs' : TypedParam.from_type(float),
-    'save_downsamp' : BoolOrNum,
-    'store_path' : Path,
-    'use_stored' : BoolOrNum,
-    'memmap' : BoolOrNum,
-    'connectors' : NSequence,
+    'rec_num': NoneOrStr,
+    'downsamp': TypedParam.from_type(int),
+    'trigger_idx': NSequence,
+    'usefs': TypedParam.from_type(float),
+    'save_downsamp': BoolOrNum,
+    'store_path': Path,
+    'use_stored': BoolOrNum,
+    'memmap': BoolOrNum,
+    'connectors': NSequence,
     }
 
 
@@ -104,9 +105,9 @@ def load_experiment_auto(session, test, **load_kwargs):
     Parameters
     ----------
 
-    session : str
+    session: str
         Name of recording session in 'group/session-name' syntax
-    test : str
+    test: str
         Base name (no extension) of recording. If this is also a section
         in the config file, then further information is taken from that
         section.
@@ -206,16 +207,16 @@ def load_experiment_manual(
     Parameters
     ----------
 
-    exp_path : str
+    exp_path: str
         Path on file system where recordings live
 
-    test : str
+    test: str
         Base name (no extension) of recording. 
 
-    headstage : str
+    headstage: str
         Designated name of headstage.
 
-    electrode : str
+    electrode: str
         Designated name of electrode.
 
     """
@@ -271,9 +272,9 @@ def append_datasets(session, tests, **load_kwargs):
     Parameters
     ----------
 
-    session : name of session in group/session format
-    tests : sequence of recording names
-    load_kwargs : any further loading options
+    session: name of session in group/session format
+    tests: sequence of recording names
+    load_kwargs: any further loading options
 
     Returns
     -------
@@ -307,11 +308,11 @@ def join_datasets(all_sets, popdata=True, rasterize=True, shared_mem=True):
     Parameters
     ----------
 
-    all_sets : sequence of dataset Bunches
-    pop_data : {True/False} pop each datasets data array (may reduce
+    all_sets: sequence of dataset Bunches
+    pop_data: {True/False} pop each datasets data array (may reduce
                memory consumption)
-    rasterize : {True/False} re-index arrays to be in array raster order
-    shaerd_mem : {True/False} combine data into a shared memory array
+    rasterize: {True/False} re-index arrays to be in array raster order
+    shaerd_mem: {True/False} combine data into a shared memory array
 
     Returns
     -------
@@ -389,7 +390,6 @@ def join_datasets(all_sets, popdata=True, rasterize=True, shared_mem=True):
         print(k)
         full_set[k] = all_sets[0].get(k)
 
-    del dset
     del all_sets
     gc.collect()
     return full_set
