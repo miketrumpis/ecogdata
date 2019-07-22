@@ -19,4 +19,4 @@ from .ddc import load_ddc, load_openephys_ddc
 from .afe import load_afe, load_afe_aug21
 from .active_electrodes import load_active, active_headstages
 from .open_ephys import load_open_ephys
-
+from .nanoz import *

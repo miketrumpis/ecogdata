@@ -1,5 +1,9 @@
 import numpy as np
 
+
+__all__ = ['import nanoz', 'nanoz_impedance']
+
+
 def import_nanoz(fname, magphs=False, mag_scale=1e6):
     "Import nano-Z electrode impedance measurements"
     # fname is the text file of the nanoz report -- assuming it always
