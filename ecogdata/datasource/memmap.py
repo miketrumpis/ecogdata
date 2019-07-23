@@ -265,7 +265,7 @@ class MappedSource(ElectrodeDataSource):
                                 transpose=False)
         else:
             C = self.data_shape[0]
-            new_source = shared_ndarray((C, T), dtype='d')
+            new_source = shared_ndarray((C, T), 'd')
             # Kind of tricky with aux fields -- assume that transpose means the same thing for them?
             # But also un-transpose them on this mirroring step
             aux_fields = dict()
@@ -273,6 +273,6 @@ class MappedSource(ElectrodeDataSource):
                 arr = getattr(self, name)
                 if len(arr.shape) > 1:
                     dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
-                aux_fields[name] = shared_ndarray(dims, dtype='d')
+                aux_fields[name] = shared_ndarray(dims, 'd')
             return PlainArraySource(new_source, samp_rate, **aux_fields)
 
