@@ -2,6 +2,7 @@ from tempfile import NamedTemporaryFile  # , _TemporaryFileCloser
 import numpy as np
 import h5py
 
+from ecogdata.parallel.array_split import shared_ndarray, shared_copy
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
 from .array_abstractions import ReadCache, slice_to_range
@@ -156,19 +157,31 @@ class MappedSource(ElectrodeDataSource):
 
         # if the channel range is not a single channel, then load the full slice anyway
         if self._transpose:
-            chan_axis = 1
             slicer = (time_range, slice(None))
         else:
-            chan_axis = 0
             slicer = (slice(None), time_range)
         full_slice = self._data_cache[slicer]
+        # decode the channel range in case it is a slice object
         if isinstance(chan_range, slice):
             r_max = self._data_cache.shape[1] if self._transpose else self._data_cache.shape[0]
-            chan_range = slice_to_range(chan_range, r_max)
-        # get_chans = [self._channel_mask[c] for c in chan_range]
+            chan_range = list(slice_to_range(chan_range, r_max))
         get_chans = [chan_range[c] for c in self._channel_mask]
-        out = np.take(full_slice, get_chans, axis=chan_axis)
-        return out.T.copy() if self._transpose else out
+        # if all channels are sliced, return either the full output or its transpose
+        if len(get_chans) == r_max:
+            if self._transpose:
+                return shared_copy(full_slice.T)
+            else:
+                return full_slice
+        # take selected channels from the slice (or its transpose) and put them into a shared array
+        if self._transpose:
+            T = full_slice.shape[0]
+            out = shared_ndarray((len(get_chans), T), full_slice.dtype.char)
+            np.take(full_slice.T, get_chans, axis=0, out=out)
+        else:
+            T = full_slice.shape[1]
+            out = shared_ndarray((len(get_chans), T), full_slice.dtype.char)
+            np.take(full_slice, get_chans, axis=0, out=out)
+        return out
 
 
     def __setitem__(self, slicer, data):

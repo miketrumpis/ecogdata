@@ -1,4 +1,6 @@
 import numpy as np
+from h5py._hl.selections import select
+from ecogdata.parallel.array_split import shared_ndarray
 
 
 def slice_to_range(slice, r_max):
@@ -6,7 +8,7 @@ def slice_to_range(slice, r_max):
     start = 0 if slice.start is None else slice.start
     stop = r_max if slice.stop is None else slice.stop
     step = 1 if slice.step is None else slice.step
-    return list(range(start, stop, step))
+    return range(start, stop, step)
 
 
 def range_to_slice(range):
@@ -63,18 +65,24 @@ class ReadCache(object):
     def _scale_segment(self, x):
         if self._units_scale is None:
             return x
-        # Note -- this type conversion is about as time consuming as reading out the disk
-        x = x.astype('d')
         if self._raw_offset is not None:
             x += self._raw_offset
         x *= self._units_scale
         return x
 
     def __getitem__(self, sl):
+        # this function computes the output shape -- use ID=0 to explicitly *not* work for funky RegionReference slicing
+        out_shape = select(self.shape, sl, 0).mshape
         if self._units_scale is None:
-            return self._array[sl]
+            out_arr = shared_ndarray(out_shape, self.dtype.char)
+            self._array.read_direct(out_arr, source_sel=sl)
+            return out_arr
         else:
-            return self._scale_segment(self._array[sl])
+            # with self._array.astype('d'):
+            #     out = self._array[sl]
+            out_arr = shared_ndarray(out_shape, 'd')
+            self._array.read_direct(out_arr, source_sel=sl)
+            return self._scale_segment(out_arr)
         # indx, srange = sl
         # if not isinstance(indx, (np.integer, int)):
         #     # make sure to release a copy if no scaling happens
