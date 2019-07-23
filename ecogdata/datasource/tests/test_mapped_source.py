@@ -1,8 +1,10 @@
 from nose.tools import assert_true, assert_equal
+import os
 import numpy as np
 import h5py
 from tempfile import NamedTemporaryFile
 from ecogdata.datasource.memmap import MappedSource
+from ecogdata.datasource.basic import PlainArraySource
 
 def _create_hdf5(n_rows=20, n_cols=1000, rand=False, transpose=False, aux_arrays=(), dtype='i'):
 
@@ -99,6 +101,26 @@ def test_iter():
     blocks = list(map_source.iter_blocks(block_size))
     assert_true((data[electrode_channels][:, :block_size] == blocks[0]).all(), 'first block wrong')
     assert_true((data[electrode_channels][:, block_size:] == blocks[1]).all(), 'second block wrong')
+    blocks = list(map_source.iter_blocks(block_size, reverse=True))
+    assert_true((data[electrode_channels][:, block_size:] == blocks[0]).all(), 'first rev block wrong')
+    assert_true((data[electrode_channels][:, :block_size] == blocks[1]).all(), 'second rev block wrong')
+
+
+def test_iter_overlap():
+    f, filename = _create_hdf5(n_cols=100)
+    data = f['data'][:]
+    block_size = 20
+    overlap = 10
+    map_source = MappedSource(f, 1, 'data')
+    blocks = list(map_source.iter_blocks(block_size, overlap=overlap))
+    assert_true((data[:, :block_size] == blocks[0]).all(), 'first block wrong')
+    assert_true((data[:, (block_size - overlap):(2 * block_size - overlap)] == blocks[1]).all(), 'second block wrong')
+    # last block is a partial, starting at index 90
+    assert_true((data[:, -10:] == blocks[-1]).all(), 'last block wrong')
+    blocks = list(map_source.iter_blocks(block_size, reverse=True, overlap=overlap))
+    assert_true((data[:, :block_size] == blocks[-1]).all(), 'first block wrong')
+    assert_true((data[:, (block_size - overlap):(2 * block_size - overlap)] == blocks[-2]).all(), 'second block wrong')
+    assert_true((data[:, -10:] == blocks[0]).all(), 'last block wrong')
 
 
 def test_iterT():
@@ -110,3 +132,55 @@ def test_iterT():
     blocks = list(map_source.iter_blocks(block_size))
     assert_true((data[electrode_channels][:, :block_size] == blocks[0]).all(), 'first block wrong in transpose')
     assert_true((data[electrode_channels][:, block_size:] == blocks[1]).all(), 'second block wrong in transpose')
+
+
+def _clean_up_hdf_files(temp_files):
+    for f in temp_files:
+        name = f.filename
+        f.close()
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def test_basic_mirror():
+    try:
+        f, filename = _create_hdf5(n_rows=25, n_cols=500)
+        electrode_channels = [2, 4, 6, 8]
+        map_source = MappedSource(f, 40, 'data', electrode_channels=electrode_channels)
+        temp_files = []
+        clone1 = map_source.mirror(new_rate=None, writeable=True, mapped=True, channel_compatible=False, filename='foo.h5')
+        temp_files.append(clone1._source_file)
+        assert_true(clone1.data_shape == (len(electrode_channels), 500), 'wrong # of channels')
+        assert_true(clone1.writeable, 'Should be writeable')
+        assert_true(isinstance(clone1, MappedSource), 'Clone is not a MappedSource')
+        clone2 = map_source.mirror(new_rate=None, mapped=False, channel_compatible=False)
+        assert_true(isinstance(clone2, PlainArraySource), 'Not-mapped file should be PlainArraySource')
+    except Exception as e:
+        raise e
+    finally:
+        _clean_up_hdf_files(temp_files)
+
+
+def test_mirror_modes():
+    try:
+        f, filename = _create_hdf5(n_rows=25, n_cols=500)
+        electrode_channels = [2, 4, 6, 8]
+        map_source = MappedSource(f, 40, 'data', electrode_channels=electrode_channels)
+        temp_files = []
+        clone1 = map_source.mirror(writeable=True, mapped=True, channel_compatible=False)
+        temp_files.append(clone1._source_file)
+        assert_true(clone1.data_shape == (len(electrode_channels), 500), 'wrong # of samples')
+        clone2 = map_source.mirror(writeable=True, mapped=True, channel_compatible=True)
+        temp_files.append(clone2._source_file)
+        assert_true(clone2._electrode_array.shape == (25, 500), 'wrong # of channels for channel-compat')
+        f, filename = _create_hdf5(n_rows=25, n_cols=500, transpose=True)
+        map_source = MappedSource(f, 40, 'data', electrode_channels=electrode_channels, transpose=True)
+        clone3 = map_source.mirror(mapped=True, channel_compatible=True)
+        temp_files.append(clone3._source_file)
+        assert_true(clone3._electrode_array.shape == (25, 500), 'mapped mirror did not reverse the source transpose')
+    except Exception as e:
+        raise e
+    finally:
+        _clean_up_hdf_files(temp_files)
+
+

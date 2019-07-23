@@ -1,8 +1,12 @@
+from tempfile import NamedTemporaryFile  # , _TemporaryFileCloser
 import numpy as np
 import h5py
 
-from .basic import ElectrodeDataSource
-from .array_abstractions import ReadCache, slice_to_range, range_to_slice
+
+from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
+from .array_abstractions import ReadCache, slice_to_range
+
+
 
 class MappedSource(ElectrodeDataSource):
 
@@ -33,7 +37,8 @@ class MappedSource(ElectrodeDataSource):
             electrode channels are active.
         aux_fields: sequence
             Any other datasets in source_file that should be aligned with the electrode signal array. These fields
-            will be kept at the same sampling rate and index alignment as the electrode signal.
+            will be kept at the same sampling rate and index alignment as the electrode signal. They will also be
+            preserved if this source is mirrored or copied to another source.
         units_scale: float or 2-tuple
             Either the scaling value or (offset, scaling) values such that signal = (memmap + offset) * scaling
         transpose: bool
@@ -74,11 +79,16 @@ class MappedSource(ElectrodeDataSource):
         # setattr(self, field, source_file[field]) ??
         for field in aux_fields:
             setattr(self, field, source_file[field])
+        self._aligned_arrays = aux_fields
 
 
     def __del__(self):
         if self.__close_source:
             self._source_file.close()
+
+    @property
+    def writeable(self):
+        return self.__writeable
 
 
     def set_channel_mask(self, channel_mask):
@@ -170,157 +180,86 @@ class MappedSource(ElectrodeDataSource):
         pass
 
 
-    def iter_blocks(self, block_length, overlap=0, return_slice=False):
+    def mirror(self, new_rate=None, writeable=True, mapped=True, channel_compatible=False, filename=''):
         """
-        Yield data blocks with given length (in samples)
+        Create an empty ElectrodeDataSource based on the current source, possibly with a new sampling rate and new
+        access permissions.
 
         Parameters
         ----------
-        block_length: int
-            Number of samples per block
-        overlap: int
-            Number of samples overlapping between blocks
-        return_slice: bool
-            If True return the ndarray block followed by the memmap array slice to yield this block. Helpful for
-            pairing the yielded blocks with the same position in a follower array, or writing back transformed data
-            to this memmap (if writeable).
+        new_rate: float or None
+            New sample rate for the mirrored array.
+        writeable: bool
+            Make any new MappedSource arrays writeable. This implies 1) datatype casting to floats, and 2) there is
+            no more units conversion on the primary array.
+        mapped: bool
+            If False, mirror to a PlainArraySource (in memory). Else mirror into a new MappedSource.
+        channel_compatible: bool
+            If True, preserve the same number of raw data channels in a MappedSource. Otherwise, reduce the channels
+            to just the set of active channels.
+        filename: str
+            Name of the new MappedSource. If empty, use a self-destroying temporary file.
+
+        Returns
+        -------
+        datasource: ElectrodeDataSource subtype
 
         """
 
-        L = block_length
-        # # Blocks need to be even length
-        # if L % 2:
-        #     L += 1
         T = self.data_shape[1]
-        N = T // (L - overlap)
-        if (L - overlap) * N < T:
-            N += 1
-        for i in range(N):
-            start = i * (L - overlap)
-            if start >= T:
-                raise StopIteration
-            end = min(T, start + L)
-            # if the tail block is odd-length, clip off the last point
-            if (end - start) % 2:
-                end -= 1
-            sl = (slice(None), slice(start, end))
-            if return_slice:
-                yield self[sl], sl
+        if new_rate:
+            T = calc_new_samples(T, self.Fs, new_rate)
+            samp_rate = new_rate
+        else:
+            samp_rate = self.Fs
+
+        if mapped:
+            if channel_compatible:
+                electrode_channels = self.__electrode_channels
+                C = self._electrode_array.shape[1] if self._transpose else self._electrode_array.shape[0]
+                channel_mask = self.binary_channel_mask
             else:
-                yield self[sl]
-
-
-
-class DataSource(object):
-    """Data source providing access from file-mapped LFP signals.
-
-    >>> batch = data_source[a:b]
-    This syntax returns an array timeseries in (channels, samps) shape, including only electrode array channels (but
-    excluding any channels rejected by, e.g., manual inspection).
-
-    >>> data_source[a:b] = filtered_batch
-    If the DataSource was constructed with "saving=True", then this writes array channels into a file that is
-    compatible with the geometry of the original source file.
-
-    >>> data_source.channel_map
-    This is a ChannelMap object, providing channel to electrode-site map information and methods.
-    """
-
-    def __init__(self, array, channel_map, samp_rate, exclude_channels=[],
-                 is_transpose=False, saving=False, save_mod='clean'):
-        self.array = array
-        self.channel_map = channel_map
-        # keep this in case of HDF5 export
-        self.__full_channel_map = channel_map[:]
-        self.samp_rate = samp_rate
-        self.is_transpose = is_transpose
-        self.saving = saving
-        if len(exclude_channels):
-            n_chan = len(channel_map)
-            mask = np.ones(n_chan, '?')
-            mask[exclude_channels] = False
-            self.channel_map = channel_map.subset(mask)
-            self._channel_mask = mask
-        else:
-            self._channel_mask = None
-        self.series_length = self.array.shape[1 - int(is_transpose)]
-        if saving:
-            self._initialize_output(save_mod)
-
-
-    def _initialize_output(self, file_mod='clean'):
-        # Must be overloaded
-        # defines self.output_file and self._write_array
-        pass
-
-
-    def _output_channel_subset(self, array_block):
-        """Returns the subset of array channels defined by a channel mask"""
-        # The subset of data channels that are array channels is defined in particular data source types
-        if self._channel_mask is None:
-            return array_block
-        return array_block[self._channel_mask]
-
-
-    def _full_channel_set(self, array_block):
-        """Writes a subset of array channels into the full set of array channels"""
-        if self._channel_mask is None:
-            return array_block
-        n_chan = len(self._channel_mask)
-        full_block = np.zeros((n_chan, array_block.shape[1]))
-        full_block[self._channel_mask] = array_block
-        return full_block
-
-
-    def __getitem__(self, slicer):
-        """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
-        # data goes out as [subset]channels x time
-        if self.is_transpose:
-            sub_array = self.array[slicer, :].T
-        else:
-            sub_array = self.array[:, slicer]
-        return self._output_channel_subset(sub_array)
-
-
-    def __setitem__(self, slicer, data):
-        """Write the sub-series of samples selected by slicer (from possibly a subset of channels)"""
-        # data comes in as [subset]channels x time
-        if not self.saving:
-            print('This object has no write file')
-            return None
-        full_data = self._full_channel_set(data)
-        if self.is_transpose:
-            self._write_array[slicer, :] = full_data.T
-        else:
-            self._write_array[:, slicer] = full_data
-
-
-    def iter_blocks(self, block_length, overlap=0, return_slice=True):
-        """Yield data blocks with given length (in samples)"""
-        L = block_length
-        # Blocks need to be even length
-        if L % 2:
-            L += 1
-        T = self.series_length
-        N = T // (L - overlap)
-        if (L - overlap) * N < T:
-            N += 1
-        for i in range(N):
-            start = i * (L - overlap)
-            if start >= T:
-                raise StopIteration
-            end = min(T, start + L)
-            # if the tail block is odd-length, clip off the last point
-            if (end - start) % 2:
-                end -= 1
-            sl = slice(start, end)
-            if return_slice:
-                yield self[sl], sl
+                C = self.data_shape[0]
+                electrode_channels = None
+                channel_mask = None
+            if writeable:
+                new_dtype = 'd'
+                reopen_mode = 'r+'
+                units_scale = None
             else:
-                yield self[sl]
+                new_dtype = self._electrode_array.dtype
+                reopen_mode = 'r'
+                units_scale = self._data_cache._units_scale
+            tempfile = not filename
+            if tempfile:
+                with NamedTemporaryFile(mode='ab', dir='.', delete=False) as f:
+                    # punt on the unlink-on-close issue for now with "delete=False"
+                    # f.file.close()
+                    filename = f.name
+            with h5py.File(filename, 'w') as fw:
+                # Create all new datasets as non-transposed
+                fw.create_dataset(self._electrode_field, shape=(C, T), dtype=new_dtype, chunks=True)
+                for name in self._aux_fields:
+                    arr = getattr(self, name)
+                    if len(arr.shape) > 1:
+                        dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
+                    # is this correct ???
+                    dtype = 'd' if writeable else arr.dtype
+                    fw.create_dataset(name, shape=dims, dtype=dtype, chunks=True)
+            f_mapped = h5py.File(filename, reopen_mode)
+            return MappedSource(f_mapped, samp_rate, self._electrode_field, electrode_channels=electrode_channels,
+                                channel_mask=channel_mask, aux_fields=self._aux_fields, units_scale=units_scale,
+                                transpose=False)
+        else:
+            C = self.data_shape[0]
+            new_source = shared_ndarray((C, T), dtype='d')
+            # Kind of tricky with aux fields -- assume that transpose means the same thing for them?
+            # But also un-transpose them on this mirroring step
+            aux_fields = dict()
+            for name in self._aux_fields:
+                arr = getattr(self, name)
+                if len(arr.shape) > 1:
+                    dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
+                aux_fields[name] = shared_ndarray(dims, dtype='d')
+            return PlainArraySource(new_source, samp_rate, **aux_fields)
 
-
-    def write_parameters(self, **params):
-        """Store processing parameters"""
-        # must be overloaded!
-        pass
