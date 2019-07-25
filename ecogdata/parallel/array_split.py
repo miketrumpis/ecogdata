@@ -10,7 +10,7 @@ from functools import reduce
 from ecogdata.util import ToggleState
 
 
-if platform.system().lower().find('windows') >= 0
+if platform.system().lower().find('windows') >= 0:
     parallel_controller = ToggleState(name='Parallel Controller', permanent_state=False)
 else:
     parallel_controller = ToggleState(name='Parallel Controller')
