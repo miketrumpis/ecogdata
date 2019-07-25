@@ -2,12 +2,36 @@ from tempfile import NamedTemporaryFile  # , _TemporaryFileCloser
 import numpy as np
 import h5py
 
+from ecogdata.expconfig import load_params
 from ecogdata.parallel.array_split import shared_ndarray, shared_copy
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
 from .array_abstractions import HDF5Buffer, slice_to_range
 
 
+# class ClosesAfterReopening(object):
+#
+#     def __init__(self, *args, **kwargs):
+#         delete = kwargs.pop('delete', True)
+#         self._will_delete = delete
+#         kwargs['delete'] = False
+#         self._args = args
+#         self._kwargs = kwargs
+#         self._open_count = 0
+#         self.file = NamedTemporaryFile(*args, **kwargs)
+#
+#
+#     def __enter__(self):
+#         self._open_count += 1
+#         if self._open_count == 2:
+#             self.file.file = open(self.file.name, 'r')
+#             self.file._closer = _TemporaryFileCloser(self.file.file, self.file.name, self._will_delete)
+#         self.file.__enter__()
+#         return self
+#
+#
+#     def __exit__(self, exc, value, tb):
+#         return self.file.__exit__(exc, value, tb)
 
 
 class MappedSource(ElectrodeDataSource):
@@ -197,6 +221,36 @@ class MappedSource(ElectrodeDataSource):
             print('Cannot write to this file')
             return
         pass
+
+
+    def iter_channels(self, chans_per_block=None, max_memory=None, return_slice=False):
+        # TODO: smart split of active channels to avoid large jumps in the channel index... probably shuffle
+        #  start and/or end channels until the maximum jump is "in-line" with the median jump in active_channels
+        if max_memory is None:
+            max_memory = load_params()['memory_limit']
+        if self._transpose:
+            # compensate for the necessary copy-to-transpose
+            max_memory /= 2
+        C, T = self.data_shape
+        if chans_per_block is None:
+            bytes_per_samp = self.dtype.itemsize
+            chans_per_block = max(1, int(max_memory / T / bytes_per_samp))
+        num_iter = C // chans_per_block
+        if chans_per_block * num_iter < C:
+            num_iter += 1
+        for i in range(num_iter):
+            start = i * chans_per_block
+            stop = min(C, (i + 1) * chans_per_block)
+            to_yield = self._active_channels[start:stop]
+            print('Getting channels', to_yield)
+            if self._transpose:
+                out = shared_copy(self._data_buffer[:, to_yield].T)
+            else:
+                out = self._data_buffer[to_yield, :]
+            if return_slice:
+                yield out, np.s_[start:stop, :]
+            else:
+                yield out
 
 
     def mirror(self, new_rate=None, writeable=True, mapped=True, channel_compatible=False, filename=''):
