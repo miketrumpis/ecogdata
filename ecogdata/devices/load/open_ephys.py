@@ -535,7 +535,7 @@ def load_open_ephys(exp_path, test, electrode,
     else:
         pos_edge = ()
 
-    with parallel_controller.context(not memmap):
+    with parallel_controller(not memmap):
         ### bandpass filter
         if len(bandpass):
             lo, hi = bandpass
@@ -550,7 +550,7 @@ def load_open_ephys(exp_path, test, electrode,
     # Don't parallel filter reference channel(s)
     if len(ref_channels):
         ref_channels = np.atleast_2d(ref_channels)
-        with parallel_controller.context(False):
+        with parallel_controller(False):
             if len(bandpass):
                 lo, hi = bandpass
                 (b, a) = butter_bp(lo=lo, hi=hi, Fs=Fs, ord=4)
@@ -662,7 +662,7 @@ def load_open_ephys(exp_path, test, electrode,
     else:
         pos_edge = ()
 
-    with parallel_controller.context(not memmap):
+    with parallel_controller(not memmap):
         ### bandpass filter
         if len(bandpass):
             lo, hi = bandpass
@@ -678,7 +678,7 @@ def load_open_ephys(exp_path, test, electrode,
     # Don't parallel filter reference channel(s)
     if len(ref_channels):
         ref_channels = np.atleast_2d(ref_channels)
-        with parallel_controller.context(False):
+        with parallel_controller(False):
             if len(bandpass):
                 lo, hi = bandpass
                 (b, a) = butter_bp(lo=lo, hi=hi, Fs=Fs, ord=4)

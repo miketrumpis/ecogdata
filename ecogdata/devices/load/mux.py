@@ -234,7 +234,7 @@ def load_mux(
 
         filtfilt(data_chans, b, a)
         if len(ref_data):
-            with parallel_controller.context(False):
+            with parallel_controller(False):
                 ref_data = np.atleast_2d(ref_data)
                 filtfilt(ref_data, b, a)
                 ref_data = ref_data.squeeze()
@@ -242,7 +242,7 @@ def load_mux(
     if notches:
         ft.notch_all(data_chans, Fs, lines=notches, inplace=True, filtfilt=True)
         if len(ref_data):
-            with parallel_controller.context(False):
+            with parallel_controller(False):
                 ref_data = np.atleast_2d(ref_data)
                 ft.notch_all(ref_data, Fs, lines=notches, inplace=True, filtfilt=True)
                 ref_data = ref_data.squeeze()

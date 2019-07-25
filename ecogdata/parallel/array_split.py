@@ -2,40 +2,18 @@ from builtins import zip
 from builtins import object
 import platform
 import ecogdata.parallel.mproc as mp
-import ctypes
-from contextlib import closing, contextmanager
+from contextlib import closing
 import warnings
-import gc
 from decorator import decorator
 import numpy as np
 from functools import reduce
+from ecogdata.util import ToggleState
 
-class ParaState(object):
 
-    def __init__(self, init_state=True):
-        self.__never_para = platform.system().lower().find('windows') >= 0
-        self.state = init_state and not self.__never_para
-        
-    def __enable(self):
-        if self.__never_para:
-            raise RuntimeError('Object cannot be set to parallel status')
-        self.state = True
-        
-    def __disable(self):
-        self.state = False
-
-    @contextmanager
-    def context(self, status):
-        prev_status = self.state
-        self.state = status and not self.__never_para
-        try:
-            yield
-        except:
-            raise
-        finally:
-            self.state = prev_status
-
-parallel_controller = ParaState()
+if platform.system().lower().find('windows') >= 0
+    parallel_controller = ToggleState(name='Parallel Controller', permanent_state=False)
+else:
+    parallel_controller = ToggleState(name='Parallel Controller')
         
 # from the "array" module docstring
 """
