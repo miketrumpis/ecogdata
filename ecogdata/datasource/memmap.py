@@ -3,6 +3,7 @@ import numpy as np
 import h5py
 
 from ecogdata.expconfig import load_params
+from ecogdata.util import ToggleState
 from ecogdata.parallel.array_split import shared_ndarray, shared_copy
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
@@ -34,11 +35,15 @@ from .array_abstractions import HDF5Buffer, slice_to_range
 #         return self.file.__exit__(exc, value, tb)
 
 
+class MemoryBlowOutError(Exception):
+    """Raise this if a memory-mapped slice will be ginormous."""
+    pass
+
+
 class MappedSource(ElectrodeDataSource):
 
-
     def __init__(self, source_file, samp_rate, electrode_field, electrode_channels=None, channel_mask=None,
-                 aux_fields=(), units_scale=None, transpose=False):
+                 aux_fields=(), units_scale=None, transpose=False, raise_on_big_slice=True):
         """
         Provides a memory-mapped data source. This object should rarely be constructed by-hand, but it should not be
         overwhelmingly difficult to do so.
@@ -69,6 +74,9 @@ class MappedSource(ElectrodeDataSource):
             Either the scaling value or (offset, scaling) values such that signal = (memmap + offset) * scaling
         transpose: bool
             The is the mapped array stored in transpose (Time x Channels)?
+        raise_on_big_slice: bool
+            If True (default), then raise an exception if the proposed read slice will be larger than the memory
+            limit. If you really want to read-out anyway, use the `with source.big_slices(True)` context.
         """
 
         if isinstance(source_file, str):
@@ -100,12 +108,15 @@ class MappedSource(ElectrodeDataSource):
         self._active_channels = self.__electrode_channels
         self.set_channel_mask(channel_mask)
 
+        # this is toggle than when called creates a context manager with the supplied state (ToggleState)
+        self._allow_big_slicing = ToggleState(init_state=False)
+        self._raise_on_big_slice = raise_on_big_slice
+
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
         for field in aux_fields:
             setattr(self, field, source_file[field])
         self._aligned_arrays = aux_fields
-
 
     def __del__(self):
         if self.__close_source:
@@ -115,6 +126,9 @@ class MappedSource(ElectrodeDataSource):
     def writeable(self):
         return self._data_buffer.writeable
 
+    @property
+    def big_slices(self):
+        return self._allow_big_slicing
 
     def set_channel_mask(self, channel_mask):
         """
@@ -148,6 +162,13 @@ class MappedSource(ElectrodeDataSource):
         else:
             self.data_shape = len(self._active_channels), self._data_buffer.shape[1]
 
+    @property
+    def is_direct_map(self):
+        num_disk_channels = self._data_buffer.shape[1] if self._transpose else self._data_buffer.shape[0]
+        mapped_channels = np.array(self.__electrode_channels)
+        all_mapped = np.array_equal(mapped_channels, np.arange(num_disk_channels))
+        all_active = self.binary_channel_mask.all()
+        return all_mapped and all_active
 
     @property
     def binary_channel_mask(self):
@@ -158,74 +179,75 @@ class MappedSource(ElectrodeDataSource):
                 bmask[n] = False
         return bmask
 
-
     @property
     def _auto_block_length(self):
         chunks = self._electrode_array.chunks
         return chunks[0] if self._transpose else chunks[1]
 
-
-    def _output_channel_subset(self, array_block):
-        """Returns the subset of array channels defined by a channel mask"""
-        # The subset of data channels that are array channels is defined in particular data source types
-        if self._active_channels is None:
-            return array_block
-        return array_block[self._active_channels]
-
-
-    def __getitem__(self, slicer):
-        """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
-        # data goes out as [subset]channels x time
-        # assume 2D slicer
-        chan_range, time_range = slicer
+    def _slice_logic(self, slicer):
+        """Translate the slicing object to point to the correct data channels on disk"""
+        if not np.iterable(slicer):
+            slicer = (slicer,)
+        if self.is_direct_map:
+            return slicer[::-1] if self._transpose else slicer
+        chan_range = slicer[0]
+        if len(slicer[1:]):
+            time_range = slicer[1]
+        else:
+            time_range = slice(None)
         if isinstance(chan_range, (int, np.integer)):
             get_chan = self._active_channels[chan_range]
-            if self._transpose:
-                return self._data_buffer[(time_range, get_chan)]
-            else:
-                return self._data_buffer[(get_chan, time_range)]
-
-        # if the channel range is not a single channel, then load the full slice anyway
-        if self._transpose:
-            slicer = (time_range, slice(None))
-        else:
-            slicer = (slice(None), time_range)
-        full_slice = self._data_buffer[slicer]
-        # decode the channel range in case it is a slice object
+            return (time_range, get_chan) if self._transpose else (get_chan, time_range)
+        # Map the sliced channels to corresponding active channels
         if isinstance(chan_range, slice):
             r_max = len(self._active_channels)
             chan_range = list(slice_to_range(chan_range, r_max))
         get_chans = [self._active_channels[c] for c in chan_range]
-        # if all channels are sliced, return either the full output or its transpose
-        if len(get_chans) == (full_slice.shape[1] if self._transpose else full_slice.shape[0]):
-            if self._transpose:
-                return shared_copy(full_slice.T)
-            else:
-                return full_slice
-        # take selected channels from the slice (or its transpose) and put them into a shared array
-        if self._transpose:
-            T = full_slice.shape[0]
-            out = shared_ndarray((len(get_chans), T), full_slice.dtype.char)
-            np.take(full_slice.T, get_chans, axis=0, out=out)
-        else:
-            T = full_slice.shape[1]
-            out = shared_ndarray((len(get_chans), T), full_slice.dtype.char)
-            np.take(full_slice, get_chans, axis=0, out=out)
-        return out
+        return (time_range, get_chans) if self._transpose else (get_chans, time_range)
 
+    def _check_slice_size(self, slicer):
+        if not self._raise_on_big_slice:
+            return
+        shape = self._data_buffer._get_output_array(slicer, only_shape=True)
+        size = np.prod(shape) * self._data_buffer.dtype.itemsize
+        state = self._allow_big_slicing.state
+        if size > load_params().memory_limit and not state:
+            raise MemoryBlowOutError('A read with shape {} will be *very* large. Use the big_slices context to '
+                                     'proceed'.format(shape))
+
+    def __getitem__(self, slicer):
+        """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
+        # data goes out as [subset]channels x time
+        slicer = self._slice_logic(slicer)
+        self._check_slice_size(slicer)
+        with self._data_buffer.transpose_reads(self._transpose):
+            # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
+            # the output is going to get transposed. Handling the transpose logic in the buffer avoids some
+            # unnecessary array copies
+            data_slice = self._data_buffer[slicer]
+        return data_slice
 
     def __setitem__(self, slicer, data):
         """Write the sub-series of samples selected by slicer (from possibly a subset of channels)"""
         # data comes in as [subset]channels x time
-        if not self.__writeable:
+        if not self.writeable:
             print('Cannot write to this file')
             return
-        pass
-
+        # if both these conditions are try, something is probably wrong
+        suspect_call = self.writeable and self._transpose
+        slicer = self._slice_logic(slicer)
+        try:
+            self._data_buffer[slicer] = data
+        except IndexError as e:
+            if suspect_call:
+                tb = e.__traceback__
+                msg = 'This mapped array is both writeable and in transpose mode, which probably is not what you mean '
+                'to be doing and probably is the source of this error.'
+                raise Exception(msg).with_traceback(tb)
+            else:
+                raise e
 
     def iter_channels(self, chans_per_block=None, max_memory=None, return_slice=False):
-        # TODO: smart split of active channels to avoid large jumps in the channel index... probably shuffle
-        #  start and/or end channels until the maximum jump is "in-line" with the median jump in active_channels
         if max_memory is None:
             max_memory = load_params()['memory_limit']
         if self._transpose:
@@ -251,7 +273,6 @@ class MappedSource(ElectrodeDataSource):
                 yield out, np.s_[start:stop, :]
             else:
                 yield out
-
 
     def mirror(self, new_rate=None, writeable=True, mapped=True, channel_compatible=False, filename=''):
         """
@@ -335,4 +356,3 @@ class MappedSource(ElectrodeDataSource):
                     dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
                 aux_fields[name] = shared_ndarray(dims, 'd')
             return PlainArraySource(new_source, samp_rate, **aux_fields)
-

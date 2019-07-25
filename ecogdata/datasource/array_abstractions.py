@@ -1,6 +1,7 @@
 from itertools import product
 import numpy as np
 from h5py._hl.selections import select
+from ecogdata.util import ToggleState
 from ecogdata.parallel.array_split import shared_ndarray
 
 
@@ -151,21 +152,27 @@ class MappedBuffer(object):
         self.dtype = array.dtype if units_scale is None else np.dtype('d')
         self.shape = array.shape
         self._raise_bad_write = raise_bad_write
-
+        # This is a callable -- when called, a content manager is created and the state is toggled in-context
+        self._transpose_state = ToggleState(init_state=False)
 
     def __len__(self):
         return len(self._array)
 
+    @property
+    def transpose_reads(self):
+        """
+        This is a callable ToggleState object that can create a context in which this buffer will return __getitem__
+        slices in transpose.
+        """
+        return self._transpose_state
 
     @property
     def file_array(self):
         return self._array
 
-
     @property
     def writeable(self):
         return self.__writeable
-
 
     def _scale_segment(self, x):
         if self._units_scale is None:
@@ -175,18 +182,24 @@ class MappedBuffer(object):
         x *= self._units_scale
         return x
 
-
-    def _get_output_array(self, slicer):
+    def _get_output_array(self, slicer, only_shape=False):
         out_shape = select(self.shape, slicer, 0).mshape
+        # if the output will be transposed, then pre-create the array in the right order
+        if self._transpose_state.state:
+            out_shape = out_shape[::-1]
+        if only_shape:
+            return out_shape
         typecode = self.dtype.char
         return shared_ndarray(out_shape, typecode)
 
-
     def __getitem__(self, sl):
         out_arr = self._get_output_array(sl)
-        out_arr[:] = self._array[sl]
+        # not sure what the most efficient way to slice is?
+        if self._transpose_state.state:
+            out_arr[:] = self._array[sl].transpose()
+        else:
+            out_arr[:] = self._array[sl]
         return self._scale_segment(out_arr)
-
 
     def __setitem__(self, sl, data):
         if self.writeable:
@@ -199,16 +212,24 @@ class MappedBuffer(object):
 class HDF5Buffer(MappedBuffer):
     """Optimized mapped file reading for HDF5 files (h5py.File)"""
 
-
     def __getitem__(self, sl):
         # this function computes the output shape -- use ID=0 to explicitly *not* work for funky RegionReference slicing
 
         out_arr = self._get_output_array(sl)
         i_slices, o_slices = tile_slices(sl, self.shape, self._array.chunks)
         for isl, osl in zip(i_slices, o_slices):
-            self._array.read_direct(out_arr, source_sel=isl, dest_sel=osl)
+            if self._transpose_state.state:
+                # generally need to reverse the slice order
+                if isinstance(osl, int):
+                    osl = (osl,)
+                osl = osl[::-1]
+                if len(osl) < out_arr.ndim:
+                    osl = (Ellipsis,) + osl
+                # can't avoid making a copy here?
+                out_arr[osl] = self._array[isl].T
+            else:
+                self._array.read_direct(out_arr, source_sel=isl, dest_sel=osl)
         return self._scale_segment(out_arr)
-
 
     def __setitem__(self, sl, data):
         if not self.writeable:

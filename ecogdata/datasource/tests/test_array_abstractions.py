@@ -19,6 +19,14 @@ def test_slice_range_conv():
     assert_true((r[slice3] == r[0:20:2]).all(), 'range to slice with offset failed')
 
 
+def test_unpack_ellipsis():
+    dims = 4
+    sl = np.s_[:4, ..., 0]
+    assert_equal(unpack_ellipsis(sl, dims), np.s_[:4, :, :, 0], 'ellipsis failed (1)')
+    sl = np.s_[..., 0]
+    assert_equal(unpack_ellipsis(sl, dims), np.s_[:, :, :, 0], 'ellipsis failed (2)')
+
+
 def test_tile_slice():
     i, o = tile_slices(np.s_[::10, [0, 1, 10, 11]], (20, 20), (5, 5))
     assert_true(len(i) == len(o), 'slice lists should be the same name')
@@ -61,10 +69,42 @@ def test_hdf_buffer_basic():
 
 
 def test_hdf_buffer_tiled():
-    f = _create_hdf5(n_rows=20, n_cols=1000, dtype='i', chunks=(5, 10))[0]
+    # chunking should kick-in on the first two axes
+    f = _create_hdf5(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(5, 10, 5, 10))[0]
     buf = HDF5Buffer(f['data'])
     data = f['data'][:]
     assert_true((data[::10, ::20] == buf[::10, ::20]).all(), 'tiled buffer failed')
+    assert_true((data[::10, ::20, 0] == buf[::10, ::20, 0]).all(), 'tiled buffer failed')
+    # chunking should kick-in on the first and third axes
+    f = _create_hdf5(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(5, 50, 5, 10))[0]
+    buf = HDF5Buffer(f['data'])
+    data = f['data'][:]
+    assert_true((data[::10, ::20] == buf[::10, ::20]).all(), 'tiled buffer failed')
+    assert_true((data[::10, ::20, 0] == buf[::10, ::20, 0]).all(), 'tiled buffer failed')
+
+
+def test_hdf_buffer_in_transpose():
+    f = _create_hdf5(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(20, 100, 5, 10))[0]
+    buf = HDF5Buffer(f['data'])
+    data = f['data'][:]
+    with buf.transpose_reads(True):
+        # slice the buffer in the same way as norm, but the output should be transposed
+        seg1 = buf[::10, ::20]
+        seg2 = buf[::10, ::20, 2]
+    assert_true((data[::10, ::20].T == seg1).all(), 'tiled buffer failed in transpose')
+    assert_true((data[::10, ::20, 2].T == seg2).all(), 'tiled buffer failed in transpose')
+
+
+def test_hdf_buffer_in_transpose_tiled():
+    f = _create_hdf5(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(5, 10, 5, 10))[0]
+    buf = HDF5Buffer(f['data'])
+    data = f['data'][:]
+    with buf.transpose_reads(True):
+        # slice the buffer in the same way as norm, but the output should be transposed
+        seg1 = buf[::10, ::20]
+        seg2 = buf[::10, ::20, 2]
+    assert_true((data[::10, ::20].T == seg1).all(), 'tiled buffer failed in transpose')
+    assert_true((data[::10, ::20, 2].T == seg2).all(), 'tiled buffer failed in transpose')
 
 
 # Can't open the file since it is already "deleted" by the OS

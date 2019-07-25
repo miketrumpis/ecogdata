@@ -1,26 +1,31 @@
-from nose.tools import assert_true, assert_equal
+from nose.tools import assert_true, assert_equal, raises
 import os
 import numpy as np
 import h5py
 from tempfile import NamedTemporaryFile
-from ecogdata.datasource.memmap import MappedSource
+from ecogdata.datasource.memmap import MappedSource, MemoryBlowOutError
 from ecogdata.datasource.basic import PlainArraySource
 
-def _create_hdf5(n_rows=20, n_cols=1000, rand=False, transpose=False, aux_arrays=(), chunks=True, dtype='i'):
+def _create_hdf5(n_rows=20, n_cols=1000, extra_dims=(), rand=False,
+                 transpose=False, aux_arrays=(), chunks=True, dtype='i'):
 
     with NamedTemporaryFile(mode='ab', dir='.') as f:
         f.file.close()
         fw = h5py.File(f.name, 'w')
         arrays = ('data',) + tuple(aux_arrays)
-        disk_shape = (n_cols, n_rows) if transpose else (n_rows, n_cols)
+        array_shape = (n_rows, n_cols) + extra_dims
+        if transpose:
+            disk_shape = array_shape[::-1]
+        else:
+            disk_shape = array_shape
         for name in arrays:
             y = fw.create_dataset(name, shape=disk_shape, dtype=dtype, chunks=chunks)
             if rand:
-                arr = np.random.randint(0, 2 ** 13, size=(n_rows, n_cols)).astype(dtype)
+                arr = np.random.randint(0, 2 ** 13, size=array_shape).astype(dtype)
                 y[:] = arr.T if transpose else arr
             else:
                 # test pattern
-                arr = np.arange(n_rows * n_cols, dtype=dtype).reshape(n_rows, n_cols)
+                arr = np.arange(np.prod(array_shape), dtype=dtype).reshape(array_shape)
                 y[:] = arr.T if transpose else arr
     return fw, f.file
 
@@ -30,7 +35,6 @@ def test_construction():
     f, filename = _create_hdf5(aux_arrays=aux_arrays)
     data_shape = f['data'].shape
     map_source = MappedSource(f, 1, 'data', aux_fields=aux_arrays)
-    print(data_shape, map_source.data_shape)
     assert_equal(map_source.data_shape, data_shape, 'Shape wrong')
     assert_equal(map_source.binary_channel_mask.sum(), data_shape[0], 'Wrong number of active channels')
     for field in aux_arrays:
@@ -39,6 +43,21 @@ def test_construction():
     map_source = MappedSource(f, 1, 'data', aux_fields=aux_arrays, transpose=True)
     assert_equal(map_source.data_shape, data_shape[::-1], 'Shape wrong in transpose')
     assert_equal(map_source.binary_channel_mask.sum(), data_shape[1], 'Wrong number of active channels in transpose')
+
+
+def test_direct_mapped():
+    f = _create_hdf5()[0]
+    mapped_source = MappedSource(f, 1, 'data')
+    assert_true(mapped_source.is_direct_map, 'direct map should be true')
+    mapped_source = MappedSource(f, 1, 'data', electrode_channels=range(4))
+    assert_true(not mapped_source.is_direct_map, 'direct map should be false')
+    # for transposed disk arrays
+    f = _create_hdf5(transpose=True)[0]
+    mapped_source = MappedSource(f, 1, 'data', transpose=True)
+    assert_true(mapped_source.is_direct_map, 'direct map should be true')
+    mapped_source = MappedSource(f, 1, 'data', transpose=True, electrode_channels=range(4))
+    assert_true(not mapped_source.is_direct_map, 'direct map should be false')
+
 
 
 def test_scaling():
@@ -90,6 +109,68 @@ def test_channel_mapT():
     assert_true((map_source.binary_channel_mask == binary_mask).all(), 'binary mask wrong in transpose')
     data = f['data'][:, :][:, electrode_channels].T
     assert_true(np.all(data[5:, 100:200] == map_source[:, 100:200]), 'channel masking failed in transpose')
+
+
+
+@raises(MemoryBlowOutError)
+def test_big_slicing_exception():
+    import ecogdata.expconfig._globalconfig as globalconfig
+    f = _create_hdf5()[0]
+    data = f['data']
+    globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
+    map_source = MappedSource(f, 1, 'data')
+    try:
+        big_read = map_source[:]
+    except Exception as e:
+        raise e
+    finally:
+        globalconfig.OVERRIDE.pop('memory_limit')
+
+
+def test_big_slicing_allowed():
+    import ecogdata.expconfig._globalconfig as globalconfig
+    f = _create_hdf5()[0]
+    data = f['data']
+    globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
+    map_source = MappedSource(f, 1, 'data')
+    try:
+        with map_source.big_slices(True):
+            _ = map_source[:]
+    except MemoryBlowOutError as e:
+        assert_true(False, 'Big slicing context failed')
+    finally:
+        globalconfig.OVERRIDE.pop('memory_limit')
+
+
+def test_big_slicing_allowed_always():
+    import ecogdata.expconfig._globalconfig as globalconfig
+    f = _create_hdf5()[0]
+    data = f['data']
+    globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
+    map_source = MappedSource(f, 1, 'data', raise_on_big_slice=False)
+    try:
+        _ = map_source[:]
+    except MemoryBlowOutError as e:
+        assert_true(False, 'Big slicing context failed')
+    finally:
+        globalconfig.OVERRIDE.pop('memory_limit')
+
+
+def test_write():
+    f, filename = _create_hdf5()
+    electrode_channels = list(range(10))
+    binary_mask = np.ones(10, '?')
+    binary_mask[:5] = False
+    # so channels 5, 6, 7, 8, 9 should be active
+    map_source = MappedSource(f, 1, 'data', electrode_channels=electrode_channels)
+    shp = map_source.data_shape
+    rand_pattern = np.random.randint(0, 100, size=(2, shp[1]))
+    map_source[:2] = rand_pattern
+    assert_true(np.array_equal(map_source[:2], rand_pattern), 'write failed (map subset)')
+    map_source.set_channel_mask(binary_mask)
+    # write again
+    map_source[:2] = rand_pattern
+    assert_true(np.array_equal(map_source[:2], rand_pattern), 'write failed (map subset and mask)')
 
 
 def test_iter():
