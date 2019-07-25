@@ -6,7 +6,7 @@ from tempfile import NamedTemporaryFile
 from ecogdata.datasource.memmap import MappedSource
 from ecogdata.datasource.basic import PlainArraySource
 
-def _create_hdf5(n_rows=20, n_cols=1000, rand=False, transpose=False, aux_arrays=(), dtype='i'):
+def _create_hdf5(n_rows=20, n_cols=1000, rand=False, transpose=False, aux_arrays=(), chunks=True, dtype='i'):
 
     with NamedTemporaryFile(mode='ab', dir='.') as f:
         f.file.close()
@@ -14,7 +14,7 @@ def _create_hdf5(n_rows=20, n_cols=1000, rand=False, transpose=False, aux_arrays
         arrays = ('data',) + tuple(aux_arrays)
         disk_shape = (n_cols, n_rows) if transpose else (n_rows, n_cols)
         for name in arrays:
-            y = fw.create_dataset(name, shape=disk_shape, dtype=dtype)
+            y = fw.create_dataset(name, shape=disk_shape, dtype=dtype, chunks=chunks)
             if rand:
                 arr = np.random.randint(0, 2 ** 13, size=(n_rows, n_cols)).astype(dtype)
                 y[:] = arr.T if transpose else arr

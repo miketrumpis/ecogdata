@@ -5,7 +5,8 @@ import h5py
 from ecogdata.parallel.array_split import shared_ndarray, shared_copy
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
-from .array_abstractions import ReadCache, slice_to_range
+from .array_abstractions import HDF5Buffer, slice_to_range
+
 
 
 
@@ -52,8 +53,6 @@ class MappedSource(ElectrodeDataSource):
         else:
             self.__close_source = False
         self._source_file = source_file
-        # Anything other than 'r' indicates some kind of write access
-        self.__writeable = source_file.mode != 'r'
         self.Fs = samp_rate
         self._electrode_field = electrode_field
         self._aux_fields = aux_fields
@@ -69,11 +68,12 @@ class MappedSource(ElectrodeDataSource):
         # As the "data" object, set up a array slicing cache with possible units conversion
         # This data cache will need special logic to expose only (active) electrode channels, depending on the
         # electrode_channels list and the current channel mask
-        self._data_cache = ReadCache(self._electrode_array, units_scale=units_scale)
+        self._data_buffer = HDF5Buffer(self._electrode_array, units_scale=units_scale)
         self._transpose = transpose
+        self.dtype = self._data_buffer.dtype
 
         # channel_mask is the list of data indices for the active electrode set (mutable)
-        self._channel_mask = self.__electrode_channels
+        self._active_channels = self.__electrode_channels
         self.set_channel_mask(channel_mask)
 
         # The other aux fields will be setattr'd like
@@ -89,7 +89,7 @@ class MappedSource(ElectrodeDataSource):
 
     @property
     def writeable(self):
-        return self.__writeable
+        return self._data_buffer.writeable
 
 
     def set_channel_mask(self, channel_mask):
@@ -111,36 +111,42 @@ class MappedSource(ElectrodeDataSource):
         n_electrodes = len(self.__electrode_channels)
         if channel_mask is None or not len(channel_mask):
             # (re)set to the full set of electrode channels
-            self._channel_mask = self.__electrode_channels
+            self._active_channels = self.__electrode_channels
         elif len(channel_mask) != n_electrodes:
             raise ValueError('channel_mask must be length {}'.format(n_electrodes))
         else:
-            self._channel_mask = list()
+            self._active_channels = list()
             for n, c in enumerate(self.__electrode_channels):
                 if channel_mask[n]:
-                    self._channel_mask.append(c)
+                    self._active_channels.append(c)
         if self._transpose:
-            self.data_shape = len(self._channel_mask), self._data_cache.shape[0]
+            self.data_shape = len(self._active_channels), self._data_buffer.shape[0]
         else:
-            self.data_shape = len(self._channel_mask), self._data_cache.shape[1]
+            self.data_shape = len(self._active_channels), self._data_buffer.shape[1]
 
 
     @property
     def binary_channel_mask(self):
         bmask = np.ones(len(self.__electrode_channels), '?')
-        active_channels = set(self._channel_mask)
+        active_channels = set(self._active_channels)
         for n, c in enumerate(self.__electrode_channels):
             if c not in active_channels:
                 bmask[n] = False
         return bmask
 
 
+    @property
+    def _auto_block_length(self):
+        chunks = self._electrode_array.chunks
+        return chunks[0] if self._transpose else chunks[1]
+
+
     def _output_channel_subset(self, array_block):
         """Returns the subset of array channels defined by a channel mask"""
         # The subset of data channels that are array channels is defined in particular data source types
-        if self._channel_mask is None:
+        if self._active_channels is None:
             return array_block
-        return array_block[self._channel_mask]
+        return array_block[self._active_channels]
 
 
     def __getitem__(self, slicer):
@@ -149,25 +155,25 @@ class MappedSource(ElectrodeDataSource):
         # assume 2D slicer
         chan_range, time_range = slicer
         if isinstance(chan_range, (int, np.integer)):
-            get_chan = self._channel_mask[chan_range]
+            get_chan = self._active_channels[chan_range]
             if self._transpose:
-                return self._data_cache[(time_range, get_chan)]
+                return self._data_buffer[(time_range, get_chan)]
             else:
-                return self._data_cache[(get_chan, time_range)]
+                return self._data_buffer[(get_chan, time_range)]
 
         # if the channel range is not a single channel, then load the full slice anyway
         if self._transpose:
             slicer = (time_range, slice(None))
         else:
             slicer = (slice(None), time_range)
-        full_slice = self._data_cache[slicer]
+        full_slice = self._data_buffer[slicer]
         # decode the channel range in case it is a slice object
         if isinstance(chan_range, slice):
-            r_max = self._data_cache.shape[1] if self._transpose else self._data_cache.shape[0]
+            r_max = len(self._active_channels)
             chan_range = list(slice_to_range(chan_range, r_max))
-        get_chans = [chan_range[c] for c in self._channel_mask]
+        get_chans = [self._active_channels[c] for c in chan_range]
         # if all channels are sliced, return either the full output or its transpose
-        if len(get_chans) == r_max:
+        if len(get_chans) == (full_slice.shape[1] if self._transpose else full_slice.shape[0]):
             if self._transpose:
                 return shared_copy(full_slice.T)
             else:
@@ -222,7 +228,7 @@ class MappedSource(ElectrodeDataSource):
         T = self.data_shape[1]
         if new_rate:
             T = calc_new_samples(T, self.Fs, new_rate)
-            samp_rate = new_rate
+            samp_rate = float(new_rate)
         else:
             samp_rate = self.Fs
 
@@ -242,7 +248,7 @@ class MappedSource(ElectrodeDataSource):
             else:
                 new_dtype = self._electrode_array.dtype
                 reopen_mode = 'r'
-                units_scale = self._data_cache._units_scale
+                units_scale = self._data_buffer._units_scale
             tempfile = not filename
             if tempfile:
                 with NamedTemporaryFile(mode='ab', dir='.', delete=False) as f:
