@@ -3,7 +3,8 @@ standard_library.install_aliases()
 import os
 import six
 if six.PY3:
-    from configparser import ConfigParser, SafeConfigParser
+    from configparser import ConfigParser
+    SafeConfigParser = ConfigParser
 else:
     from ConfigParser import ConfigParser, SafeConfigParser
 from ecogdata.util import Bunch
@@ -20,6 +21,10 @@ all_keys = {
     'channel_mask': Path
 }
 
+# Kind of hacky, but the param values can be set/reset at run-time by
+# using OVERRIDE[key] = new_value (helpful for test cases)
+OVERRIDE = dict()
+
 
 def load_params(as_string=False):
     cfg = ConfigParser()
@@ -34,9 +39,10 @@ def load_params(as_string=False):
     params = Bunch()
     for opt in cfg.options('globals'):
         if as_string:
-            params[opt] = cfg.get('globals', opt)
+            params[opt] = OVERRIDE.get(opt, cfg.get('globals', opt))
         else:
-            params[opt] = parse_param(opt, cfg.get('globals', opt), all_keys)
+            val = OVERRIDE.get(opt, cfg.get('globals', opt))
+            params[opt] = parse_param(opt, val, all_keys)
     for k in all_keys:
         params.setdefault(k, '')
     return params
