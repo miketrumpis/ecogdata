@@ -2,7 +2,7 @@ import numpy as np
 from ecogdata.parallel.array_split import shared_copy
 from ecogdata.filt.time import downsample
 
-def calc_new_samples(N, old_rate, new_rate):
+def calc_new_samples(N, rate_change):
     """
     Find number of points in a downsampled N-vector given a rate conversion new_rate:old_rate
 
@@ -10,10 +10,8 @@ def calc_new_samples(N, old_rate, new_rate):
     ----------
     N: int
         Original vector length
-    old_rate:
-        Original sample rate
-    new_rate:
-        New sample rate (must divide old_rate!)
+    rate_change: int
+        The old-rate:new-rate ratio (must be an integer > 1)
 
     Returns
     -------
@@ -22,12 +20,11 @@ def calc_new_samples(N, old_rate, new_rate):
 
     """
 
-    r = old_rate / new_rate
-    if int(r) != r:
-        raise ValueError('New rate {} does not divide old rate {}'.format(new_rate, old_rate))
-    r = int(r)
-    num_pts = N // r
-    num_pts += int((N - num_pts * r) > 0)
+    if int(rate_change) != rate_change:
+        raise ValueError('Rate change ratio is not an integer')
+    rate_change = int(rate_change)
+    num_pts = N // rate_change
+    num_pts += int((N - num_pts * rate_change) > 0)
     return num_pts
 
 
@@ -38,8 +35,8 @@ class ElectrodeDataSource(object):
 
     data_shape = ()
     dtype = None
-    Fs = None
     _auto_block_length = 20000
+    writeable = True
 
     def iter_blocks(self, block_length=None, overlap=0, start_offset=0, return_slice=False, reverse=False):
         """
@@ -92,7 +89,6 @@ class ElectrodeDataSource(object):
             else:
                 yield self[sl]
 
-
     def iter_channels(self, chans_per_block=None, return_slice=False):
         C, T = self.data_shape
         if chans_per_block is None:
@@ -109,13 +105,14 @@ class ElectrodeDataSource(object):
             else:
                 yield self[start:stop, :]
 
-
-    def batch_change_rate(self, new_rate, new_source):
-        if new_source.Fs != new_rate:
-            raise ValueError('Output source is set to the wrong rate')
-
+    def batch_change_rate(self, new_rate_ratio, new_source):
+        if new_source.data_shape[0] != self.data_shape[0]:
+            raise ValueError('Output source has the wrong number of channels: {}'.format(new_source.data_shape[0]))
+        if new_source.data_shape[1] != calc_new_samples(self.data_shape[1], new_rate_ratio):
+            raise ValueError('Output source has the wrong series length: {}'.format(new_source.data_shape[1]))
         for raw_channels, sl in self.iter_channels(return_slice=True):
-            r = downsample(raw_channels, self.Fs, r=int(self.Fs / new_rate))[0]
+            # kind of fake the sampling rate
+            r = downsample(raw_channels, float(new_rate_ratio), r=new_rate_ratio)
             new_source[sl] = r
 
 
@@ -129,7 +126,7 @@ class PlainArraySource(ElectrodeDataSource):
 
     """
 
-    def __init__(self, data_matrix, samp_rate, use_shared_mem=False, **aux_arrays):
+    def __init__(self, data_matrix, use_shared_mem=False, **aux_arrays):
         """
 
         Parameters
@@ -149,20 +146,13 @@ class PlainArraySource(ElectrodeDataSource):
         self._data_matrix = shared_copy(data_matrix) if use_shared_mem else data_matrix
         self.data_shape = data_matrix.shape
         self.dtype = data_matrix.dtype
-        self.Fs = samp_rate
         for name in aux_arrays:
             setattr(self, name, (shared_copy(aux_arrays[name]) if use_shared_mem else aux_arrays[name]))
         self._aligned_arrays = list(aux_arrays.keys())
 
-
     def __getitem__(self, slicer):
         return self._data_matrix[slicer]
-
 
     def __setitem__(self, slicer, data):
         self._data_matrix[slicer] = data
 
-
-    @property
-    def writeable(self):
-        return True

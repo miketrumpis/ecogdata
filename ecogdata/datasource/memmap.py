@@ -42,7 +42,7 @@ class MemoryBlowOutError(Exception):
 
 class MappedSource(ElectrodeDataSource):
 
-    def __init__(self, source_file, samp_rate, electrode_field, electrode_channels=None, channel_mask=None,
+    def __init__(self, source_file, electrode_field, electrode_channels=None, channel_mask=None,
                  aux_fields=(), units_scale=None, transpose=False, raise_on_big_slice=True):
         """
         Provides a memory-mapped data source. This object should rarely be constructed by-hand, but it should not be
@@ -53,8 +53,6 @@ class MappedSource(ElectrodeDataSource):
         source_file: h5py.File or str
             An opened HDF5 file: the file access mode will be respected. If a file name (str) is given, then the file
             will be opened read-only.
-        samp_rate: float
-            Sampling rate of electrode timeseries
         electrode_field: str
             The electrode recording channels are in source_file[electrode_field]. Mapped array may be Channel x Time
             or Time x Channel. Output slices from this object are always Channel x Time.
@@ -85,7 +83,6 @@ class MappedSource(ElectrodeDataSource):
         else:
             self.__close_source = False
         self._source_file = source_file
-        self.Fs = samp_rate
         self._electrode_field = electrode_field
         self._aux_fields = aux_fields
         self.channel_mask = channel_mask
@@ -263,26 +260,32 @@ class MappedSource(ElectrodeDataSource):
         for i in range(num_iter):
             start = i * chans_per_block
             stop = min(C, (i + 1) * chans_per_block)
-            to_yield = self._active_channels[start:stop]
-            print('Getting channels', to_yield)
-            if self._transpose:
-                out = shared_copy(self._data_buffer[:, to_yield].T)
-            else:
-                out = self._data_buffer[to_yield, :]
             if return_slice:
-                yield out, np.s_[start:stop, :]
+                yield self[start:stop], np.s_[start:stop, :]
             else:
-                yield out
+                yield self[start:stop]
 
-    def mirror(self, new_rate=None, writeable=True, mapped=True, channel_compatible=False, filename=''):
+            # why is this logic necessary? redundant no?
+            # to_yield = self._active_channels[start:stop]
+            # print('Getting channels', to_yield)
+            # if self._transpose:
+            #     out = shared_copy(self._data_buffer[:, to_yield].T)
+            # else:
+            #     out = self._data_buffer[to_yield, :]
+            # if return_slice:
+            #     yield out, np.s_[start:stop, :]
+            # else:
+            #     yield out
+
+    def mirror(self, new_rate_ratio=None, writeable=True, mapped=True, channel_compatible=False, filename=''):
         """
         Create an empty ElectrodeDataSource based on the current source, possibly with a new sampling rate and new
         access permissions.
 
         Parameters
         ----------
-        new_rate: float or None
-            New sample rate for the mirrored array.
+        new_rate_ratio: int or None
+            Ratio of old to new sample rate for the mirrored array (> 1).
         writeable: bool
             Make any new MappedSource arrays writeable. This implies 1) datatype casting to floats, and 2) there is
             no more units conversion on the primary array.
@@ -301,11 +304,8 @@ class MappedSource(ElectrodeDataSource):
         """
 
         T = self.data_shape[1]
-        if new_rate:
-            T = calc_new_samples(T, self.Fs, new_rate)
-            samp_rate = float(new_rate)
-        else:
-            samp_rate = self.Fs
+        if new_rate_ratio:
+            T = calc_new_samples(T, new_rate_ratio)
 
         if mapped:
             if channel_compatible:
@@ -341,7 +341,7 @@ class MappedSource(ElectrodeDataSource):
                     dtype = 'd' if writeable else arr.dtype
                     fw.create_dataset(name, shape=dims, dtype=dtype, chunks=True)
             f_mapped = h5py.File(filename, reopen_mode)
-            return MappedSource(f_mapped, samp_rate, self._electrode_field, electrode_channels=electrode_channels,
+            return MappedSource(f_mapped, self._electrode_field, electrode_channels=electrode_channels,
                                 channel_mask=channel_mask, aux_fields=self._aux_fields, units_scale=units_scale,
                                 transpose=False)
         else:
@@ -355,4 +355,4 @@ class MappedSource(ElectrodeDataSource):
                 if len(arr.shape) > 1:
                     dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
                 aux_fields[name] = shared_ndarray(dims, 'd')
-            return PlainArraySource(new_source, samp_rate, **aux_fields)
+            return PlainArraySource(new_source, **aux_fields)
