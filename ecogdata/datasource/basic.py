@@ -2,6 +2,7 @@ import numpy as np
 from ecogdata.parallel.array_split import shared_copy
 from ecogdata.filt.time import downsample
 
+
 def calc_new_samples(N, rate_change):
     """
     Find number of points in a downsampled N-vector given a rate conversion new_rate:old_rate
@@ -63,9 +64,6 @@ class ElectrodeDataSource(object):
             L = self._auto_block_length
         else:
             L = block_length
-        # # Blocks need to be even length
-        # if L % 2:
-        #     L += 1
         T = self.data_shape[1] - start_offset
         N = T // (L - overlap)
         # add in another block to trigger stop-iteration in forward mode
@@ -80,9 +78,6 @@ class ElectrodeDataSource(object):
             if start < 0 or start >= T:
                 raise StopIteration
             end = min(T, start + L)
-            # if the tail block is odd-length, clip off the last point
-            # if (end - start) % 2:
-            #     end -= 1
             sl = (slice(None), slice(start, end))
             if return_slice:
                 yield self[sl], sl

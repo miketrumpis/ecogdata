@@ -111,6 +111,50 @@ def test_channel_mapT():
     assert_true(np.all(data[5:, 100:200] == map_source[:, 100:200]), 'channel masking failed in transpose')
 
 
+def test_channel_slicing():
+    f, filename = _create_hdf5()
+    electrode_channels = list(range(6, 17))
+    map_source = MappedSource(f, 'data', electrode_channels=electrode_channels, units_scale=5.0)
+    data_first_channels = map_source[:3, :]
+    first_channels = map_source[:3]
+    assert_true(isinstance(first_channels, MappedSource), 'slice did not return new map')
+    assert_true(np.array_equal(data_first_channels, first_channels[:, :]), 'new map data mis-mapped')
+    with map_source.channels_are_arrays(True):
+        first_channels = map_source[:3]
+    assert_true(isinstance(first_channels, np.ndarray), 'slice-as-array failed')
+    assert_true(np.array_equal(data_first_channels, first_channels), 'slice-as-array wrong data')
+
+
+def test_channel_slicingT():
+    f, filename = _create_hdf5(transpose=True)
+    electrode_channels = list(range(6, 17))
+    map_source = MappedSource(f, 'data', electrode_channels=electrode_channels, transpose=True, units_scale=5.0)
+    data_first_channels = map_source[:3, :]
+    first_channels = map_source[:3]
+    assert_true(isinstance(first_channels, MappedSource), 'slice did not return new map')
+    assert_true(np.array_equal(data_first_channels, first_channels[:, :]), 'new map data mis-mapped')
+    with map_source.channels_are_arrays(True):
+        first_channels = map_source[:3]
+    assert_true(isinstance(first_channels, np.ndarray), 'slice-as-array failed')
+    assert_true(np.array_equal(data_first_channels, first_channels), 'slice-as-array wrong data')
+
+
+def test_channel_slicing_with_mask():
+    f, filename = _create_hdf5()
+    electrode_channels = list(range(6, 17))
+    map_source = MappedSource(f, 'data', electrode_channels=electrode_channels)
+    mask = map_source.binary_channel_mask
+    mask[:5] = False
+    map_source.set_channel_mask(mask)
+    data_first_channels = map_source[:3, :]
+    first_channels = map_source[:3]
+    assert_true(isinstance(first_channels, MappedSource), 'slice did not return new map')
+    assert_true(np.array_equal(data_first_channels, first_channels[:, :]), 'new map data mis-mapped')
+    with map_source.channels_are_arrays(True):
+        first_channels = map_source[:3]
+    assert_true(isinstance(first_channels, np.ndarray), 'slice-as-array failed')
+    assert_true(np.array_equal(data_first_channels, first_channels), 'slice-as-array wrong data')
+
 
 @raises(MemoryBlowOutError)
 def test_big_slicing_exception():
@@ -120,7 +164,7 @@ def test_big_slicing_exception():
     globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
     map_source = MappedSource(f, 'data')
     try:
-        big_read = map_source[:]
+        big_read = map_source[:, :]
     except Exception as e:
         raise e
     finally:
@@ -135,7 +179,7 @@ def test_big_slicing_allowed():
     map_source = MappedSource(f, 'data')
     try:
         with map_source.big_slices(True):
-            _ = map_source[:]
+            _ = map_source[:, :]
     except MemoryBlowOutError as e:
         assert_true(False, 'Big slicing context failed')
     finally:
@@ -149,7 +193,7 @@ def test_big_slicing_allowed_always():
     globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
     map_source = MappedSource(f, 'data', raise_on_big_slice=False)
     try:
-        _ = map_source[:]
+        _ = map_source[:, :]
     except MemoryBlowOutError as e:
         assert_true(False, 'Big slicing context failed')
     finally:
@@ -166,11 +210,12 @@ def test_write():
     shp = map_source.data_shape
     rand_pattern = np.random.randint(0, 100, size=(2, shp[1]))
     map_source[:2] = rand_pattern
-    assert_true(np.array_equal(map_source[:2], rand_pattern), 'write failed (map subset)')
+    # use full-slice syntax to get data
+    assert_true(np.array_equal(map_source[:2, :], rand_pattern), 'write failed (map subset)')
     map_source.set_channel_mask(binary_mask)
     # write again
     map_source[:2] = rand_pattern
-    assert_true(np.array_equal(map_source[:2], rand_pattern), 'write failed (map subset and mask)')
+    assert_true(np.array_equal(map_source[:2, :], rand_pattern), 'write failed (map subset and mask)')
 
 
 def test_iter():

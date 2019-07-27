@@ -97,6 +97,7 @@ class MappedSource(ElectrodeDataSource):
         # As the "data" object, set up a array slicing cache with possible units conversion
         # This data cache will need special logic to expose only (active) electrode channels, depending on the
         # electrode_channels list and the current channel mask
+        self._units_scale = units_scale
         self._data_buffer = HDF5Buffer(self._electrode_array, units_scale=units_scale)
         self._transpose = transpose
         self.dtype = self._data_buffer.dtype
@@ -108,6 +109,8 @@ class MappedSource(ElectrodeDataSource):
         # this is toggle than when called creates a context manager with the supplied state (ToggleState)
         self._allow_big_slicing = ToggleState(init_state=False)
         self._raise_on_big_slice = raise_on_big_slice
+        # Normally self[:10] will return a new MappedSource, unless this context is True
+        self._slice_channels_as_arrays = ToggleState(init_state=False)
 
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
@@ -126,6 +129,32 @@ class MappedSource(ElectrodeDataSource):
     @property
     def big_slices(self):
         return self._allow_big_slicing
+
+    @property
+    def channels_are_arrays(self):
+        return self._slice_channels_as_arrays
+
+    @property
+    def is_direct_map(self):
+        num_disk_channels = self._data_buffer.shape[1] if self._transpose else self._data_buffer.shape[0]
+        mapped_channels = np.array(self.__electrode_channels)
+        all_mapped = np.array_equal(mapped_channels, np.arange(num_disk_channels))
+        all_active = self.binary_channel_mask.all()
+        return all_mapped and all_active
+
+    @property
+    def binary_channel_mask(self):
+        bmask = np.ones(len(self.__electrode_channels), '?')
+        active_channels = set(self._active_channels)
+        for n, c in enumerate(self.__electrode_channels):
+            if c not in active_channels:
+                bmask[n] = False
+        return bmask
+
+    @property
+    def _auto_block_length(self):
+        chunks = self._electrode_array.chunks
+        return chunks[0] if self._transpose else chunks[1]
 
     def set_channel_mask(self, channel_mask):
         """
@@ -159,28 +188,6 @@ class MappedSource(ElectrodeDataSource):
         else:
             self.data_shape = len(self._active_channels), self._data_buffer.shape[1]
 
-    @property
-    def is_direct_map(self):
-        num_disk_channels = self._data_buffer.shape[1] if self._transpose else self._data_buffer.shape[0]
-        mapped_channels = np.array(self.__electrode_channels)
-        all_mapped = np.array_equal(mapped_channels, np.arange(num_disk_channels))
-        all_active = self.binary_channel_mask.all()
-        return all_mapped and all_active
-
-    @property
-    def binary_channel_mask(self):
-        bmask = np.ones(len(self.__electrode_channels), '?')
-        active_channels = set(self._active_channels)
-        for n, c in enumerate(self.__electrode_channels):
-            if c not in active_channels:
-                bmask[n] = False
-        return bmask
-
-    @property
-    def _auto_block_length(self):
-        chunks = self._electrode_array.chunks
-        return chunks[0] if self._transpose else chunks[1]
-
     def _slice_logic(self, slicer):
         """Translate the slicing object to point to the correct data channels on disk"""
         if not np.iterable(slicer):
@@ -191,6 +198,10 @@ class MappedSource(ElectrodeDataSource):
         if len(slicer[1:]):
             time_range = slicer[1]
         else:
+            # If the slice is for channels only and we're in subset mode, then simply return the slice without
+            # modifying the range
+            if not self.channels_are_arrays.state:
+                return slicer
             time_range = slice(None)
         if isinstance(chan_range, (int, np.integer)):
             get_chan = self._active_channels[chan_range]
@@ -212,10 +223,18 @@ class MappedSource(ElectrodeDataSource):
             raise MemoryBlowOutError('A read with shape {} will be *very* large. Use the big_slices context to '
                                      'proceed'.format(shape))
 
+    def slice_subset(self, slicer):
+        new_electrode_channels = np.array(self._active_channels)[slicer].tolist()
+        return MappedSource(self._source_file, self._electrode_field, electrode_channels=new_electrode_channels,
+                            aux_fields=self._aux_fields, units_scale=self._units_scale, transpose=self._transpose,
+                            raise_on_big_slice=self._raise_on_big_slice)
+
     def __getitem__(self, slicer):
         """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
         # data goes out as [subset]channels x time
         slicer = self._slice_logic(slicer)
+        if len(slicer) == 1 and not self.channels_are_arrays.state:
+            return self.slice_subset(slicer)
         self._check_slice_size(slicer)
         with self._data_buffer.transpose_reads(self._transpose):
             # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
@@ -232,7 +251,9 @@ class MappedSource(ElectrodeDataSource):
             return
         # if both these conditions are try, something is probably wrong
         suspect_call = self.writeable and self._transpose
-        slicer = self._slice_logic(slicer)
+        # turn off subset mode temporarily
+        with self.channels_are_arrays(True):
+            slicer = self._slice_logic(slicer)
         try:
             self._data_buffer[slicer] = data
         except IndexError as e:
@@ -323,7 +344,7 @@ class MappedSource(ElectrodeDataSource):
             else:
                 new_dtype = self._electrode_array.dtype
                 reopen_mode = 'r'
-                units_scale = self._data_buffer._units_scale
+                units_scale = self._units_scale
             tempfile = not filename
             if tempfile:
                 with NamedTemporaryFile(mode='ab', dir='.', delete=False) as f:
