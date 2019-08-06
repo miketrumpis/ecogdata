@@ -8,6 +8,11 @@ from decorator import decorator
 import numpy as np
 from functools import reduce
 from ecogdata.util import ToggleState
+from datetime import datetime
+
+
+def timestamp():
+    return datetime.now().strftime('%H-%M-%S-%f')
 
 
 if platform.system().lower().find('windows') >= 0:
@@ -64,7 +69,7 @@ def shared_copy(x):
         return x
     typecode = dtype_maps_to.get(x.dtype.char, x.dtype.char)
     y = shared_ndarray(x.shape, typecode=typecode)
-    y[:] = x.astype(typecode)
+    y[:] = x.astype(typecode, copy=False)
     return y
 
 class SharedmemManager(object):
@@ -81,8 +86,12 @@ class SharedmemManager(object):
             self.shm = mp.sharedctypes.synchronized(
                 np.ctypeslib.as_ctypes(np_array)
                 )
-        self.use_lock = use_lock
+        # There may be some cases where you'd want to use locking intermittently?
+        self.use_lock = ToggleState(init_state=use_lock)
 
+    # TODO: this usage should be converted to "with get_ndarray() as array" -- then apply locking as necessary. This
+    #  way the lock will hold on until the end of the get_ndarray() context block. As written, the lock goes away
+    #  after the array is returned.
     def get_ndarray(self):
         if self.use_lock:
             with self.shm.get_lock():
@@ -108,6 +117,8 @@ def split_at(
         split_arg=(0,), splice_at=(0,), 
         shared_args=(), n_jobs=-1, concurrent=False
         ):
+    info = mp.get_logger().info
+    info('{} Starting wrap'.format(timestamp()))
     # short circuit if the platform is Windows-based (look into doing
     # real multiproc later)
     if n_jobs==0 or platform.system().lower().find('windows') >= 0:
@@ -141,6 +152,7 @@ def split_at(
         for pos in pop_args:
             pos = pos - n
             a = args.pop(pos)
+            info('{} Wrapping shared memory size {} MB'.format(timestamp(), a.size * a.dtype.itemsize / 1024. / 1000.))
             x = SharedmemManager( a, use_lock=concurrent )
             if pos+n in split_arg:
                 shm.append( x )
@@ -164,6 +176,7 @@ def split_at(
                      shared_args, sh_args,
                      method, static_args, kwargs)
         mp.freeze_support()
+        info('{} Creating pool'.format(timestamp()))
         with closing(mp.Pool(
                 processes=n_jobs, initializer=_init_globals,
                 initargs=init_args
@@ -192,16 +205,19 @@ def split_at(
                 job_slices.extend( [slice(n, n+dims)] )
                 n += dims
             # map the jobs
+            info('{} Mapping jobs'.format(timestamp()))
             res = p.map_async( _global_method_wrap, job_slices )
 
         p.join()
         if res.successful():
+            info('{} Joining results'.format(timestamp()))
             res = splice_results(res.get(), splice_at)
             #res = res.get()
         else:
             # raises exception ?
             res.get()
         #gc.collect()
+        info('{} Wrap done'.format(timestamp()))
         return res
 
     return inner_split_method
@@ -281,13 +297,13 @@ def _init_globals(
     global kwdict_
     kwdict_ = kwdict
 
-    ## info = mp.get_logger().info
-    ## info('applied global variables')
+    info = mp.get_logger().info
+    info('{} Initialized globals'.format(timestamp()))
     
 def _global_method_wrap(aslice):
     arrs = [arr_.get_ndarray() for arr_ in shared_arr_]
     
-    ## info = mp.get_logger().info
+    info = mp.get_logger().info
     
     spliced_in = list(zip( 
         split_arg_+shared_args_, 
@@ -309,13 +325,12 @@ def _global_method_wrap(aslice):
     args = tuple(args)
     #info(repr(map(type, args)))
 
-    ## info(
-    ##     'applying method {0} to slice {1} at position {2}'.format(
-    ##         method_, aslice, split_arg_
-    ##         )
-    ##     )
+    info('{} Applying method {} to slice {} at position {}'.format(timestamp(), method_, aslice, split_arg_))
+    then = datetime.now()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         r = method_(*args, **kwdict_)
+    time_lapse = (datetime.now() - then).total_seconds()
+    info('{} method {} slice {} elapsed time: {}'.format(timestamp(), method_, aslice, time_lapse))
     return r
 

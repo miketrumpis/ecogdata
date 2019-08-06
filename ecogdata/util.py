@@ -236,8 +236,12 @@ def input_as_2d(in_arr=0, out_arr=-1):
         shapes = list()
         for p in in_arr:
             x = args[p]
-            shp = x.shape
-            x = x.reshape(-1, shp[-1])
+            # if it's not an ndarray, then hope for the best
+            if isinstance(x, np.ndarray):
+                shp = x.shape
+                x = x.reshape(-1, shp[-1])
+            else:
+                return fn(*args, **kwargs)
             args[p] = x
             shapes.append(shp)
         r = fn(*args, **kwargs)

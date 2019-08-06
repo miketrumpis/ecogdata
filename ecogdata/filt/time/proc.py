@@ -32,7 +32,7 @@ def _get_poles_zeros(destype, **filt_args):
 
 @input_as_2d()
 def filter_array(
-        arr, ftype='butterworth', inplace=True,
+        arr, ftype='butterworth', inplace=True, out=None, block_filter='parallel',
         design_kwargs=dict(), filt_kwargs=dict()
         ):
     """
@@ -42,39 +42,61 @@ def filter_array(
 
     Parameters
     ----------
-    arr : ndarray
+    arr: ndarray
         Timeseries in the last dimension (can be 1D).
-    ftype : str
+    ftype: str
         Filter type to design.
-    inplace : bool
+    inplace: bool
         If True, then arr must be a shared memory array. Otherwise a
         shared copy will be made from the input.
-    design_kwargs : dict
+    out: ndarray
+        If not None, place filter output here (if inplace is specified, any output array is ignored).
+    block_filter: str or callable
+        Specify the run-time block filter to apply. Can be "parallel" or
+        "serial", or can be a callable that follows the basic signature of
+        `ecogdata.filt.time.block_filter.bfilter`.
+    design_kwargs: dict
         Design parameters for the filter (e.g. lo, hi, Fs, ord)
-    filt_kwargs : dict
+    filt_kwargs: dict
         Processing parameters (e.g. filtfilt, bsize)
 
     Returns
     -------
-    arr_f : ndarray
+    arr_f: ndarray
         Filtered timeseries, same shape as input.
     
     """
     b, a = _get_poles_zeros(ftype, **design_kwargs)
-    from ecogdata.parallel.split_methods import bfilter
-    def_args = get_default_args(bfilter)
-    # reset these
+    if isinstance(block_filter, str):
+        if block_filter.lower() == 'parallel':
+            from ecogdata.parallel.split_methods import bfilter
+            block_filter = bfilter
+        elif block_filter.lower() == 'serial':
+            from .blocked_filter import bfilter
+            block_filter = bfilter
+        else:
+            raise ValueError('Block filter type not known: {}'.format(block_filter))
+    if not callable(block_filter):
+        raise ValueError('Provided block filter is not callable: {}'.format(block_filter))
+    def_args = get_default_args(block_filter)
+    # Set some defaults and then update with filt_kwargs
     def_args['bsize'] = 10000
     def_args['filtfilt'] = True
     def_args.update(filt_kwargs)
+    def_args['out'] = out
     if inplace:
-        bfilter(b, a, arr, **def_args)
+        # enforce that def_args['out'] is arr?
+        def_args['out'] = arr
+        block_filter(b, a, arr, **def_args)
         return arr
     else:
         # still use bfilter for memory efficiency
-        arr_f = shared_copy(arr)
-        bfilter(b, a, arr_f, **def_args)
-        return arr_f
+        if def_args['out'] is None:
+            arr_f = shared_ndarray(arr.shape, arr.dtype.char)
+            def_args['out'] = arr_f
+        block_filter(b, a, arr, **def_args)
+        # raise
+        return def_args['out']
 
 def notch_all(
         arr, Fs, lines=60.0, nzo=3,
@@ -130,7 +152,7 @@ def notch_all(
             )
     return arr_f
 
-def downsample(x, fs, appx_fs=None, r=None):
+def downsample(x, fs, appx_fs=None, r=None, filter_inplace=False):
     """Integer downsampling with antialiasing.
 
     One (and only one) of the parameters 'appx_fs' and 'r' must be
@@ -146,16 +168,18 @@ def downsample(x, fs, appx_fs=None, r=None):
 
     Parameters
     ----------
-    x : ndarray
+    x: ndarray
         timeseries
-    fs : float
+    fs: float
         Original sampling frequency
-    appx_fs : float
+    appx_fs: float
         Approximate resampling frequency. The timeseries will be
         downsampled by an integer amount to meet or exceed this
         sampling rate.
-    r : int
+    r: int
         The integer downsampling rate
+    filter_inplace: bool
+        If True, attempt to filter in-place. This can be done if x is shared memory. This will modify x.
 
     Returns
     -------
@@ -190,7 +214,7 @@ def downsample(x, fs, appx_fs=None, r=None):
     ord, wc = signal.cheb1ord(wp, ws, 0.25, 10)
     fdesign = dict(ripple=0.25, hi=0.5 * wc * fs, Fs=fs, ord=ord)
     x_lp = filter_array(
-        x, ftype='cheby1', inplace=False, design_kwargs=fdesign
+        x, ftype='cheby1', inplace=filter_inplace, design_kwargs=fdesign
         )
     
     x_ds = x_lp[..., ::r].copy()

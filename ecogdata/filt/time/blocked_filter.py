@@ -10,7 +10,7 @@ from ecogdata.util import input_as_2d, nextpow2
 
 from ..blocks import BlockedSignal
 
-def bfilter(b, a, x, bsize=0, axis=-1, zi=None, filtfilt=False):
+def bfilter(b, a, x, out=None, bsize=0, axis=-1, zi=None, filtfilt=False):
     """
     Apply linear filter inplace over the (possibly blocked) axis of x.
     If implementing a blockwise filtering for extra large runs, take
@@ -20,6 +20,11 @@ def bfilter(b, a, x, bsize=0, axis=-1, zi=None, filtfilt=False):
     if not bsize:
         bsize = x.shape[axis]
     x_blk = BlockedSignal(x, bsize, axis=axis)
+    if out is not None:
+        y_blk = BlockedSignal(out, bsize, axis=axis)
+        out = True
+    else:
+        out = False
 
     if zi is not None:
         zii = zi.copy()
@@ -34,19 +39,34 @@ def bfilter(b, a, x, bsize=0, axis=-1, zi=None, filtfilt=False):
     zi_sl[axis] = slice(None)
     xc_sl = [slice(None)] * x.ndim
     xc_sl[axis] = slice(0,1)
-
-    for n, xc in enumerate(x_blk.fwd()):
-        if n == 0:
+    zi = None
+    x_iter = x_blk.fwd()
+    if out:
+        y_iter = y_blk.fwd()
+    for n in range(x_blk.nblock):
+        xc = next(x_iter)
+        if out:
+            xo = next(y_iter)
+        else:
+            xo = xc
+        if zi is None:
             zi = zii[ tuple(zi_sl) ] * xc[ tuple(xc_sl) ]
         xcf, zi = signal.lfilter(b, a, xc, axis=axis, zi=zi)
-        xc[:] = xcf
+        xo[:] = xcf
 
     if not filtfilt:
         return
 
-    # loop through in reverse order, slicing out reverse-time blocks
-    for n, xc in enumerate(x_blk.bwd()):
-        if n == 0:
+    # Loop through in reverse order, slicing out reverse-time blocks.
+    # On this pass, always filter "inplace" in either the "out" array or "x"
+    zi = None
+    if out:
+        x_iter = y_blk.bwd()
+    else:
+        x_iter = x_blk.bwd()
+    for n in range(x_blk.nblock):
+        xc = next(x_iter)
+        if zi is None:
             zi = zii[ tuple(zi_sl) ] * xc[ tuple(xc_sl) ]
         xcf, zi = signal.lfilter(b, a, xc, axis=axis, zi=zi)
         xc[:] = xcf
