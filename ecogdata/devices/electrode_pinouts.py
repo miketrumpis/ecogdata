@@ -253,6 +253,29 @@ zif_by_intan64 = [32, None, 34, 48, 36, 50, 38, 52, 40, 54, 42, 56, 44, 58,
                   11, 19, 13, 17, 15, 16, 2, 18, 4, 20, 6, 22, 8, 24, 10,
                   26, 12, 28, 14, 30, None]
 
+
+## Human 256 v2 (direct map from grid to Intan RHD channels)
+h256_grid_by_channels = """J4, L4, G5, A8, D5, F7, C5, C8, F5, J8, D7, D9, H7, G8, H2, E9, H8, H4, K6, A5, E7, B5, 
+H3, E5, G7, J1, L3, H5, L2, E6, B8, J3, J5, L7, J2, L6, C6, K7, B6, A7, F6, K2, A6, K4, K1, B7, K5, E8, G9, C7, L8, 
+L1, B9, J7, C9, H6, K8, K3, L5, J6, F8, D6, D8, G6, K10, B10, L10, M8, M10, C10, L11, M6, K11, L9, F10, A9, M9, M2, 
+E11, M1, M7, M11, H10, G11, D11, F11, G10, A11, J10, B11, E10, C11, D10, J11, A10, F3, H11, G1, F2, F4, C2, B4, E1, 
+C4, D3, C3, D2, D4, D1, E2, E3, G3, H9, E4, M4, G2, J9, H1, F9, F1, K9, B3, G4, B2, M5, B1, M3, C1, F20, G19, F21, 
+M20, F22, G21, B21, M18, B22, K14, E19, F14, H22, H14, E20, J14, M19, B20, C19, C20, E21, D22, D19, D21, B19, D20, 
+F19, E22, G22, C22, G20, K13, C21, D13, L13, E13, H12, J13, C12, H13, B12, G12, A12, G13, F12, D12, E12, A13, M21, 
+F13, M16, C13, M22, M14, A14, M13, L14, M12, B13, L12, M17, K12, M15, J12, J20, L18, J21, D15, H17, L22, J17, F15, 
+D17, K15, C16, C14, J16, G14, K18, B14, L15, K20, A16, K21, B16, K22, K19, A17, K16, F17, L17, B17, L16, G17, E15, 
+J19, C17, L21, G18, L20, J18, G16, H18, K17, J22, A18, E18, H20, B18, E16, H21, B15, G15, D16, H15, F16, E14, H16, 
+D14, D18, J15, H19, L19, C18, C15, F18, A15, E17"""
+h256_rows_cols = list(unzip_encoded(h256_grid_by_channels))
+h256_rows_cols[1] = _rev(22, h256_rows_cols[1])
+psv_256_rhd = {
+    'rows': h256_rows_cols[0],
+    'cols': h256_rows_cols[1],
+    'pitch': 1.72,
+    'geometry': (12, 22)
+}
+
+
 ## PSV 244 Array
 # **** MUX 1 ****
 # each entry is a list of row or column coordinates, in order of
@@ -792,7 +815,8 @@ electrode_maps = dict(
                                      zif_by_intan64, pitch=0.420),
     psv_61_intan2=connect_passive_map((8, 8), rat_v4_by_zif_lut,
                                       zif_by_intan64, pitch=0.420),
-
+    # direct maps
+    psv_256_rhd=psv_256_rhd,
     psv_244_mux1=psv_244_mux1,
     psv_32=psv_32,
     psv_61=psv_61,
