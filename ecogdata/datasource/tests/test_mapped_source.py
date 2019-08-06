@@ -34,13 +34,13 @@ def test_construction():
     aux_arrays = ('test1', 'test2')
     f, filename = _create_hdf5(aux_arrays=aux_arrays)
     data_shape = f['data'].shape
-    map_source = MappedSource(f, 'data', aux_fields=aux_arrays)
+    map_source = MappedSource(f, 'data', aligned_arrays=aux_arrays)
     assert_equal(map_source.data_shape, data_shape, 'Shape wrong')
     assert_equal(map_source.binary_channel_mask.sum(), data_shape[0], 'Wrong number of active channels')
     for field in aux_arrays:
         assert_true(hasattr(map_source, field), 'Aux field {} not preserved'.format(field))
     # repeat for transpose
-    map_source = MappedSource(f, 'data', aux_fields=aux_arrays, transpose=True)
+    map_source = MappedSource(f, 'data', aligned_arrays=aux_arrays, transpose=True)
     assert_equal(map_source.data_shape, data_shape[::-1], 'Shape wrong in transpose')
     assert_equal(map_source.binary_channel_mask.sum(), data_shape[1], 'Wrong number of active channels in transpose')
 
