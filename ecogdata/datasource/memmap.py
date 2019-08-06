@@ -1,10 +1,15 @@
 from tempfile import NamedTemporaryFile  # , _TemporaryFileCloser
 import numpy as np
 import h5py
+from scipy.signal import lfilter_zi
+from numpy.linalg import LinAlgError
+from tqdm import tqdm
+
 
 from ecogdata.expconfig import load_params
 from ecogdata.util import ToggleState
 from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.split_methods import lfilter
 from ecogdata.filt.time import filter_array, notch_all
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
@@ -128,14 +133,14 @@ class MappedSource(ElectrodeDataSource):
             self._source_file.close()
 
     def __len__(self):
-        return self.data_shape[0]
+        return self.shape[0]
 
     def close_source(self):
         """Close off the source file"""
         self._source_file.close()
 
     @property
-    def data_shape(self):
+    def shape(self):
         if self._transpose:
             return len(self._active_channels), self._data_buffer.shape[0]
         else:
@@ -328,7 +333,7 @@ class MappedSource(ElectrodeDataSource):
 
         """
 
-        T = self.data_shape[1]
+        T = self.shape[1]
         if new_rate_ratio:
             T = calc_new_samples(T, new_rate_ratio)
 
@@ -338,7 +343,7 @@ class MappedSource(ElectrodeDataSource):
                 C = self._electrode_array.shape[1] if self._transpose else self._electrode_array.shape[0]
                 channel_mask = self.binary_channel_mask
             else:
-                C = self.data_shape[0]
+                C = self.shape[0]
                 electrode_channels = None
                 channel_mask = None
             if writeable:
@@ -371,7 +376,7 @@ class MappedSource(ElectrodeDataSource):
                                 transpose=False)
         else:
             self._check_slice_size(np.s_[:, :])
-            C = self.data_shape[0]
+            C = self.shape[0]
             new_source = shared_ndarray((C, T), 'd')
             # Kind of tricky with aux fields -- assume that transpose means the same thing for them?
             # But also un-transpose them on this mirroring step
@@ -383,11 +388,6 @@ class MappedSource(ElectrodeDataSource):
                 aligned_arrays[name] = shared_ndarray(dims, 'd')
             return PlainArraySource(new_source, **aligned_arrays)
 
-
-from scipy.signal import lfilter_zi
-from ecogdata.parallel.split_methods import lfilter
-from numpy.linalg import LinAlgError
-from tqdm import tqdm
 
 def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
     """

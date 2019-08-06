@@ -33,16 +33,16 @@ def _create_hdf5(n_rows=20, n_cols=1000, extra_dims=(), rand=False,
 def test_construction():
     aux_arrays = ('test1', 'test2')
     f, filename = _create_hdf5(aux_arrays=aux_arrays)
-    data_shape = f['data'].shape
+    shape = f['data'].shape
     map_source = MappedSource(f, 'data', aligned_arrays=aux_arrays)
-    assert_equal(map_source.data_shape, data_shape, 'Shape wrong')
-    assert_equal(map_source.binary_channel_mask.sum(), data_shape[0], 'Wrong number of active channels')
+    assert_equal(map_source.shape, shape, 'Shape wrong')
+    assert_equal(map_source.binary_channel_mask.sum(), shape[0], 'Wrong number of active channels')
     for field in aux_arrays:
         assert_true(hasattr(map_source, field), 'Aux field {} not preserved'.format(field))
     # repeat for transpose
     map_source = MappedSource(f, 'data', aligned_arrays=aux_arrays, transpose=True)
-    assert_equal(map_source.data_shape, data_shape[::-1], 'Shape wrong in transpose')
-    assert_equal(map_source.binary_channel_mask.sum(), data_shape[1], 'Wrong number of active channels in transpose')
+    assert_equal(map_source.shape, shape[::-1], 'Shape wrong in transpose')
+    assert_equal(map_source.binary_channel_mask.sum(), shape[1], 'Wrong number of active channels in transpose')
 
 
 def test_direct_mapped():
@@ -207,7 +207,7 @@ def test_write():
     binary_mask[:5] = False
     # so channels 5, 6, 7, 8, 9 should be active
     map_source = MappedSource(f, 'data', electrode_channels=electrode_channels)
-    shp = map_source.data_shape
+    shp = map_source.shape
     rand_pattern = np.random.randint(0, 100, size=(2, shp[1]))
     map_source[:2] = rand_pattern
     # use full-slice syntax to get data
@@ -300,7 +300,7 @@ def test_basic_mirror():
         clone1 = map_source.mirror(new_rate_ratio=None, writeable=True, mapped=True, channel_compatible=False,
                                    filename='foo.h5')
         temp_files.append(clone1._source_file)
-        assert_true(clone1.data_shape == (len(electrode_channels), 500), 'wrong # of channels')
+        assert_true(clone1.shape == (len(electrode_channels), 500), 'wrong # of channels')
         assert_true(clone1.writeable, 'Should be writeable')
         assert_true(isinstance(clone1, MappedSource), 'Clone is not a MappedSource')
         clone2 = map_source.mirror(new_rate_ratio=None, mapped=False, channel_compatible=False)
@@ -319,7 +319,7 @@ def test_mirror_modes():
         temp_files = []
         clone1 = map_source.mirror(writeable=True, mapped=True, channel_compatible=False)
         temp_files.append(clone1._source_file)
-        assert_true(clone1.data_shape == (len(electrode_channels), 500), 'wrong # of samples')
+        assert_true(clone1.shape == (len(electrode_channels), 500), 'wrong # of samples')
         clone2 = map_source.mirror(writeable=True, mapped=True, channel_compatible=True)
         temp_files.append(clone2._source_file)
         assert_true(clone2._electrode_array.shape == (25, 500), 'wrong # of channels for channel-compat')

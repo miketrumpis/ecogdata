@@ -50,7 +50,7 @@ class DataSourceBlockIter(object):
             L = datasource._auto_block_length
         else:
             L = block_length
-        T = datasource.data_shape[axis] - start_offset
+        T = datasource.shape[axis] - start_offset
         N = T // (L - overlap)
         # add in another block to trigger stop-iteration in forward mode
         if not reverse and (L - overlap) * N <= T:
@@ -104,7 +104,7 @@ class ElectrodeDataSource(object):
     a parent class for all types
     """
 
-    data_shape = ()
+    shape = ()
     dtype = None
     _auto_block_length = 20000
     writeable = True
@@ -135,7 +135,7 @@ class ElectrodeDataSource(object):
                                    return_slice=return_slice, reverse=reverse)
 
     def iter_channels(self, chans_per_block=None, use_max_memory=False, return_slice=False):
-        C, T = self.data_shape
+        C, T = self.shape
         if chans_per_block is None:
             if use_max_memory:
                 max_memory = load_params()['memory_limit'] if isinstance(use_max_memory, bool) else use_max_memory
@@ -150,10 +150,10 @@ class ElectrodeDataSource(object):
 
     def batch_change_rate(self, new_rate_ratio, new_source, antialias_aux=False, verbose=False):
         new_rate_ratio = int(new_rate_ratio)
-        if new_source.data_shape[0] != self.data_shape[0]:
-            raise ValueError('Output source has the wrong number of channels: {}'.format(new_source.data_shape[0]))
-        if new_source.data_shape[1] != calc_new_samples(self.data_shape[1], new_rate_ratio):
-            raise ValueError('Output source has the wrong series length: {}'.format(new_source.data_shape[1]))
+        if new_source.shape[0] != self.shape[0]:
+            raise ValueError('Output source has the wrong number of channels: {}'.format(new_source.shape[0]))
+        if new_source.shape[1] != calc_new_samples(self.shape[1], new_rate_ratio):
+            raise ValueError('Output source has the wrong series length: {}'.format(new_source.shape[1]))
         chan_itr = self.iter_channels(return_slice=True)
         if verbose:
             chan_itr = tqdm(chan_itr, desc='Downsampling channels', leave=True, total=len(chan_itr))
@@ -207,7 +207,7 @@ class PlainArraySource(ElectrodeDataSource):
         """
 
         self._data_matrix = shared_copy(data_matrix) if use_shared_mem else data_matrix
-        self.data_shape = data_matrix.shape
+        self.shape = data_matrix.shape
         self.dtype = data_matrix.dtype
         for name in aux_arrays:
             setattr(self, name, (shared_copy(aux_arrays[name]) if use_shared_mem else aux_arrays[name]))
