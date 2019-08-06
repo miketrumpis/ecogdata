@@ -4,12 +4,18 @@ import h5py
 
 from ecogdata.expconfig import load_params
 from ecogdata.util import ToggleState
-from ecogdata.parallel.array_split import shared_ndarray, shared_copy
+from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.filt.time import filter_array, notch_all
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
 from .array_abstractions import HDF5Buffer, slice_to_range
 
 
+__all__ = ['MappedSource', 'MemoryBlowOutError']
+
+
+# TODO: figure out how to create a temp file for writing that can be re-opened in read-only mode and still be deleted
+#  after closing
 # class ClosesAfterReopening(object):
 #
 #     def __init__(self, *args, **kwargs):
@@ -43,7 +49,7 @@ class MemoryBlowOutError(Exception):
 class MappedSource(ElectrodeDataSource):
 
     def __init__(self, source_file, electrode_field, electrode_channels=None, channel_mask=None,
-                 aux_fields=(), units_scale=None, transpose=False, raise_on_big_slice=True):
+                 aligned_arrays=(), units_scale=None, transpose=False, raise_on_big_slice=True):
         """
         Provides a memory-mapped data source. This object should rarely be constructed by-hand, but it should not be
         overwhelmingly difficult to do so.
@@ -64,7 +70,7 @@ class MappedSource(ElectrodeDataSource):
             electrode channels is None. The set of active electrodes is where the binary mask is True. The number of
             rows returned in a slice from this data source is sum(channel_mask). A value of None indicates all
             electrode channels are active.
-        aux_fields: sequence
+        aligned_arrays: sequence
             Any other datasets in source_file that should be aligned with the electrode signal array. These fields
             will be kept at the same sampling rate and index alignment as the electrode signal. They will also be
             preserved if this source is mirrored or copied to another source.
@@ -84,7 +90,6 @@ class MappedSource(ElectrodeDataSource):
             self.__close_source = False
         self._source_file = source_file
         self._electrode_field = electrode_field
-        self._aux_fields = aux_fields
         self.channel_mask = channel_mask
         self._electrode_array = self._source_file[self._electrode_field]
         # electrode_channels is a list of of data channel indices where electrode data are (immutable)
@@ -114,13 +119,27 @@ class MappedSource(ElectrodeDataSource):
 
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
-        for field in aux_fields:
+        for field in aligned_arrays:
             setattr(self, field, source_file[field])
-        self._aligned_arrays = aux_fields
+        self.aligned_arrays = aligned_arrays
 
     def __del__(self):
         if self.__close_source:
             self._source_file.close()
+
+    def __len__(self):
+        return self.data_shape[0]
+
+    def close_source(self):
+        """Close off the source file"""
+        self._source_file.close()
+
+    @property
+    def data_shape(self):
+        if self._transpose:
+            return len(self._active_channels), self._data_buffer.shape[0]
+        else:
+            return len(self._active_channels), self._data_buffer.shape[1]
 
     @property
     def writeable(self):
@@ -183,10 +202,6 @@ class MappedSource(ElectrodeDataSource):
             for n, c in enumerate(self.__electrode_channels):
                 if channel_mask[n]:
                     self._active_channels.append(c)
-        if self._transpose:
-            self.data_shape = len(self._active_channels), self._data_buffer.shape[0]
-        else:
-            self.data_shape = len(self._active_channels), self._data_buffer.shape[1]
 
     def _slice_logic(self, slicer):
         """Translate the slicing object to point to the correct data channels on disk"""
@@ -226,7 +241,7 @@ class MappedSource(ElectrodeDataSource):
     def slice_subset(self, slicer):
         new_electrode_channels = np.array(self._active_channels)[slicer].tolist()
         return MappedSource(self._source_file, self._electrode_field, electrode_channels=new_electrode_channels,
-                            aux_fields=self._aux_fields, units_scale=self._units_scale, transpose=self._transpose,
+                            aligned_arrays=self.aligned_arrays, units_scale=self._units_scale, transpose=self._transpose,
                             raise_on_big_slice=self._raise_on_big_slice)
 
     def __getitem__(self, slicer):
@@ -236,6 +251,7 @@ class MappedSource(ElectrodeDataSource):
         if len(slicer) == 1 and not self.channels_are_arrays.state:
             return self.slice_subset(slicer)
         self._check_slice_size(slicer)
+        # print('Slicing memmap as {}'.format(slicer))
         with self._data_buffer.transpose_reads(self._transpose):
             # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
             # the output is going to get transposed. Handling the transpose logic in the buffer avoids some
@@ -265,38 +281,26 @@ class MappedSource(ElectrodeDataSource):
             else:
                 raise e
 
-    def iter_channels(self, chans_per_block=None, max_memory=None, return_slice=False):
-        if max_memory is None:
-            max_memory = load_params()['memory_limit']
-        if self._transpose:
-            # compensate for the necessary copy-to-transpose
-            max_memory /= 2
-        C, T = self.data_shape
-        if chans_per_block is None:
-            bytes_per_samp = self.dtype.itemsize
-            chans_per_block = max(1, int(max_memory / T / bytes_per_samp))
-        num_iter = C // chans_per_block
-        if chans_per_block * num_iter < C:
-            num_iter += 1
-        for i in range(num_iter):
-            start = i * chans_per_block
-            stop = min(C, (i + 1) * chans_per_block)
-            if return_slice:
-                yield self[start:stop], np.s_[start:stop, :]
-            else:
-                yield self[start:stop]
+    def iter_channels(self, chans_per_block=None, use_max_memory=True, return_slice=False):
+        # Just change the signature to use maximum memory by default
+        return super(MappedSource, self).iter_channels(chans_per_block=chans_per_block,
+                                                       use_max_memory=use_max_memory, return_slice=return_slice)
 
-            # why is this logic necessary? redundant no?
-            # to_yield = self._active_channels[start:stop]
-            # print('Getting channels', to_yield)
-            # if self._transpose:
-            #     out = shared_copy(self._data_buffer[:, to_yield].T)
-            # else:
-            #     out = self._data_buffer[to_yield, :]
-            # if return_slice:
-            #     yield out, np.s_[start:stop, :]
-            # else:
-            #     yield out
+    def filter_array(self, **kwargs):
+        kwargs['block_filter'] = bfilter
+        # kwargs['inplace'] = True
+        filter_array(self, **kwargs)
+        if 'out' in kwargs:
+            return kwargs['out']
+        return self
+
+    def notch_filter(self, **kwargs):
+        kwargs['block_filter'] = bfilter
+        # kwargs['inplace'] = True
+        notch_all(self, **kwargs)
+        if 'out' in kwargs:
+            return kwargs['out']
+        return self
 
     def mirror(self, new_rate_ratio=None, writeable=True, mapped=True, channel_compatible=False, filename=''):
         """
@@ -354,7 +358,7 @@ class MappedSource(ElectrodeDataSource):
             with h5py.File(filename, 'w') as fw:
                 # Create all new datasets as non-transposed
                 fw.create_dataset(self._electrode_field, shape=(C, T), dtype=new_dtype, chunks=True)
-                for name in self._aux_fields:
+                for name in self.aligned_arrays:
                     arr = getattr(self, name)
                     if len(arr.shape) > 1:
                         dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
@@ -363,17 +367,101 @@ class MappedSource(ElectrodeDataSource):
                     fw.create_dataset(name, shape=dims, dtype=dtype, chunks=True)
             f_mapped = h5py.File(filename, reopen_mode)
             return MappedSource(f_mapped, self._electrode_field, electrode_channels=electrode_channels,
-                                channel_mask=channel_mask, aux_fields=self._aux_fields, units_scale=units_scale,
+                                channel_mask=channel_mask, aligned_arrays=self.aligned_arrays, units_scale=units_scale,
                                 transpose=False)
         else:
+            self._check_slice_size(np.s_[:, :])
             C = self.data_shape[0]
             new_source = shared_ndarray((C, T), 'd')
             # Kind of tricky with aux fields -- assume that transpose means the same thing for them?
             # But also un-transpose them on this mirroring step
-            aux_fields = dict()
-            for name in self._aux_fields:
+            aligned_arrays = dict()
+            for name in self.aligned_arrays:
                 arr = getattr(self, name)
                 if len(arr.shape) > 1:
                     dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
-                aux_fields[name] = shared_ndarray(dims, 'd')
-            return PlainArraySource(new_source, **aux_fields)
+                aligned_arrays[name] = shared_ndarray(dims, 'd')
+            return PlainArraySource(new_source, **aligned_arrays)
+
+
+from scipy.signal import lfilter_zi
+from ecogdata.parallel.split_methods import lfilter
+from numpy.linalg import LinAlgError
+from tqdm import tqdm
+
+def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
+    """
+    Apply linear filter inplace over array x streaming from disk.
+
+    Parameters
+    ----------
+    b: ndarray
+        Transfer function numerator polynomial coefficients.
+    a: ndarray
+        Transfer function denominator polynomial coefficients.
+    x: MappedSource
+        Mapped data source
+    out: MappedSource
+        Mapped source to store filter output, otherwise store in x.
+    filtfilt: bool
+        If True, make a second filtering in reverse time sequence to create zero phase.
+    verbose: bool
+        Make a progress bar.
+
+    """
+    try:
+        zii = lfilter_zi(b, a)
+    except LinAlgError:
+        # the integrating filter doesn't have valid zi
+        zii = np.array([0.0])
+
+    zi_sl = [np.newaxis] * 2
+    zi_sl[1] = slice(None)
+    zi_sl = tuple(zi_sl)
+    xc_sl = [slice(None)] * 2
+    xc_sl[1] = slice(0, 1)
+    xc_sl = tuple(xc_sl)
+    # fir_size = len(b)
+    zi = None
+    itr = x.iter_blocks(return_slice=True)
+    if verbose:
+        itr = tqdm(itr, desc='Blockwise filtering', leave=True, total=len(itr))
+    for xc, sl in itr:
+        # xc = x[sl]
+        if zi is None:
+            zi = zii[zi_sl] * xc[xc_sl]
+        xcf, zi = lfilter(b, a, xc, axis=1, zi=zi)
+        if out is None:
+            x[sl] = xcf
+        else:
+            out[sl] = xcf
+
+    if not filtfilt:
+        del xc
+        del xcf
+        return
+
+    # Nullify initial conditions for reverse run (not sure if it's correct, but it's compatible with bfilter from
+    # the ecogdata.filter.time.blocked_filter module
+    zi = None
+    if out is None:
+        itr = x.iter_blocks(return_slice=True, reverse=True)
+    else:
+        itr = out.iter_blocks(return_slice=True, reverse=True)
+    if verbose:
+        itr = tqdm(itr, desc='Blockwise filtering (reverse)', leave=True, total=len(itr))
+    for xc, sl in itr:
+        # if out is None:
+        #     xc = x[sl]
+        # else:
+        #     xc = out[sl]
+        if zi is None:
+            zi = zii[zi_sl] * xc[xc_sl]
+        xcf, zi = lfilter(b, a, xc, axis=1, zi=zi)
+        # write out with negative step slices (buffer will correct the write order)
+        if out is None:
+            x[sl] = xcf
+        else:
+            out[sl] = xcf
+    del xc
+    del xcf

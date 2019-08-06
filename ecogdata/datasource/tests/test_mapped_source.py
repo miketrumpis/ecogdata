@@ -228,8 +228,8 @@ def test_iter():
     assert_true((data[electrode_channels][:, :block_size] == blocks[0]).all(), 'first block wrong')
     assert_true((data[electrode_channels][:, block_size:] == blocks[1]).all(), 'second block wrong')
     blocks = list(map_source.iter_blocks(block_size, reverse=True))
-    assert_true((data[electrode_channels][:, block_size:] == blocks[0]).all(), 'first rev block wrong')
-    assert_true((data[electrode_channels][:, :block_size] == blocks[1]).all(), 'second rev block wrong')
+    assert_true((data[electrode_channels][:, block_size:][:, ::-1] == blocks[0]).all(), 'first rev block wrong')
+    assert_true((data[electrode_channels][:, :block_size][:, ::-1] == blocks[1]).all(), 'second rev block wrong')
 
 
 def test_iter_overlap():
@@ -244,9 +244,10 @@ def test_iter_overlap():
     # last block is a partial, starting at index 90
     assert_true((data[:, -10:] == blocks[-1]).all(), 'last block wrong')
     blocks = list(map_source.iter_blocks(block_size, reverse=True, overlap=overlap))
-    assert_true((data[:, :block_size] == blocks[-1]).all(), 'first block wrong')
-    assert_true((data[:, (block_size - overlap):(2 * block_size - overlap)] == blocks[-2]).all(), 'second block wrong')
-    assert_true((data[:, -10:] == blocks[0]).all(), 'last block wrong')
+    assert_true((data[:, :block_size] == blocks[-1][:, ::-1]).all(), 'first block wrong')
+    assert_true((data[:, (block_size - overlap):(2 * block_size - overlap)] == blocks[-2][:, ::-1]).all(),
+                'second block wrong')
+    assert_true((data[:, -10:] == blocks[0][:, ::-1]).all(), 'last block wrong')
 
 
 def test_iterT():
@@ -258,6 +259,28 @@ def test_iterT():
     blocks = list(map_source.iter_blocks(block_size))
     assert_true((data[electrode_channels][:, :block_size] == blocks[0]).all(), 'first block wrong in transpose')
     assert_true((data[electrode_channels][:, block_size:] == blocks[1]).all(), 'second block wrong in transpose')
+
+
+def test_iter_channels():
+    f, filename = _create_hdf5(n_rows=10, n_cols=100)
+    map_source = MappedSource(f, 'data', electrode_channels=[2, 4, 6, 8, 9])
+    data = f['data'][:]
+    channel_blocks = []
+    for chans in map_source.iter_channels(chans_per_block=2):
+        channel_blocks.append(chans)
+    for n, chans in enumerate(np.array_split(data[[2, 4, 6, 8, 9]], 3)):
+        assert_true(np.array_equal(channel_blocks[n], chans), 'channel block {} not equal'.format(n))
+
+
+def test_iter_channelsT():
+    f, filename = _create_hdf5(n_rows=10, n_cols=100, transpose=True)
+    map_source = MappedSource(f, 'data', electrode_channels=[2, 4, 6, 8, 9], transpose=True)
+    data = f['data'][:].T
+    channel_blocks = []
+    for chans in map_source.iter_channels(chans_per_block=2):
+        channel_blocks.append(chans)
+    for n, chans in enumerate(np.array_split(data[[2, 4, 6, 8, 9]], 3)):
+        assert_true(np.array_equal(channel_blocks[n], chans), 'channel block {} not equal'.format(n))
 
 
 def _clean_up_hdf_files(temp_files):
