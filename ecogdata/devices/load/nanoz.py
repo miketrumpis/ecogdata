@@ -1,7 +1,7 @@
 import numpy as np
 
 
-__all__ = ['import nanoz', 'nanoz_impedance']
+__all__ = ['import_nanoz', 'nanoz_impedance']
 
 
 def import_nanoz(fname, magphs=False, mag_scale=1e6):
