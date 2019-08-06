@@ -5,11 +5,22 @@ from ecogdata.util import ToggleState
 from ecogdata.parallel.array_split import shared_ndarray
 
 
+__all__ = ['slice_to_range', 'range_to_slice', 'unpack_ellipsis', 'tile_slices', 'MappedBuffer', 'HDF5Buffer']
+
+
 def slice_to_range(slicer, r_max):
     """Convert a slice object to the corresponding index list"""
-    start = 0 if slicer.start is None else slicer.start
-    stop = r_max if slicer.stop is None else slicer.stop
     step = 1 if slicer.step is None else slicer.step
+    if slicer.start is None:
+        start = r_max - 1 if step < 0 else 0
+    else:
+        start = slicer.start
+    if slicer.stop is None:
+        stop = -1 if step < 0 else r_max
+    else:
+        stop = slicer.stop
+    # start = 0 if slicer.start is None else slicer.start
+    # stop = r_max if slicer.stop is None else slicer.stop
     return range(start, stop, step)
 
 
@@ -23,6 +34,18 @@ def range_to_slice(range, offset=None):
     start = range[0] - offset
     stop = range[-1] + 1 - offset
     return slice(start, stop, step)
+
+
+def _abs_slicer(slicer, shape):
+    """Convert a bunch of slices to be positive-step only in order to work with the "select" merthod."""
+    if not np.iterable(slicer):
+        slicer = (slicer,)
+    fwd_slices = []
+    for s, dim in zip(slicer, shape):
+        if isinstance(s, slice) and s.step is not None and s.step < 0:
+            s = range_to_slice(slice_to_range(s, dim)[::-1])
+        fwd_slices.append(s)
+    return tuple(fwd_slices)
 
 
 def unpack_ellipsis(slicer, dims):
@@ -40,7 +63,9 @@ def unpack_ellipsis(slicer, dims):
 
 def tile_slices(slicers, shape, chunks):
     """
-    Tile possibly complex array slicing if there are step sizes that exceed the data chunking sizes.
+    Tile possibly complex array slicing if there are step sizes that exceed the data chunking sizes. Also correct
+    array slices with negative steps to slice with positive step and write out with negative step. This makes all
+    slicing permissible for h5py.DataSet objects.
 
     Parameters
     ----------
@@ -87,16 +112,30 @@ def tile_slices(slicers, shape, chunks):
             # out_slicers.append([slicer])
         elif isinstance(slicer, slice):
             # actually going one by one is faster than staggered slices (sometimes it is about the same)
-            if slicer.step and slicer.step >= chunks[dim]:
-                rng = slice_to_range(slicer, shape[dim])
-                new_slicers.append(rng)
-                out_slicers.append(range(len(rng)))
+            if slicer.step and abs(slicer.step) > chunks[dim]:
+                if slicer.step < 0:
+                    # read-out in permitted forward sequence and write in reverse
+                    rng = slice_to_range(slicer, shape[dim])[::-1]
+                    new_slicers.append(rng)
+                    out_slicers.append(range(len(rng))[::-1])
+                else:
+                    rng = slice_to_range(slicer, shape[dim])
+                    new_slicers.append(rng)
+                    out_slicers.append(range(len(rng)))
+            elif slicer.step and slicer.step < 0:
+                # in this case, read-out the slice in permitted forward sequence, but load to memory in reverse
+                # sequence
+                fwd_slice = range_to_slice(slice_to_range(slicer, shape[dim])[::-1])
+                new_slicers.append([fwd_slice])
+                out_slicers.append([slice(None, None, -1)])
             else:
                 new_slicers.append([slicer])
                 # this is a full slice
                 out_slicers.append([slice(None)])
         elif np.iterable(slicer):
             slicer = list(slicer)
+            if (np.diff(slicer) < 0).any():
+                raise ValueError("Can't process decreasing or permuted list-indexing: {}".format(slicer))
             # anywhere the sequence jumps to a new spot larger than chunk-size away, split it up
             jumps = np.where(np.diff(slicer) > chunks[dim])[0] + 1
             idx = 0
@@ -144,11 +183,14 @@ class MappedBuffer(object):
         self._raw_offset = None
         self._units_scale = None
         if units_scale is not None:
+            # Ignore the (0, 1) scaling to save cycles
             if np.iterable(units_scale):
-                self._raw_offset = units_scale[0]
+                self._raw_offset = units_scale[0] if units_scale[0] != 0 else None
                 self._units_scale = units_scale[1]
             else:
                 self._units_scale = units_scale
+            if self._units_scale == 1:
+                self._units_scale = None
         self.dtype = array.dtype if units_scale is None else np.dtype('d')
         self.shape = array.shape
         self._raise_bad_write = raise_bad_write
@@ -183,6 +225,7 @@ class MappedBuffer(object):
         return x
 
     def _get_output_array(self, slicer, only_shape=False):
+        slicer = _abs_slicer(slicer, self.shape)
         out_shape = select(self.shape, slicer, 0).mshape
         # if the output will be transposed, then pre-create the array in the right order
         if self._transpose_state.state:
@@ -217,6 +260,7 @@ class HDF5Buffer(MappedBuffer):
 
         out_arr = self._get_output_array(sl)
         i_slices, o_slices = tile_slices(sl, self.shape, self._array.chunks)
+        # print('Slicing buffer as {}'.format(i_slices))
         for isl, osl in zip(i_slices, o_slices):
             if self._transpose_state.state:
                 # generally need to reverse the slice order
@@ -228,7 +272,11 @@ class HDF5Buffer(MappedBuffer):
                 # can't avoid making a copy here?
                 out_arr[osl] = self._array[isl].T
             else:
-                self._array.read_direct(out_arr, source_sel=isl, dest_sel=osl)
+                # try a direct read, but this will fail if there are negative steps going on
+                try:
+                    self._array.read_direct(out_arr, source_sel=isl, dest_sel=osl)
+                except ValueError:
+                    out_arr[osl] = self._array[isl]
         return self._scale_segment(out_arr)
 
     def __setitem__(self, sl, data):
