@@ -3,7 +3,6 @@ from builtins import object
 import numpy as np
 import scipy.ndimage as ndimage
 import scipy.signal as signal
-from skimage.restoration.inpaint import inpaint_biharmonic
 from ..blocks import BlockedSignal
 
 def pixel_corrections(
@@ -144,6 +143,8 @@ def inpaint_pixels(img, mask=None, pad_radius=3):
     filled_image: 2D array
 
     """
+
+    from skimage.restoration.inpaint import inpaint_biharmonic
 
     if isinstance(img, np.ma.MaskedArray):
         mask = img.mask
