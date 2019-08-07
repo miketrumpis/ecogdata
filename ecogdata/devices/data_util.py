@@ -17,6 +17,7 @@ from .load.util import convert_tdms
 from ecogdata.parallel.array_split import shared_ndarray
 from ecogdata.expconfig.config_decode import Parameter, TypedParam, BoolOrNum, NSequence, NoneOrStr, uniform_bunch_case
 
+
 _loading = dict(
     wireless=load_wireless,
     blackrock=load_blackrock,
@@ -24,7 +25,8 @@ _loading = dict(
     afe=load_afe,
     afe_aug21=load_afe_aug21,
     ddc_oephys=load_openephys_ddc,
-    oephys=load_open_ephys
+    oephys=load_open_ephys,
+    intan_rhd=load_rhd
     )
 
 
@@ -75,7 +77,7 @@ params_table = {
     # ddc
     'drange': TypedParam.from_type(int),
     'fs': TypedParam.from_type(float),
-    # open ephys -- this case is tricky in general, but can be ducked here
+    # open ephys
     'rec_num': NoneOrStr,
     'downsamp': TypedParam.from_type(int),
     'trigger_idx': NSequence,
@@ -85,6 +87,8 @@ params_table = {
     'use_stored': BoolOrNum,
     'memmap': BoolOrNum,
     'connectors': NSequence,
+    # RHD (mostly shares options with open ephys load)
+    'mapped': TypedParam.from_type(bool)
     }
 
 
@@ -158,11 +162,11 @@ def load_experiment_auto(session, test, **load_kwargs):
     kws = dict(zip(args[n_pos:], vals))
     for n in kws.keys():
         if n.lower() in test_info:
-            kws[n] = test_info.get(n)
+            kws[n] = test_info.get(n.lower())
     # check to see if any meta-load parameters are present in the given kwargs or the session file
     for n in post_load_params.keys():
         if n.lower() in test_info:
-            kws[n] = test_info.get(n)
+            kws[n] = test_info.get(n.lower())
 
     if headstage in _converts_tdms:
         clear = params.clear_temp_converted
