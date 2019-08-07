@@ -148,7 +148,7 @@ class ElectrodeDataSource(object):
                 chans_per_block = 16
         return DataSourceBlockIter(self, axis=0, block_length=chans_per_block, return_slice=return_slice)
 
-    def batch_change_rate(self, new_rate_ratio, new_source, antialias_aux=False, verbose=False):
+    def batch_change_rate(self, new_rate_ratio, new_source, antialias_aux=False, verbose=False, filter_inplace=False):
         new_rate_ratio = int(new_rate_ratio)
         if new_source.shape[0] != self.shape[0]:
             raise ValueError('Output source has the wrong number of channels: {}'.format(new_source.shape[0]))
@@ -160,17 +160,21 @@ class ElectrodeDataSource(object):
         # for raw_channels, sl in self.iter_channels(return_slice=True):
         for raw_channels, sl in chan_itr:
             # kind of fake the sampling rate
-            r = downsample(raw_channels, float(new_rate_ratio), r=new_rate_ratio)[0]
+            r = downsample(raw_channels, float(new_rate_ratio), r=new_rate_ratio, filter_inplace=filter_inplace)[0]
             new_source[sl] = r
 
         # now decimate aux_channels with or without anti-aliasing -- *assuming* that a full load won't bust RAM
         for k_src, k_dst in zip(self.aligned_arrays, new_source.aligned_arrays):
+            print('Downsampling array {}-->{}'.format(k_src, k_dst))
             a_src = getattr(self, k_src)
             a_dst = getattr(new_source, k_dst)
             if antialias_aux:
-                a_dst[:, :] = downsample(a_src[:, :], float(new_rate_ratio), r=new_rate_ratio, filter_inplace=True)[0]
+                a_dst[:, :] = downsample(a_src[:, :], float(new_rate_ratio), r=new_rate_ratio,
+                                         filter_inplace=filter_inplace)[0]
             else:
-                a_dst[:, :] = a_src[:, ::new_rate_ratio]
+                # make some redundant slicing in case this is a mapped array:
+                # strided reads from HDF5 are horribly slow!
+                a_dst[:, :] = a_src[:, :][:, ::new_rate_ratio]
 
     def filter_array(self, **kwargs):
         # Needs overload
