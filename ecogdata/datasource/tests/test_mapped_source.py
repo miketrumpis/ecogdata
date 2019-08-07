@@ -96,6 +96,12 @@ def test_channel_map():
     assert_true((map_source.binary_channel_mask == binary_mask).all(), 'binary mask wrong')
     data = f['data'][:, :][electrode_channels, :]
     assert_true(np.all(data[5:, 100:200] == map_source[:, 100:200]), 'channel masking failed')
+    # unmask
+    map_source.set_channel_mask(None)
+    binary_mask[:] = True
+    assert_true((map_source.binary_channel_mask == binary_mask).all(), 'binary mask wrong')
+    data = f['data'][:, :][electrode_channels, :]
+    assert_true(np.all(data[:, 100:200] == map_source[:, 100:200]), 'channel masking failed')
 
 
 def test_channel_mapT():
@@ -109,6 +115,12 @@ def test_channel_mapT():
     assert_true((map_source.binary_channel_mask == binary_mask).all(), 'binary mask wrong in transpose')
     data = f['data'][:, :][:, electrode_channels].T
     assert_true(np.all(data[5:, 100:200] == map_source[:, 100:200]), 'channel masking failed in transpose')
+    # unmask
+    map_source.set_channel_mask(None)
+    binary_mask[:] = True
+    assert_true((map_source.binary_channel_mask == binary_mask).all(), 'binary mask wrong')
+    data = f['data'][:, :][:, electrode_channels].T
+    assert_true(np.all(data[:, 100:200] == map_source[:, 100:200]), 'channel masking failed')
 
 
 def test_channel_slicing():

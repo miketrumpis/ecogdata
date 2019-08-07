@@ -160,20 +160,25 @@ class MappedSource(ElectrodeDataSource):
 
     @property
     def is_direct_map(self):
+        all_active = self.binary_channel_mask.all()
+        # quick short-circuit: False if there are masked channels
+        if not all_active:
+            return False
         num_disk_channels = self._data_buffer.shape[1] if self._transpose else self._data_buffer.shape[0]
         mapped_channels = np.array(self.__electrode_channels)
         all_mapped = np.array_equal(mapped_channels, np.arange(num_disk_channels))
-        all_active = self.binary_channel_mask.all()
-        return all_mapped and all_active
+        return all_mapped
 
     @property
     def binary_channel_mask(self):
-        bmask = np.ones(len(self.__electrode_channels), '?')
+        if not hasattr(self, '_bmask'):
+            self._bmask = np.ones(len(self.__electrode_channels), '?')
+        if self._bmask.sum() == len(self._active_channels):
+            return self._bmask
         active_channels = set(self._active_channels)
         for n, c in enumerate(self.__electrode_channels):
-            if c not in active_channels:
-                bmask[n] = False
-        return bmask
+            self._bmask[n] = c in active_channels
+        return self._bmask
 
     @property
     def _auto_block_length(self):
@@ -307,7 +312,8 @@ class MappedSource(ElectrodeDataSource):
             return kwargs['out']
         return self
 
-    def mirror(self, new_rate_ratio=None, writeable=True, mapped=True, channel_compatible=False, filename=''):
+    def mirror(self, new_rate_ratio=None, writeable=True, mapped=True, channel_compatible=False, filename='',
+               copy='', **map_args):
         """
         Create an empty ElectrodeDataSource based on the current source, possibly with a new sampling rate and new
         access permissions.
@@ -326,6 +332,12 @@ class MappedSource(ElectrodeDataSource):
             to just the set of active channels.
         filename: str
             Name of the new MappedSource. If empty, use a self-destroying temporary file.
+        copy: str
+            Code whether to copy any arrays, which is only valid when new_rate_ratio is None or 1. 'aligned' copies
+            aligned arrays. 'electrode' copies electrode data: only valid if channel_compatible is False.
+            'all' copies all arrays. By default, nothing is copied.
+        map_args: dict
+            Any other MappedSource arguments
 
         Returns
         -------
@@ -336,6 +348,21 @@ class MappedSource(ElectrodeDataSource):
         T = self.shape[1]
         if new_rate_ratio:
             T = calc_new_samples(T, new_rate_ratio)
+
+        copy_electrodes_coded = copy.lower() in ('all', 'electrode')
+        copy_aligned_coded = copy.lower() in ('all', 'aligned')
+        diff_rate = T != self.shape[1]
+        if copy_electrodes_coded and (diff_rate or channel_compatible):
+            copy_electrodes = False
+            print('Not copying electrode channels. Diff rate '
+                  '({}) or indirect channel map ({})'.format(diff_rate, channel_compatible))
+        else:
+            copy_electrodes = True
+        if copy_aligned_coded and diff_rate:
+            copy_aligned = False
+            print('Not copying aligned arrays: different sample rate')
+        else:
+            copy_aligned = True
 
         if mapped:
             if channel_compatible:
@@ -363,6 +390,9 @@ class MappedSource(ElectrodeDataSource):
             with h5py.File(filename, 'w') as fw:
                 # Create all new datasets as non-transposed
                 fw.create_dataset(self._electrode_field, shape=(C, T), dtype=new_dtype, chunks=True)
+                if copy_electrodes:
+                    for block, sl in self.iter_blocks(return_slice=True):
+                        fw[self._electrode_field][sl] = block
                 for name in self.aligned_arrays:
                     arr = getattr(self, name)
                     if len(arr.shape) > 1:
@@ -370,15 +400,21 @@ class MappedSource(ElectrodeDataSource):
                     # is this correct ???
                     dtype = 'd' if writeable else arr.dtype
                     fw.create_dataset(name, shape=dims, dtype=dtype, chunks=True)
+                    if copy_aligned:
+                        aligned = getattr(self, name)[:]
+                        fw[name][:] = aligned.T if self._transpose else aligned
             f_mapped = h5py.File(filename, reopen_mode)
             return MappedSource(f_mapped, self._electrode_field, electrode_channels=electrode_channels,
                                 channel_mask=channel_mask, aligned_arrays=self.aligned_arrays, units_scale=units_scale,
-                                transpose=False)
+                                transpose=False, **map_args)
         else:
             self._check_slice_size(np.s_[:, :])
             C = self.shape[0]
             new_source = shared_ndarray((C, T), 'd')
-            # Kind of tricky with aux fields -- assume that transpose means the same thing for them?
+            if copy_electrodes:
+                for block, sl in self.iter_blocks(return_slice=True):
+                    new_source[sl] = block
+            # Kind of tricky with aligned fields -- assume that transpose means the same thing for them?
             # But also un-transpose them on this mirroring step
             aligned_arrays = dict()
             for name in self.aligned_arrays:
@@ -386,6 +422,9 @@ class MappedSource(ElectrodeDataSource):
                 if len(arr.shape) > 1:
                     dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
                 aligned_arrays[name] = shared_ndarray(dims, 'd')
+                if copy_aligned:
+                    aligned = getattr(self, name)[:]
+                    aligned_arrays[name][:] = aligned.T if self._transpose else aligned
             return PlainArraySource(new_source, **aligned_arrays)
 
 
