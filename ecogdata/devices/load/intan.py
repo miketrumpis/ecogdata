@@ -12,6 +12,9 @@ from ecogdata.trigger_fun import process_trigger
 from . import DataPathError
 
 
+__all__ = ['load_rhd']
+
+
 def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', bandpass=(), notches=(), useFs=None,
              trigger_idx=(), mapped=True, save_downsamp=True, use_stored=True, store_path=None,
              raise_on_glitches=False):
@@ -148,14 +151,11 @@ def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', b
 
     # Promote to a writeable and possibly RAM-loaded array here if either the final source should be loaded,
     # or if the mapped source is not writeable.
-    def swap_handles(source, dest):
-        return dest, None
-
     needs_load = not mapped
     needs_writeable = (bandpass or notches) and not datasource.writeable
     if needs_load or needs_writeable:
         # Need to make writeable copies of these data sources. If the final source is to be loaded, then mirror
-        # to memory here.
+        # to memory here. Copy everything to memory if not mapped, otherwise copy only aligned arrays.
         print('Creating writeable mirrored sources')
         copy_mode = 'aligned' if mapped else 'all'
         datasource_w = datasource.mirror(mapped=mapped, writeable=True, copy=copy_mode)
@@ -165,11 +165,11 @@ def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', b
             ref_chans_w = ref_chans.mirror(mapped=mapped, writeable=True, copy=copy_mode)
         if not mapped:
             # swap handles of these objects
-            datasource, datasource_w = swap_handles(datasource, datasource_w)
+            datasource = datasource_w;  datasource_w = None
             if ground_chans:
-                ground_chans, ground_chans_w = swap_handles(ground_chans, ground_chans_w)
+                ground_chans = ground_chans_w; ground_chans_w = None
             if ref_chans:
-                ref_chans, ref_chans_w = swap_handles(ref_chans, ref_chans_w)
+                ref_chans = ref_chans_w; ref_chans_w = None
 
     # For the filter blocks...
     # If mapped, then datasource and datasource_w will be identical.
