@@ -352,17 +352,23 @@ class MappedSource(ElectrodeDataSource):
         copy_electrodes_coded = copy.lower() in ('all', 'electrode')
         copy_aligned_coded = copy.lower() in ('all', 'aligned')
         diff_rate = T != self.shape[1]
-        if copy_electrodes_coded and (diff_rate or channel_compatible):
+        if copy_electrodes_coded:
+            if diff_rate or channel_compatible:
+                copy_electrodes = False
+                print('Not copying electrode channels. Diff rate '
+                      '({}) or indirect channel map ({})'.format(diff_rate, channel_compatible))
+            else:
+                copy_electrodes = True
+        else:
             copy_electrodes = False
-            print('Not copying electrode channels. Diff rate '
-                  '({}) or indirect channel map ({})'.format(diff_rate, channel_compatible))
+        if copy_aligned_coded:
+            if diff_rate:
+                copy_aligned = False
+                print('Not copying aligned arrays: different sample rate')
+            else:
+                copy_aligned = True
         else:
-            copy_electrodes = True
-        if copy_aligned_coded and diff_rate:
             copy_aligned = False
-            print('Not copying aligned arrays: different sample rate')
-        else:
-            copy_aligned = True
 
         if mapped:
             if channel_compatible:
