@@ -268,7 +268,6 @@ class ToggleState(object):
     """
 
     def __init__(self, init_state=True, name='', permanent_state=None):
-        # self.__never_para = platform.system().lower().find('windows') >= 0
         self.__permstate = permanent_state
         if self.__permstate is not None:
             self.state = self.__permstate
@@ -276,22 +275,13 @@ class ToggleState(object):
             self.state = init_state
         self.name = name
 
-    def __enable(self):
-        if self.__permstate is not None and not self.__permstate:
-            warn('Object {} state is permanently disabled. The present context is still disabled.'.format(self.name),
-                 RuntimeWarning)
-        self.state = True
-
-    def __disable(self):
-        if self.__permstate is not None and self.__permstate:
-            warn('Object {} state is permanently enabled. Exiting this context does not disable.'.format(self.name),
-                 RuntimeWarning)
-        self.state = False
-
     @contextmanager
     def __call__(self, status=None):
         prev_status = self.state
         if self.__permstate is not None:
+            warn('Object {} state is permanently {}. '
+                 'The present context has not changed the state.'.format(self.name, self.__permstate),
+                 RuntimeWarning)
             self.state = self.__permstate
         elif status is not None:
             self.state = status
@@ -299,7 +289,5 @@ class ToggleState(object):
             self.state = not prev_status
         try:
             yield
-        except:
-            raise
         finally:
             self.state = prev_status

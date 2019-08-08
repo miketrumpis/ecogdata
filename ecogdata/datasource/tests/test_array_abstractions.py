@@ -1,6 +1,5 @@
-from nose.tools import assert_true, assert_equal, raises
+from nose.tools import assert_true, assert_equal
 import numpy as np
-import h5py
 
 from ecogdata.datasource.array_abstractions import slice_to_range, range_to_slice, unpack_ellipsis, tile_slices, \
     HDF5Buffer
