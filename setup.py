@@ -1,3 +1,4 @@
+import os
 from glob import glob
 from setuptools import setup, Extension, find_packages
 from numpy.distutils.command import build_src
@@ -21,7 +22,7 @@ slepian_projection = Extension(
     'ecogdata.filt.time._slepian_projection',
     ['ecogdata/filt/time/_slepian_projection.pyx'],
     include_dirs = dirs, 
-    libraries=['m'],
+    libraries=['m'] if os.name != 'nt' else [],
     extra_compile_args=['-O3']
     )
 
