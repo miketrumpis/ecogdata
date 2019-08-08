@@ -1,6 +1,6 @@
 import platform
 import ecogdata.parallel.mproc as mp
-from contextlib import closing
+from contextlib import closing, contextmanager
 import warnings
 from decorator import decorator
 import numpy as np
@@ -87,34 +87,41 @@ class SharedmemManager(object):
         # There may be some cases where you'd want to use locking intermittently?
         self.use_lock = ToggleState(init_state=use_lock)
 
-    # TODO: this usage should be converted to "with get_ndarray() as array" -- then apply locking as necessary. This
-    #  way the lock will hold on until the end of the get_ndarray() context block. As written, the lock goes away
-    #  after the array is returned.
+    @contextmanager
     def get_ndarray(self):
-        if self.use_lock:
+        if self.use_lock.state:
             with self.shm.get_lock():
-                return SharedmemManager.tonumpyarray(
-                    self.shm, dtype=self.dtype, shape=self.shape
-                    )
+                yield SharedmemManager.tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)
         else:
-            return SharedmemManager.tonumpyarray(
-                self.shm, dtype=self.dtype, shape=self.shape
-                )
+            yield SharedmemManager.tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)
 
     @staticmethod
     def tonumpyarray(mp_arr, dtype=float, shape=None):
         if shape is None:
-            #global shape_
             shape = shape_
-
-        ## info = mp.get_logger().info
-        ## info('reshaping %s'%repr(shape))
         return np.frombuffer(mp_arr.get_obj(), dtype=dtype).reshape(shape)
 
-def split_at(
-        split_arg=(0,), splice_at=(0,), 
-        shared_args=(), n_jobs=-1, concurrent=False
-        ):
+def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurrent=False):
+    """
+    Decorator that enables parallel dispatch over multiple blocks of input ndarrays. Input arrays are cast to shared
+    memory pointers using `as_ctypes` from numpy.ctypeslib. These arrays can be modified by subproceses if they were
+    originally shared memory Arrays cast to ndarray using `frombuffer` (see `shared_ndarray`). Otherwise the arrays
+    are read-only. Returned arrays may be spliced together if appropriate.
+
+    Parameters
+    ----------
+    split_arg: tuple
+        Position(s) of any arguments in the method's signature that should be split for dispatch
+    splice_at: tuple
+        Position(s) of any return arguments that should be combined for output
+    shared_args: tuple
+        Position of any array arguments that should be available to all workers as shared memory
+    n_jobs: int
+        Number of workers (if -1 then use all cpus)
+    concurrent: bool
+        If True, then the shared memory will be accessed with with thread locks.
+
+    """
     info = mp.get_logger().info
     info('{} Starting wrap'.format(timestamp()))
     # short circuit if the platform is Windows-based (look into doing
@@ -251,9 +258,8 @@ class shared_readonly(object):
         self.mem_mgr = mem_mgr
 
     def __getitem__(self, idx):
-        ## with self.mem_mgr.shm.get_lock():
-        shm_ndarray = self.mem_mgr.get_ndarray() 
-        return shm_ndarray[idx].copy()
+        with self.mem_mgr.get_ndarray() as shm_ndarray:
+            return shm_ndarray[idx].copy()
 
 def _init_globals(
         split_arg, shm, shm_shape,
@@ -261,13 +267,26 @@ def _init_globals(
         method, args, kwdict
         ):
     """
-    split_arg : sequence of positions of argument that are split over
-    shm : the shared memory managers for these split args
-    shm_shape : the shapes of the underlying ndarrays of the split args
-    shared_args : positions for readonly, non-split shared memory args
-    sh_arg_mem : shared mem managers for any readonly shared memory arguments
-    method : the method
-    kwdict : any keyword args
+    Initialize the pool worker global state with the method to run and shared arrays + info + other args and kwargs
+
+    Parameters
+    ----------
+    split_arg: sequence
+        sequence of positions of argument that are split over
+    shm: sequence
+        the shared memory managers for these split args
+    shm_shape: sequence
+        the shapes of the underlying ndarrays of the split args
+    shared_args: sequence
+        positions for readonly, non-split shared memory args
+    sh_arg_mem: sequence
+        shared mem managers for any readonly shared memory arguments
+    method: function
+        function to call
+    args:
+        other positional argument
+    kwdict:
+        keyword arguments
     """
     
     # globals for primary shared array
