@@ -22,7 +22,7 @@ slepian_projection = Extension(
     'ecogdata.filt.time._slepian_projection',
     ['ecogdata/filt/time/_slepian_projection.pyx'],
     include_dirs = dirs, 
-    libraries=['m'] if os.name != 'nt' else [],
+    libraries=(['m'] if os.name != 'nt' else []),
     extra_compile_args=['-O3']
     )
 
