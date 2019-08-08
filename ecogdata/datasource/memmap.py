@@ -119,8 +119,8 @@ class MappedSource(ElectrodeDataSource):
         # this is toggle than when called creates a context manager with the supplied state (ToggleState)
         self._allow_big_slicing = ToggleState(init_state=False)
         self._raise_on_big_slice = raise_on_big_slice
-        # Normally self[:10] will return a new MappedSource, unless this context is True
-        self._slice_channels_as_arrays = ToggleState(init_state=False)
+        # Normally self[:10] will return an array. With this state toggled, it will return a new MappedSource
+        self._slice_channels_as_maps = ToggleState(init_state=False)
 
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
@@ -155,8 +155,8 @@ class MappedSource(ElectrodeDataSource):
         return self._allow_big_slicing
 
     @property
-    def channels_are_arrays(self):
-        return self._slice_channels_as_arrays
+    def channels_are_maps(self):
+        return self._slice_channels_as_maps
 
     @property
     def is_direct_map(self):
@@ -223,9 +223,9 @@ class MappedSource(ElectrodeDataSource):
         if len(slicer[1:]):
             time_range = slicer[1]
         else:
-            # If the slice is for channels only and we're in subset mode, then simply return the slice without
+            # If the slice is for channels only and we're in map-subset mode, then simply return the slice without
             # modifying the range
-            if not self.channels_are_arrays.state:
+            if self.channels_are_maps.state:
                 return slicer
             time_range = slice(None)
         if isinstance(chan_range, (int, np.integer)):
@@ -258,7 +258,7 @@ class MappedSource(ElectrodeDataSource):
         """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
         # data goes out as [subset]channels x time
         slicer = self._slice_logic(slicer)
-        if len(slicer) == 1 and not self.channels_are_arrays.state:
+        if len(slicer) == 1 and self.channels_are_maps:
             return self.slice_subset(slicer)
         self._check_slice_size(slicer)
         # print('Slicing memmap as {}'.format(slicer))
@@ -277,8 +277,8 @@ class MappedSource(ElectrodeDataSource):
             return
         # if both these conditions are try, something is probably wrong
         suspect_call = self.writeable and self._transpose
-        # turn off subset mode temporarily
-        with self.channels_are_arrays(True):
+        # make sure subset mode is off
+        with self.channels_are_maps(False):
             slicer = self._slice_logic(slicer)
         try:
             self._data_buffer[slicer] = data

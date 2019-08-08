@@ -128,11 +128,11 @@ def test_channel_slicing():
     electrode_channels = list(range(6, 17))
     map_source = MappedSource(f, 'data', electrode_channels=electrode_channels, units_scale=5.0)
     data_first_channels = map_source[:3, :]
-    first_channels = map_source[:3]
+    with map_source.channels_are_maps(True):
+        first_channels = map_source[:3]
     assert_true(isinstance(first_channels, MappedSource), 'slice did not return new map')
     assert_true(np.array_equal(data_first_channels, first_channels[:, :]), 'new map data mis-mapped')
-    with map_source.channels_are_arrays(True):
-        first_channels = map_source[:3]
+    first_channels = map_source[:3]
     assert_true(isinstance(first_channels, np.ndarray), 'slice-as-array failed')
     assert_true(np.array_equal(data_first_channels, first_channels), 'slice-as-array wrong data')
 
@@ -142,11 +142,11 @@ def test_channel_slicingT():
     electrode_channels = list(range(6, 17))
     map_source = MappedSource(f, 'data', electrode_channels=electrode_channels, transpose=True, units_scale=5.0)
     data_first_channels = map_source[:3, :]
-    first_channels = map_source[:3]
+    with map_source.channels_are_maps(True):
+        first_channels = map_source[:3]
     assert_true(isinstance(first_channels, MappedSource), 'slice did not return new map')
     assert_true(np.array_equal(data_first_channels, first_channels[:, :]), 'new map data mis-mapped')
-    with map_source.channels_are_arrays(True):
-        first_channels = map_source[:3]
+    first_channels = map_source[:3]
     assert_true(isinstance(first_channels, np.ndarray), 'slice-as-array failed')
     assert_true(np.array_equal(data_first_channels, first_channels), 'slice-as-array wrong data')
 
@@ -159,11 +159,11 @@ def test_channel_slicing_with_mask():
     mask[:5] = False
     map_source.set_channel_mask(mask)
     data_first_channels = map_source[:3, :]
-    first_channels = map_source[:3]
+    with map_source.channels_are_maps(True):
+        first_channels = map_source[:3]
     assert_true(isinstance(first_channels, MappedSource), 'slice did not return new map')
     assert_true(np.array_equal(data_first_channels, first_channels[:, :]), 'new map data mis-mapped')
-    with map_source.channels_are_arrays(True):
-        first_channels = map_source[:3]
+    first_channels = map_source[:3]
     assert_true(isinstance(first_channels, np.ndarray), 'slice-as-array failed')
     assert_true(np.array_equal(data_first_channels, first_channels), 'slice-as-array wrong data')
 
