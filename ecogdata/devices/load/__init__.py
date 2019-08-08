@@ -6,7 +6,6 @@ This module should eventually house device specific code, e.g.
 * blackrock headstage
 
 """
-from __future__ import absolute_import
 
 class DataPathError(Exception):
     pass

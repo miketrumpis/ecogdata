@@ -11,11 +11,6 @@ Usage:
     data = OpenEphys.load(pathToFile) # returns a dict with data, timestamps, etc.
 
 """
-from __future__ import print_function
-
-from builtins import map
-from builtins import str
-from builtins import range
 import os
 import numpy as np
 import scipy.signal

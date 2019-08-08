@@ -4,10 +4,7 @@ passthrough circuit. The circuit exposes the ZIF pins in two banks of
 30 and 31 pins. The Blackrock system acquires these in 32 channel blocks
 (up to a maximum of 96 channels).
 """
-from __future__ import print_function
 
-from builtins import zip
-from builtins import range
 import os
 import os.path as p
 import sys

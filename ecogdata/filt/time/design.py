@@ -1,9 +1,6 @@
 """
 Simple filter design wrappings
 """
-from __future__ import print_function
-from builtins import zip
-from builtins import map
 import numpy as np
 import scipy.signal.filter_design as fdesign
 import scipy.signal as signal

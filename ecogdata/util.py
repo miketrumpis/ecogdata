@@ -1,11 +1,4 @@
-from __future__ import print_function
 # ye olde utilities module
-from builtins import input
-from builtins import map
-from builtins import str
-from builtins import zip
-from builtins import range
-from builtins import object
 import os
 import copy
 import errno

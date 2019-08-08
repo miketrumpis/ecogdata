@@ -1,6 +1,3 @@
-from __future__ import print_function
-from builtins import zip
-from builtins import map
 import os.path as osp
 from itertools import chain
 from glob import glob

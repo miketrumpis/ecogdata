@@ -1,4 +1,3 @@
-from builtins import range
 import numpy as np
 from nitime.algorithms import dpss_windows
 from numpy.lib.stride_tricks import as_strided

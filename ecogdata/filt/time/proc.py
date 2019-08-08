@@ -1,9 +1,6 @@
 """
 One-stop shopping for digital filtering of arrays
 """
-from __future__ import division
-from builtins import zip
-from builtins import range
 import numpy as np
 from .design import butter_bp, cheby1_bp, cheby2_bp, notch
 from ecogdata.util import get_default_args, input_as_2d

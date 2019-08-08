@@ -1,5 +1,3 @@
-from builtins import zip
-from builtins import object
 import platform
 import ecogdata.parallel.mproc as mp
 from contextlib import closing

@@ -1,4 +1,3 @@
-from builtins import chr
 import os
 from ecogdata.datastore import load_bunch
 from ecogdata.util import mkdir_p

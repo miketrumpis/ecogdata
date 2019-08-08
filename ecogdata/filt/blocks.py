@@ -1,7 +1,3 @@
-from __future__ import division
-from builtins import zip
-from builtins import range
-from builtins import object
 import numpy as np
 
 from numpy.lib.stride_tricks import as_strided

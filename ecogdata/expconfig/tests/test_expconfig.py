@@ -1,4 +1,3 @@
-from builtins import range
 from .._expconfig import *
 
 from time import asctime

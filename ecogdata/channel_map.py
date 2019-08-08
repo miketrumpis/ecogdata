@@ -1,5 +1,3 @@
-from builtins import map
-from builtins import zip
 import numpy as np
 import itertools
 import scipy.misc as spmisc

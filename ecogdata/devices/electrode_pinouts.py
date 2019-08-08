@@ -1,8 +1,3 @@
-from __future__ import print_function
-from builtins import chr
-from builtins import str
-from builtins import zip
-from builtins import range
 import re
 from enum import Enum
 import numpy as np

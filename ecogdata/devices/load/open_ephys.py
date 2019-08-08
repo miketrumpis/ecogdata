@@ -1,9 +1,3 @@
-from __future__ import division
-from __future__ import print_function
-from builtins import next
-from builtins import str
-from builtins import map
-from builtins import range
 import os.path as osp
 import six
 from glob import glob

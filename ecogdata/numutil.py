@@ -1,9 +1,4 @@
 # brief numerical utility functions
-from __future__ import division
-from __future__ import print_function
-from builtins import map
-from builtins import zip
-from builtins import range
 import numpy as np
 from scipy.integrate import simps
 import scipy.ndimage as ndimage

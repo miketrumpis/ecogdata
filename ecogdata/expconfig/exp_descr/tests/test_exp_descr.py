@@ -1,5 +1,3 @@
-from builtins import zip
-from builtins import range
 import itertools
 
 from nose.tools import assert_equal

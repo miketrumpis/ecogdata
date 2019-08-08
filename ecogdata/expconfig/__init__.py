@@ -1,4 +1,3 @@
-from __future__ import absolute_import
 from ._globalconfig import *
 from ._expconfig import *
 from .config_decode import *

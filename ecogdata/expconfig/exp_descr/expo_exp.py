@@ -4,10 +4,6 @@ software used in the Movshon lab. These experiments were described
 in xml files.
 """
 
-from __future__ import division
-from __future__ import print_function
-
-from builtins import object
 import numpy as np
 import matplotlib as mpl
 

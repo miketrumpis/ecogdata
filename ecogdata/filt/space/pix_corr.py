@@ -1,5 +1,3 @@
-from __future__ import print_function
-from builtins import object
 import numpy as np
 import scipy.ndimage as ndimage
 import scipy.signal as signal

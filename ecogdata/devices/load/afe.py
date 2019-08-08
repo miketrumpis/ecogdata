@@ -1,4 +1,3 @@
-from builtins import range
 import tables
 import numpy as np
 import os
