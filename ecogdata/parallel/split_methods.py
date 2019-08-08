@@ -26,7 +26,7 @@ def bfilter(b, a, x, out=None, **kwargs):
 overlap_add = split_at()(overlap_add)
 
 # multi taper spectral estimation
-multi_taper_psd = split_at(splice_at=(1,2))(multi_taper_psd)
+multi_taper_psd = split_at(splice_at=(1, 2))(multi_taper_psd)
 
 # convolution
 convolve1d = split_at(split_arg=0)(convolve1d)

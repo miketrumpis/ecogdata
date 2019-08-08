@@ -28,10 +28,10 @@ slepian_projection = Extension(
 
 if __name__=='__main__':
     setup(
-        name = 'ecogdata',
-        version = '0.1',
-        packages = find_packages(),
+        name='ecogdata',
+        version='0.1',
+        packages=find_packages(),
         scripts=glob('scripts/*.py'),
-        ext_modules = [slepian_projection],
-        cmdclass = {'build_ext': build_ext},
+        ext_modules=[slepian_projection],
+        cmdclass={'build_ext': build_ext},
     )
