@@ -183,7 +183,11 @@ class MappedSource(ElectrodeDataSource):
     @property
     def _auto_block_length(self):
         chunks = self._electrode_array.chunks
-        return chunks[0] if self._transpose else chunks[1]
+        block_size = chunk_size = chunks[0] if self._transpose else chunks[1]
+        min_block_size = 10000
+        while block_size < min_block_size:
+            block_size += chunk_size
+        return block_size
 
     def set_channel_mask(self, channel_mask):
         """
@@ -258,7 +262,7 @@ class MappedSource(ElectrodeDataSource):
         """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
         # data goes out as [subset]channels x time
         slicer = self._slice_logic(slicer)
-        if len(slicer) == 1 and self.channels_are_maps:
+        if len(slicer) == 1 and self.channels_are_maps.state:
             return self.slice_subset(slicer)
         self._check_slice_size(slicer)
         # print('Slicing memmap as {}'.format(slicer))
