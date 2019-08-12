@@ -78,7 +78,9 @@ class MappedSource(ElectrodeDataSource):
         aligned_arrays: sequence
             Any other datasets in source_file that should be aligned with the electrode signal array. These fields
             will be kept at the same sampling rate and index alignment as the electrode signal. They will also be
-            preserved if this source is mirrored or copied to another source.
+            preserved if this source is mirrored or copied to another source. Elements of the sequence can be dataset
+            names in the mapped file, or (name, channel-list) pairs in the case that the aligned array is particular
+            subset of channels in the same array (e.g. same as the electrode data).
         units_scale: float or 2-tuple
             Either the scaling value or (offset, scaling) values such that signal = (memmap + offset) * scaling
         transpose: bool
@@ -124,9 +126,18 @@ class MappedSource(ElectrodeDataSource):
 
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
+        array_names = []
         for field in aligned_arrays:
-            setattr(self, field, source_file[field])
-        self.aligned_arrays = aligned_arrays
+            if isinstance(field, str):
+                setattr(self, field, source_file[field])
+            else:
+                # this actually loads the channels
+                channels = np.s_[:, field[1]] if self._transpose else np.s_[field[1], :]
+                field = field[0]
+                setattr(self, field, self._electrode_array[channels])
+            array_names.append(field)
+        # after this, only refer to these arrays by name
+        self.aligned_arrays = array_names
 
     def __del__(self):
         if self.__close_source:
