@@ -291,3 +291,6 @@ class ToggleState(object):
             yield
         finally:
             self.state = prev_status
+
+    def __bool__(self):
+        return self.state
