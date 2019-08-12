@@ -429,7 +429,7 @@ class MappedSource(ElectrodeDataSource):
                                 channel_mask=channel_mask, aligned_arrays=self.aligned_arrays, units_scale=units_scale,
                                 transpose=False, **map_args)
         else:
-            self._check_slice_size(np.s_[:, :])
+            self._check_slice_size(np.s_[:, :T])
             C = self.shape[0]
             new_source = shared_ndarray((C, T), 'd')
             if copy_electrodes:
