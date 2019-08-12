@@ -318,8 +318,11 @@ def _init_globals(
     info('{} Initialized globals'.format(timestamp()))
     
 def _global_method_wrap(aslice):
-    arrs = [arr_.get_ndarray() for arr_ in shared_arr_]
-    
+    arrs = []
+    # cycle through shared arrays and translate to ndarray (possibly in a locking context)
+    for arr_ in shared_arr_:
+        with arr_.get_ndarray() as array:
+            arrs.append(array)
     info = mp.get_logger().info
     
     spliced_in = list(zip( 
