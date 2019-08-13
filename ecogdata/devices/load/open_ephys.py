@@ -374,7 +374,7 @@ class OpenEphysLoader(FileLoader):
     permissible_types = ['.h5', '.hdf', '.continuous']
 
     @property
-    def raw_data_file(self):
+    def primary_data_file(self):
         try:
             data_path, _ = prepare_paths(self.experiment_path, self.recording, 'auto')
             return data_path
@@ -387,15 +387,15 @@ class OpenEphysLoader(FileLoader):
             return osp.splitext(data_path[0])[0]
 
     def raw_sample_rate(self):
-        return get_robust_samplingrate(self.raw_data_file)
+        return get_robust_samplingrate(self.primary_data_file)
 
     def make_channel_map(self):
-        if os.path.isdir(self.raw_data_file):
+        if os.path.isdir(self.primary_data_file):
             data_path, rec_num = prepare_paths(self.experiment_path, self.recording, 'auto')
             channel_files = OE.get_filelist(data_path, source=rec_num[0], ctype='CH')
             n_data_channels = len(channel_files)
         else:
-            with h5py.File(self.raw_data_file, 'r') as h5file:
+            with h5py.File(self.primary_data_file, 'r') as h5file:
                 n_data_channels = h5file[self.data_array].shape[0]
         channel_map, grounded, reference = get_electrode_map(self.electrode)
         electrode_chans = [n for n in range(n_data_channels) if n not in grounded + reference]

@@ -112,7 +112,7 @@ class FileLoader:
         self.data_file, self.new_downsamp_file, self.units_scale = self.find_source_files()
 
     @property
-    def raw_data_file(self):
+    def primary_data_file(self):
         """Return any existing files of possible types. Else return the preferred but nonexisting file name."""
         data_files = [os.path.join(self.experiment_path, self.recording + ext) for ext in self.permissible_types]
         existing = [os.path.exists(f) for f in data_files]
@@ -126,8 +126,8 @@ class FileLoader:
         Return full sampling rate (or -1 if there is no raw data file)
         """
 
-        if os.path.exists(self.raw_data_file):
-            with h5py.File(self.raw_data_file, 'r') as h5file:
+        if os.path.exists(self.primary_data_file):
+            with h5py.File(self.primary_data_file, 'r') as h5file:
                 samp_rate = h5file['Fs'][()]
                 if np.iterable(samp_rate):
                     samp_rate = float(samp_rate)
@@ -136,13 +136,28 @@ class FileLoader:
         return samp_rate
 
     def find_source_files(self):
-        # Determine the source file, which would either be the full resolution recording of a previously computed
-        # downsample file. Both would be opened in read-only mode.
-        # + Also tag whether a new downsample is required.
-        # + Saved downsamples are in micro-volts units and full sources are in ADC units. Determine the correct units
-        #   scaling for both cases.
+        """
+        Determine the source file, which would either be the full resolution recording or a previously computed
+        downsample file. Both would be opened in read-only mode. This file is returned as "data_file".
 
-        data_file = self.raw_data_file
+        Also tag whether a new downsample is required. This is indicated by returning "new_downsamp_file"
+        that is not None.
+
+        Saved downsample data are in micro-volts units and full sources are in system-specific units. Determine the
+        correct units scaling to self.units for both cases and return this as "units_scale"
+
+        Returns
+        -------
+        data_file: str
+            Data file to use for the beginning of the load sequence.
+        new_downsamp_file: str or None
+            Calculated name for the downsample file that needs to be created, or None if no downsampling is needed.
+        units_scale:
+            Scale multiplier to get values in data_file into self.units.
+
+        """
+
+        data_file = self.primary_data_file
         units_scale = convert_scale(self.scale_to_uv, 'uv', self.units)
 
         # Find the full sample rate, if the full resolution file even exists (otherwise it's still possible to load a

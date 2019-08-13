@@ -81,8 +81,8 @@ class RHDLoader(FileLoader):
         Return full sampling rate (or -1 if there is no raw data file)
         """
 
-        if os.path.exists(self.raw_data_file):
-            with h5py.File(self.raw_data_file, 'r') as h5file:
+        if os.path.exists(self.primary_data_file):
+            with h5py.File(self.primary_data_file, 'r') as h5file:
                 header = json.loads(h5file.attrs['JSON_header'])
                 samp_rate = header['sample_rate']
         else:
