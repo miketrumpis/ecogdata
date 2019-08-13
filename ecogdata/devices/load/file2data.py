@@ -81,8 +81,9 @@ class FileLoader:
             port, use `load_channels=range(128)`. Otherwise all channels are used.
         trigger_idx: int or sequence
             The index/indices of a logic-level trigger signal in this class's trigger_array
-        mapped: bool
-            If True, leave the dataset mapped to file. Otherwise load to memory.
+        mapped: bool or str
+            If True, leave the dataset mapped to file. Otherwise load to memory. If the (mode == 'r+') then the
+            mapped source will be writeable. (This will make a copy of the primary or downsampled datasource.)
         resample_rate: float
             Downsample recording to this rate (must evenly divide the raw sample rate)
         use_stored: bool
@@ -103,7 +104,14 @@ class FileLoader:
         self.units = units
         self.load_channels = load_channels
         self.trigger_idx = trigger_idx
-        self.mapped = mapped
+        if isinstance(mapped, str):
+            if mapped.lower() != 'r+':
+                print('mapped value {} is not "r+", but proceeding with "r+" mode anyway'.format(mapped))
+            self.mapped = True
+            self.ensure_writeable = True
+        else:
+            self.mapped = mapped
+            self.ensure_writeable = False
         self.resample_rate = resample_rate
         self.use_stored = use_stored
         self.save_downsamp = save_downsamp
@@ -395,7 +403,7 @@ class FileLoader:
         # Promote to a writeable and possibly RAM-loaded array here if either the final source should be loaded,
         # or if the mapped source is not writeable.
         needs_load = isinstance(datasource, MappedSource) and not self.mapped
-        needs_writeable = (self.bandpass or self.notches) and not datasource.writeable
+        needs_writeable = (self.ensure_writeable or self.bandpass or self.notches) and not datasource.writeable
         if needs_load or needs_writeable:
             # Need to make writeable copies of these data sources. If the final source is to be loaded, then mirror
             # to memory here. Copy everything to memory if not mapped, otherwise copy only aligned arrays.

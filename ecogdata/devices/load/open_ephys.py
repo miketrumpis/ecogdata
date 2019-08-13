@@ -22,6 +22,7 @@ from . import _OpenEphys as OE
 
 from ecogdata.datasource import PlainArraySource
 from ecogdata.devices.electrode_pinouts import get_electrode_map
+from ecogdata.devices.units import convert_scale
 
 from .file2data import FileLoader
 
@@ -475,9 +476,19 @@ class OpenEphysLoader(FileLoader):
                 with NamedTemporaryFile(mode='ab', delete=False, dir='.') as mf:
                     mapped_file = mf.name
                 print('Take note!! Creating full resolution map file {}'.format(mapped_file))
+                # Get a little tricky and see if this source should be writeable. If no, then leave it quantized with
+                # a scaling factor. If yes, then convert the source to microvolts.
+                quantized = not (self.ensure_writeable or self.bandpass or self.notches)
                 hdf5_open_ephys_channels(self.experiment_path, self.recording, mapped_file, data_chans='all',
-                                         quantized=True)
+                                         quantized=quantized)
+                if quantized:
+                    open_mode = 'r'
+                else:
+                    open_mode = 'r+'
+                    self.units_scale = convert_scale(1, 'uv', self.units)
                 data_file = mapped_file
+            print('Calling super to map/load {} in mode {} scaling units {}'.format(data_file, open_mode,
+                                                                                    self.units_scale))
             return super(OpenEphysLoader, self).map_raw_data(data_file, open_mode, electrode_chans,
                                                              ground_chans, ref_chans, downsample_ratio)
 
