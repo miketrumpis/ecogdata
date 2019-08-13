@@ -4,7 +4,7 @@ import numpy as np
 import warnings
 
 from ecogdata.util import Bunch
-from ecogdata.datasource import MappedSource
+from ecogdata.datasource import MappedSource, downsample_and_load
 from ecogdata.devices.electrode_pinouts import get_electrode_map
 from ecogdata.devices.units import convert_scale
 from ecogdata.trigger_fun import process_trigger
@@ -210,9 +210,6 @@ class FileLoader:
         """
         Create a downsampled datasource, possibly in a temporary file.
 
-        TODO: if not saving a downsample and the final source is not to be mapped then there's no need to create a
-         temporary file here only to load it later -- could resample into a PlainArraySource here.
-
         Parameters
         ----------
         data_file: str
@@ -260,13 +257,79 @@ class FileLoader:
         self.transpose_array = False
         return ds_filename
 
+    def map_raw_data(self, data_file, open_mode, electrode_chans, ground_chans, ref_chans, downsample_ratio):
+        """
+        Map (or load) from the raw data file.
+
+        Parameters
+        ----------
+        data_file: str
+            Data path
+        open_mode: str
+            File mode (e.g. 'r', 'r+', ...)
+        electrode_chans: sequence
+            List of channels that correspond to electrodes
+        ground_chans: sequence
+            List of channels that are grounded
+        ref_chans: sequence
+            List of channels that are reference
+        downsample_ratio: int or None
+            If not None, then immediately promote the mapped data sources to downsampled arrays in memory
+
+        Returns
+        -------
+        datasource: ElectrodeArraySource
+            Datasource for electrodes.
+        ground_chans: ElectrodeArraySource
+            Datasource for ground channels. May be an empty list
+        ref_chans: ElectrodeArraySource:
+            Datasource for reference channels. May be an empty list
+
+        """
+        h5file = h5py.File(data_file, open_mode)
+        print('Opening source file {} in mode {}'.format(data_file, open_mode))
+        print('Creating mapped sources: downsample ratio {}'.format(downsample_ratio))
+        datasource = MappedSource(h5file, self.data_array, electrode_channels=electrode_chans,
+                                  aligned_arrays=self.aligned_arrays, units_scale=self.units_scale,
+                                  transpose=self.transpose_array)
+        if ground_chans:
+            ground_chans = MappedSource(h5file, self.data_array, electrode_channels=ground_chans,
+                                        units_scale=self.units_scale, transpose=self.transpose_array)
+        if ref_chans:
+            ref_chans = MappedSource(h5file, self.data_array, electrode_channels=ref_chans,
+                                     units_scale=self.units_scale, transpose=self.transpose_array)
+        if downsample_ratio > 1:
+            print('Downsampling straight to memory')
+            datasource = downsample_and_load(datasource, downsample_ratio, aggregate_aligned=True, verbose=True)
+            if ground_chans:
+                ground_chans = downsample_and_load(ground_chans, downsample_ratio)
+            if ref_chans:
+                ref_chans = downsample_and_load(ref_chans, downsample_ratio)
+        return datasource, ground_chans, ref_chans
+
     def create_dataset(self):
+        """
+        Maps or loads raw data at the specified sampling rate and with the specified filtering applied.
+        TODO: fill in details about load process and sub-class responsibilities
+
+        Returns
+        -------
+        dataset: Bunch
+            Bunch containing ".data" (a DataSource), ".chan_map" (a ChannelMap), and many other metadata attributes.
+
+        """
 
         channel_map, electrode_chans, ground_chans, ref_chans = self.make_channel_map()
 
         data_file = self.data_file
         file_is_temp = False
-        if self.new_downsamp_file is not None:
+        # "new_downsamp_file" is not None if there was no pre-computed downsample. There are three possibilities:
+        # 1. downsample to memory only (not mapped and not saving)
+        # 2. downsample to a temp file (mapped and not saving)
+        # 3. downsample to a named file (saving -- maybe be eventually mapped or not)
+        needs_downsamp = self.new_downsamp_file is not None
+        needs_file = needs_downsamp and (self.save_downsamp or self.mapped)
+        if needs_file:
             # 1. Do downsample conversion in a subroutine
             # 2. Save to a named file if save_downsamp is True
             # 3. Determine if the new source file is writeable (i.e. a temp file) or not
@@ -277,13 +340,17 @@ class FileLoader:
             data_file = self.create_downsample_file(self.data_file, self.resample_rate, downsamp_file)
             file_is_temp = not self.save_downsamp
             self.units_scale = convert_scale(1, 'uv', self.units)
+            needs_downsamp = False
+            downsample_ratio = 1
+        elif needs_downsamp:
+            # The "else" case now is that the master electrode source (and ref and ground channels)
+            # needs downsampling to PlainArraySources
+            downsample_ratio = self.raw_sample_rate() / self.resample_rate
+        else:
+            downsample_ratio = 1
 
         open_mode = 'r+' if file_is_temp else 'r'
-        print('Opening source file {} in mode {}'.format(data_file, open_mode))
-        h5file = h5py.File(data_file, open_mode)
-        # n_amplifier_channels = h5file['amplifier_data'].shape[0]
-        # header = json.loads(h5file.attrs['JSON_header'])
-        # n_amplifier_channels = h5file[self.data_array].shape[int(self.transpose_array)]
+
         Fs = self.raw_sample_rate()
         if self.resample_rate:
             Fs = self.resample_rate
@@ -303,20 +370,16 @@ class FileLoader:
             ground_chans = [n for n in ground_chans if n in self.load_channels]
             ref_chans = [n for n in ref_chans if n in self.load_channels]
 
-        print('Creating mapped sources')
-        datasource = MappedSource(h5file, self.data_array, electrode_channels=electrode_chans,
-                                  aligned_arrays=self.aligned_arrays, units_scale=self.units_scale,
-                                  transpose=self.transpose_array)
-        if ground_chans:
-            ground_chans = MappedSource(h5file, self.data_array, electrode_channels=ground_chans,
-                                        units_scale=self.units_scale, transpose=self.transpose_array)
-        if ref_chans:
-            ref_chans = MappedSource(h5file, self.data_array, electrode_channels=ref_chans,
-                                     units_scale=self.units_scale, transpose=self.transpose_array)
+        # Setting up sources should be out-sourced to a method subject to overloading. For example open-ephys data are
+        # stored
+        # file-per-channel. In the case of loading to memory a full sampling rate recording, the original logic would
+        # require packing to HDF5 before loading (inefficient).
+        datasource, ground_chans, ref_chans = self.map_raw_data(data_file, open_mode, electrode_chans, ground_chans,
+                                                                ref_chans, downsample_ratio)
 
         # Promote to a writeable and possibly RAM-loaded array here if either the final source should be loaded,
         # or if the mapped source is not writeable.
-        needs_load = not self.mapped
+        needs_load = isinstance(datasource, MappedSource) and not self.mapped
         needs_writeable = (self.bandpass or self.notches) and not datasource.writeable
         if needs_load or needs_writeable:
             # Need to make writeable copies of these data sources. If the final source is to be loaded, then mirror
@@ -362,12 +425,6 @@ class FileLoader:
             if ref_chans:
                 ref_chans = ref_chans.notch_filter(out=ref_chans_w, **notch_kwargs)
 
-        # TODO: when create_downsample is changed to downsample directly into a plain source it raises the
-        #  possibility that the residual data_file will be out-of-sync with the data array. This was the concern
-        #  behind putting external signals in the form of "aligned_arrays". But for some datasets (nat'l
-        #  instruments), all of the external and data channels go into the same array.
-        #  Option 1: create a new or linked dataset with the exctracted channels (would requires modifying source file)
-        #  Option 2: extract channels that can be accessed with the same syntax as a second array
         trigger_signal, pos_edge = self.find_trigger_signals(data_file)
 
         # Viventi lab convention: stim signal would be on the next available ADC channel... skip explicitly loading

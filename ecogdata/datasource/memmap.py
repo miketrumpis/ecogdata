@@ -16,7 +16,7 @@ from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
 from .array_abstractions import HDF5Buffer, slice_to_range
 
 
-__all__ = ['MappedSource', 'MemoryBlowOutError']
+__all__ = ['MappedSource', 'MemoryBlowOutError', 'downsample_and_load']
 
 
 # TODO: figure out how to create a temp file for writing that can be re-opened in read-only mode and still be deleted
@@ -525,3 +525,23 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
             out[sl] = xcf
     del xc
     del xcf
+
+
+def downsample_and_load(mapped_source, downsample_ratio, **kwargs):
+    """
+
+    Parameters
+    ----------
+    mapped_source: MappedSource
+    downsample_ratio: int
+
+    Returns
+    -------
+    new_source: PlainArraySource
+
+    """
+    kwargs.setdefault('filter_inplace', True)
+    kwargs.setdefault('aggregate_aligned', True)
+    new_source = mapped_source.mirror(new_rate_ratio=downsample_ratio, mapped=False)
+    mapped_source.batch_change_rate(downsample_ratio, new_source, **kwargs)
+    return new_source
