@@ -119,6 +119,7 @@ def hdf5_open_ephys_channels(
 
     """
 
+    downsamp = int(downsamp)
     if downsamp > 1:
         quantized = False
     
@@ -166,7 +167,7 @@ def hdf5_open_ephys_channels(
 
     ## with closing(tables.open_file(f, mode)) as f:
     with tables.open_file(hdf5_name, mode='w') as h5:
-        h5.create_array('/', 'Fs', trueFs/downsamp)
+        h5.create_array('/', 'Fs', trueFs / downsamp)
         chans = h5.create_carray('/', 'chdata', atom=atom, shape=(n_chan, d_len))
 
 
@@ -415,7 +416,7 @@ class OpenEphysLoader(FileLoader):
         try:
             trigger_idx = [t + 1 for t in trigger_idx]
             trigger_signal = OE.loadFolderToTransArray(data_file, dtype=float, ctype='ADC', source=rec_num[0],
-                                                       channels=trigger_idx)
+                                                       channels=trigger_idx, verbose=False)
             pos_edge = process_trigger(trigger_signal)[0]
             return trigger_signal, pos_edge
         except (IndexError, ValueError) as e:
