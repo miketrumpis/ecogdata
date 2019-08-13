@@ -201,6 +201,23 @@ class FileLoader:
         return data_file, new_downsamp_file, units_scale
 
     def make_channel_map(self):
+        """
+        Return a ChannelMap and vectors of data array channels corresponding to electrode, grounded inputs,
+        and reference electrodes.
+
+        Returns
+        -------
+        channel_map: ChannelMap
+            data-channel to electrode-grid map
+        electrode_chans: list
+            data channels that are electrodes
+        grounded: list
+            data channels that are grounded input (possibly empty)
+        reference: list
+            data channels that are reference electrodes (possibly empty)
+
+        """
+
         channel_map, grounded, reference = get_electrode_map(self.electrode)
         with h5py.File(self.data_file, 'r') as h5file:
             n_data_channels = h5file[self.data_array].shape[int(self.transpose_array)]
@@ -208,6 +225,24 @@ class FileLoader:
         return channel_map, electrode_chans, grounded, reference
 
     def find_trigger_signals(self, data_file):
+        """
+        Extract trigger timing information from the data_file using `ecogdata.trigger_fun.process_triggers`. This
+        will almost definitely be overloaded for each acquisition system.
+
+        Parameters
+        ----------
+        data_file: str
+            Raw data file where external input data should be found
+
+        Returns
+        -------
+        trigger_signal: ndarray
+            binarized trigger signal
+        pos_edge: ndarray
+            Vector of index ticks marking the "rising edge" (or timestamps) of triggered events
+
+        """
+
         trigger_idx = self.trigger_idx
         with h5py.File(data_file, 'r') as h5file:
             if not np.iterable(trigger_idx):
@@ -231,7 +266,16 @@ class FileLoader:
     def create_downsample_file(self, data_file, resample_rate, downsamp_file, antialias_aligned=False,
                                aggregate_aligned=True):
         """
-        Create a downsampled datasource, possibly in a temporary file.
+        Create a downsampled datasource, possibly in a temporary file. The downsampled source is created by mapping
+        and mirroring *all* channels of the raw source. The resulting data file is a channel-compatible source with
+        downsampled array(s). The downsampled source *always* has floating point arrays with values in micro-volts
+        units.
+
+        The core method does not handle any metadata: this should be handled by overloading in this manner:
+
+        ds_file = super().create_downsample_file(data_file, resample_rate, ...)
+        with h5py.File(data_file, 'r') as orig_file, h5py.File(ds_file, 'r+') as new_file:
+            # add/copy other metadata from the original source file
 
         Parameters
         ----------
@@ -282,7 +326,13 @@ class FileLoader:
 
     def map_raw_data(self, data_file, open_mode, electrode_chans, ground_chans, ref_chans, downsample_ratio):
         """
-        Map (or load) from the raw data file.
+        Map (or load) from the raw data file. This method is called in two scenarios. The simple scenario is to
+        memory-map electrode and other channels from a source HDF5 file and return those maps. A second scenario
+        takes place when a new, downsampled dataset is not to be mapped nor is the downsample source to be saved. In
+        this case, downsample to in-memory data sources directly after mapping the raw source.
+
+        For some recording systems, it would be more efficient to handle the loading scenarios separately rather than
+        sequentially. See `open_ephys.OpenEphysLoader.map_raw_data` for an example.
 
         Parameters
         ----------
@@ -333,7 +383,31 @@ class FileLoader:
     def create_dataset(self):
         """
         Maps or loads raw data at the specified sampling rate and with the specified filtering applied.
-        TODO: fill in details about load process and sub-class responsibilities
+        The sequence of steps follows a general logic with loading and transformation methods that can be delegated
+        to subtypes.
+
+        The final dataset can be either memory-mapped or not and downsampled or not. To avoid unnecessary
+        file/memory copies, datasets are created along this path:
+
+        This object has a "data_file" to begin dataset creation with. If downsampling, then a new file must be created
+        in the case of mapping and/or saving the results. That new file source is created in
+        `create_downsample_file` (candidate for overloading), and supercedes the source "data_file".
+
+        Source file channels are organized into electrode channels and possible grounded input and reference channels.
+
+        The prevailing "data_file" (primary or downsampled) is mapped or loaded in `map_raw_data`. If mapped,
+        then MappedSource types are returned, else PlainArraySource types are retured. If downsampling is
+        still pending (because the created dataset is neither mapped nor is the downsample saved), then memory
+        loading is implied. This is handled by making the downsample conversion directly to memory within
+        the `map_raw_data` method (another candidate for overloading).
+
+        Check if read/write access is required for filtering, or because of self.ensure_writeable. If the data
+        sources at this point are not writeable (e.g. mapped primary sources), then mirror to writeable files. If the
+        dataset is not to be mapped, then promote to memory if necessary.
+
+        Do filtering if necessary.
+
+        Do timing extraction if necessary via `find_trigger_signals` (system specific).
 
         Returns
         -------
@@ -363,7 +437,6 @@ class FileLoader:
             data_file = self.create_downsample_file(self.data_file, self.resample_rate, downsamp_file)
             file_is_temp = not self.save_downsamp
             self.units_scale = convert_scale(1, 'uv', self.units)
-            needs_downsamp = False
             downsample_ratio = 1
         elif needs_downsamp:
             # The "else" case now is that the master electrode source (and ref and ground channels)
