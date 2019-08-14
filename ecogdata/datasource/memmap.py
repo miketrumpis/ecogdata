@@ -487,18 +487,17 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
     if verbose:
         itr = tqdm(itr, desc='Blockwise filtering', leave=True, total=len(itr))
     for xc, sl in itr:
-        # xc = x[sl]
         if zi is None:
             zi = zii[zi_sl] * xc[xc_sl]
-        xcf, zi = lfilter(b, a, xc, axis=1, zi=zi)
+        # treat xc as mutable, since it is sliced from a mapped source
+        xc, zi = lfilter(b, a, xc, out=xc, axis=1, zi=zi)
         if out is None:
-            x[sl] = xcf
+            x[sl] = xc
         else:
-            out[sl] = xcf
+            out[sl] = xc
 
     if not filtfilt:
         del xc
-        del xcf
         return
 
     # Nullify initial conditions for reverse run (not sure if it's correct, but it's compatible with bfilter from
@@ -511,20 +510,15 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
     if verbose:
         itr = tqdm(itr, desc='Blockwise filtering (reverse)', leave=True, total=len(itr))
     for xc, sl in itr:
-        # if out is None:
-        #     xc = x[sl]
-        # else:
-        #     xc = out[sl]
         if zi is None:
             zi = zii[zi_sl] * xc[xc_sl]
-        xcf, zi = lfilter(b, a, xc, axis=1, zi=zi)
+        xc, zi = lfilter(b, a, xc, out=xc, axis=1, zi=zi)
         # write out with negative step slices (buffer will correct the write order)
         if out is None:
-            x[sl] = xcf
+            x[sl] = xc
         else:
-            out[sl] = xcf
+            out[sl] = xc
     del xc
-    del xcf
 
 
 def downsample_and_load(mapped_source, downsample_ratio, **kwargs):
