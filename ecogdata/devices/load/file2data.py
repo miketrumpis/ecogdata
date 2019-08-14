@@ -476,18 +476,23 @@ class FileLoader:
         # Promote to a writeable and possibly RAM-loaded array here if either the final source should be loaded,
         # or if the mapped source is not writeable.
         needs_load = isinstance(datasource, MappedSource) and not self.mapped
-        needs_writeable = (self.ensure_writeable or self.bandpass or self.notches) and not datasource.writeable
+        filtering = self.bandpass or self.notches
+        needs_writeable = (self.ensure_writeable or filtering) and not datasource.writeable
         if needs_load or needs_writeable:
             # Need to make writeable copies of these data sources. If the final source is to be loaded, then mirror
             # to memory here. Copy everything to memory if not mapped, otherwise copy only aligned arrays.
-            print('Creating writeable mirrored sources')
-            copy_mode = 'aligned' if self.mapped else 'all'
+            if not self.mapped or not filtering:
+                # Load data if not mapped. If mapped as writeable but not filtering, then copy to new file
+                copy_mode = 'all'
+            else:
+                copy_mode = 'aligned'
+            print('Creating writeable mirrored sources with copy mode: {}'.format(copy_mode))
             datasource_w = datasource.mirror(mapped=self.mapped, writeable=True, copy=copy_mode)
             if ground_chans:
                 ground_chans_w = ground_chans.mirror(mapped=self.mapped, writeable=True, copy=copy_mode)
             if ref_chans:
                 ref_chans_w = ref_chans.mirror(mapped=self.mapped, writeable=True, copy=copy_mode)
-            if not self.mapped:
+            if not self.mapped or not filtering:
                 # swap handles of these objects
                 datasource = datasource_w; datasource_w = None
                 if ground_chans:
@@ -496,7 +501,7 @@ class FileLoader:
                     ref_chans = ref_chans_w; ref_chans_w = None
 
         # For the filter blocks...
-        # If mapped, then datasource and datasource_w will be identical.
+        # If mapped, then datasource and datasource_w will be identical (after filter_array call)
         # If loaded, then datasource_w is None and datasource is filtered in-place
         if self.bandpass:
             filter_kwargs = dict(ftype='butterworth',
