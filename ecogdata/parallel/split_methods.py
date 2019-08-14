@@ -32,7 +32,7 @@ multi_taper_psd = split_at(splice_at=(1, 2))(multi_taper_psd)
 convolve1d = split_at(split_arg=0)(convolve1d)
 
 # linear filtering wrapper -- converts lfilter to a "void" method rather than returning an array
-@split_at(split_arg=(2, 3, 4), splice_at=(0,))
+# @split_at(split_arg=(2, 3, 4), splice_at=(0,))
 def lfilter_inner(b, a, x, y, zi, **kwargs):
     kwargs['zi'] = zi
     y[:], zi = lfilter_scipy(b, a, x, **kwargs)
