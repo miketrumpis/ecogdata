@@ -383,7 +383,7 @@ class OpenEphysLoader(FileLoader):
         except OSError as e:
             # check for the plain directory first, or also possibly the
             data_path = [osp.join(self.experiment_path, self.recording + ext) for ext in self.permissible_types]
-            exist = [osp.exist(p) for p in data_path]
+            exist = [osp.exists(p) for p in data_path]
             if any(exist):
                 return data_path[exist.index(True)]
             return osp.splitext(data_path[0])[0]
