@@ -1,4 +1,6 @@
 import itertools
+from tempfile import NamedTemporaryFile
+import os
 
 from nose.tools import assert_equal
 from nose.tools import assert_true
@@ -128,18 +130,20 @@ def test_cyclic_constructor():
 
     # test correct length
     assert_true( len(exp) == len(times) )
+
     
 def test_cyclic_from_text():
-    from tempfile import NamedTemporaryFile
     cycle_a = np.random.randint(10, size=4)
     f = NamedTemporaryFile(delete=False)
+    print(f.name)
     np.savetxt(f, cycle_a, fmt='%d')
     f.close()
+    try:
+        exp = StimulatedExperiment.from_repeating_sequences(np.arange(10), dict(A=f.name))
+        assert_array_equal(exp.A[:4], cycle_a)
+    finally:
+        os.unlink(f.name)
 
-    exp = StimulatedExperiment.from_repeating_sequences(
-        np.arange(10), dict(A=f.name)
-        )
-    assert_array_equal( exp.A[:4], cycle_a )
     
 def test_enumerate_condition():
     # test 1-, 2-, 3-conditions
