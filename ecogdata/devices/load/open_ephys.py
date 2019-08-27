@@ -96,7 +96,7 @@ def prepare_paths(exp_path, test, rec_num):
         all_files = glob(osp.join(rec_path, '*.continuous'))
         if not len(all_files):
             raise IOError('No files found')
-        prefixes = set([osp.split(f)[1].split('_')[0] for f in all_files])
+        prefixes = set(['_'.join(osp.split(f)[1].split('_')[:-1]) for f in all_files])
         for pre in sorted(list(prefixes)):
             if len(glob(osp.join(rec_path, pre+'*ADC*.continuous'))):
                 rec_num = (pre,)
@@ -540,7 +540,7 @@ def load_open_ephys(exp_path, test, electrode, rec_num='auto', downsamp=1, useFs
     """
 
     # just silently drop this one
-    loader_kwargs.pop('snip_transient')
+    loader_kwargs.pop('snip_transient', None)
     loader_info = OpenEphysLoader(exp_path, test, electrode)
     # normalize the various resample rate inputs
     if 'resample_rate' not in loader_kwargs:
