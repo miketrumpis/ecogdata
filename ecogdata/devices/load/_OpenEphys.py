@@ -18,6 +18,8 @@ import scipy.io
 import time
 import json
 import re
+from tempfile import TemporaryFile
+
 
 # constants for pre-allocating matrices:
 MAX_NUMBER_OF_SPIKES = 1e6
@@ -245,7 +247,10 @@ def loadContinuous(filepath, dtype=float, verbose=True,
     records_read = 0
     
     # Open the file
-    with open(filepath, 'rb') as f:
+    with open(filepath, 'rb') as f_src, TemporaryFile() as f:
+        # create a LOCAL copy (cheap copy if source file is local, but saves huge bandwidth if source file is remote)
+        f.write(f_src.read())
+        f.seek(0)
         # Read header info, file length, and number of records
         header = readHeader(f)
         record_length_bytes = 2 * header['blockLength'] + 22
