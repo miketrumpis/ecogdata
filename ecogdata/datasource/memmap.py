@@ -1,3 +1,6 @@
+import os
+from shutil import rmtree
+import atexit
 from tempfile import NamedTemporaryFile  # , _TemporaryFileCloser
 import numpy as np
 import h5py
@@ -16,34 +19,37 @@ from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
 from .array_abstractions import HDF5Buffer, slice_to_range
 
 
-__all__ = ['MappedSource', 'MemoryBlowOutError', 'downsample_and_load']
+__all__ = ['TempFilePool', 'MappedSource', 'MemoryBlowOutError', 'downsample_and_load', 'bfilter']
 
 
-# TODO: figure out how to create a temp file for writing that can be re-opened in read-only mode and still be deleted
-#  after closing
-# class ClosesAfterReopening(object):
-#
-#     def __init__(self, *args, **kwargs):
-#         delete = kwargs.pop('delete', True)
-#         self._will_delete = delete
-#         kwargs['delete'] = False
-#         self._args = args
-#         self._kwargs = kwargs
-#         self._open_count = 0
-#         self.file = NamedTemporaryFile(*args, **kwargs)
-#
-#
-#     def __enter__(self):
-#         self._open_count += 1
-#         if self._open_count == 2:
-#             self.file.file = open(self.file.name, 'r')
-#             self.file._closer = _TemporaryFileCloser(self.file.file, self.file.name, self._will_delete)
-#         self.file.__enter__()
-#         return self
-#
-#
-#     def __exit__(self, exc, value, tb):
-#         return self.file.__exit__(exc, value, tb)
+class TempFilePool:
+
+    pool_dir = 'MAPPED_TEMPFILES'
+
+    def __init__(self, *args, **kwargs):
+        kwargs['dir'] = TempFilePool.pool_dir
+        kwargs['delete'] = False
+        if not os.path.exists(TempFilePool.pool_dir):
+            os.makedirs(TempFilePool.pool_dir)
+            with open(os.path.join(TempFilePool.pool_dir, 'README.txt'), 'w') as fw:
+                fw.write('This directory contains temporary files for memory mapped arrays. It should be deleted.\n')
+        self.tf = NamedTemporaryFile(*args, **kwargs)
+
+    def __enter__(self):
+        self.tf.__enter__()
+        return self.tf
+
+    def __exit__(self, exc, value, tb):
+        return self.tf.__exit__(exc, value, tb)
+
+
+def _remove_pool():
+    if os.path.exists(TempFilePool.pool_dir):
+        print('Removing temp directory', TempFilePool.pool_dir)
+        rmtree(TempFilePool.pool_dir)
+
+
+atexit.register(_remove_pool)
 
 
 class MemoryBlowOutError(Exception):
@@ -404,7 +410,7 @@ class MappedSource(ElectrodeDataSource):
                 units_scale = self._units_scale
             tempfile = not filename
             if tempfile:
-                with NamedTemporaryFile(mode='ab', dir='.', delete=False) as f:
+                with TempFilePool(mode='ab') as f:
                     # punt on the unlink-on-close issue for now with "delete=False"
                     # f.file.close()
                     filename = f.name

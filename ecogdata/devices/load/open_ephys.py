@@ -9,7 +9,6 @@ from lxml import etree
 import numpy as np
 import tables
 import h5py
-from tempfile import NamedTemporaryFile
 
 from ecogdata.trigger_fun import process_trigger
 from ecogdata.filt.time import cheby2_bp, downsample
@@ -21,6 +20,7 @@ from ecogdata.parallel.split_methods import filtfilt
 from . import _OpenEphys as OE
 
 from ecogdata.datasource import PlainArraySource
+from ecogdata.datasource.memmap import TempFilePool
 from ecogdata.devices.electrode_pinouts import get_electrode_map
 from ecogdata.devices.units import convert_scale
 
@@ -432,7 +432,7 @@ class OpenEphysLoader(FileLoader):
     def create_downsample_file(self, data_file, resample_rate, downsamp_file, antialias_aligned=False,
                                aggregate_aligned=True):
         if not downsamp_file:
-            with NamedTemporaryFile(mode='ab', delete=False, dir='.') as downsamp_file:
+            with TempFilePool(mode='ab') as downsamp_file:
                 ds_filename = downsamp_file.name
         else:
             ds_filename = downsamp_file
@@ -473,7 +473,7 @@ class OpenEphysLoader(FileLoader):
         if downsample_ratio == 1:
             if os.path.isdir(data_file):
                 # mapped_file = data_file + '.h5'
-                with NamedTemporaryFile(mode='ab', delete=False, dir='.') as mf:
+                with TempFilePool(mode='ab') as mf:
                     mapped_file = mf.name
                 print('Take note!! Creating full resolution map file {}'.format(mapped_file))
                 # Get a little tricky and see if this source should be writeable. If no, then leave it quantized with
