@@ -499,13 +499,17 @@ class FileLoader:
                     ground_chans = ground_chans_w; ground_chans_w = None
                 if ref_chans:
                     ref_chans = ref_chans_w; ref_chans_w = None
+        elif filtering:
+            # in this case the datasource was already writeable/loaded
+            datasource_w = ground_chans_w = ref_chans_w = None
 
         # For the filter blocks...
         # If mapped, then datasource and datasource_w will be identical (after filter_array call)
         # If loaded, then datasource_w is None and datasource is filtered in-place
         if self.bandpass:
+            # filter inplace if the "writeable" source is set to None
             filter_kwargs = dict(ftype='butterworth',
-                                 inplace=not self.mapped,
+                                 inplace=datasource_w is None,
                                  design_kwargs=dict(lo=self.bandpass[0], hi=self.bandpass[1], Fs=Fs),
                                  filt_kwargs=dict(filtfilt=True))
             if self.mapped:
