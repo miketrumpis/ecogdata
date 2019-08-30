@@ -476,7 +476,7 @@ class FileLoader:
         # Promote to a writeable and possibly RAM-loaded array here if either the final source should be loaded,
         # or if the mapped source is not writeable.
         needs_load = isinstance(datasource, MappedSource) and not self.mapped
-        filtering = self.bandpass or self.notches
+        filtering = bool(self.bandpass) or bool(self.notches)
         needs_writeable = (self.ensure_writeable or filtering) and not datasource.writeable
         if needs_load or needs_writeable:
             # Need to make writeable copies of these data sources. If the final source is to be loaded, then mirror
