@@ -21,13 +21,41 @@ def map_intersection(maps):
 class ChannelMap(list):
     "A map of sample vector(s) to a matrix representing 2D sampling space."
     
-    def __init__(self, chan_map, geo, col_major=True, pitch=1.0):
+    def __init__(self, chan_map, geometry, col_major=False, pitch=1.0):
+        """
+        A ChannelMap is a vector of grid locations in flat indexing that correspond to the electrode location of data
+        channels in counting order. E.g. a channel map of [2, 0, 1] for 3 channels [a, b, c] with geometry (2,
+        2) maps to
+
+        [[b, a],
+        [[c, -]] <-- (col-major)
+
+        [[b, c],
+        [[a, -]] <-- (row-major)
+
+        Parameters
+        ----------
+        chan_map: sequence
+            Vector of flat indices into a grid with given geometry
+        geo: 2-tuple
+            Rows, columns of the array
+        col_major: bool
+            Flat indexing is for column-major addressing. Default is False for row-major.
+        pitch: float or tuple
+            The electrode pitch, either as a single distance or as (dy, dx)
+        """
         list.__init__(self)
         self[:] = chan_map
         self.col_major = col_major
-        self.geometry = geo
+        self.geometry = geometry
         self.pitch = pitch
         self._combs = None
+        if np.iterable(pitch):
+            dy, dx = pitch
+        else:
+            dy = dx = pitch
+        r, c = geometry
+        self.boundary = (-dx / 2.0, (c - 0.5) * dx, -dy / 2.0, (r - 0.5) * dy)
 
 
     @classmethod
@@ -287,7 +315,7 @@ class ChannelMap(list):
 class CoordinateChannelMap(ChannelMap):
     "A map of sample vector(s) to a coordinate space."
 
-    def __init__(self, coordinates, geometry='auto', pitch=1.0, col_major=True):
+    def __init__(self, coordinates, geometry='auto', pitch=1.0, col_major=False):
         """
         Parameters
         ----------
@@ -300,7 +328,7 @@ class CoordinateChannelMap(ChannelMap):
         list.__init__(self)
         self[:] = coordinates
         yy, xx = zip(*self)
-        self.boundary = (min(yy), max(yy), min(xx), max(xx))
+        self.boundary = (min(xx), max(xx), min(yy), max(yy))
         self.pitch = pitch
         if len(self) > 1:
             self._combs = channel_combinations(self, scale=pitch)
@@ -421,8 +449,8 @@ class CoordinateChannelMap(ChannelMap):
             grid_pts = (grid_pts, grid_pts)
         else:
             pass
-        yg = np.linspace(g[0], g[1], grid_pts[0])
-        xg = np.linspace(g[2], g[3], grid_pts[1])
+        yg = np.linspace(g[2], g[3], grid_pts[0])
+        xg = np.linspace(g[0], g[1], grid_pts[1])
         xg, yg = np.meshgrid(xg, yg, indexing='xy')
         def f(x, interp_mode):
             xgr = xg.ravel()
