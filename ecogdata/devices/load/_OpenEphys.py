@@ -107,16 +107,18 @@ def loadFolderToArray(folderpath, channels='all', dtype=float,
         stop_record = header['n_records']
 
     # Extract each channel in order
-    arr_l = []
+    first_chan = loadContinuous(os.path.join(folderpath, filelist[0]), dtype, start_record=start_record,
+                                stop_record=stop_record, verbose=verbose)['data']
+    data_array = np.empty((len(first_chan), len(filelist)), first_chan.dtype)
+    data_array[:, 0] = first_chan
+    n = 1
     for filename in filelist:
         arr = loadContinuous(os.path.join(folderpath, filename), dtype,
             start_record=start_record, stop_record=stop_record, 
             verbose=verbose)['data']
-        arr_l.append(arr)
+        data_array[:, n] = arr
+        n += 1
 
-    # Concatenate into an array of shape (n_samples, n_channels)
-    data_array = np.transpose(arr_l)
-    
     if verbose:
         time_taken = time.time() - t0
         print('Avg. Load Time: %0.3f sec' % (time_taken / len(filelist)))
@@ -160,23 +162,22 @@ def loadFolderToTransArray(folderpath, channels='all', dtype=float,
     # Keep track of the time taken
     t0 = time.time()
 
-    # Get the header info and use this to set start_record and stop_record
-    header = get_header_from_folder(folderpath, filelist)
     if start_chan is None:
         start_chan = 0
     if stop_chan is None:
         stop_chan = len(filelist)
 
     # Extract groups of channels
-    arr_l = []    
-    for filename in filelist[start_chan:stop_chan]:
+    first_chan = loadContinuous(os.path.join(folderpath, filelist[start_chan]), dtype, verbose=verbose)['data']
+    data_array = np.empty((stop_chan - start_chan, len(first_chan)), first_chan.dtype)
+    data_array[0] = first_chan
+    n = 1
+    for filename in filelist[start_chan + 1:stop_chan]:
         arr = loadContinuous(os.path.join(folderpath, filename),
                              dtype, verbose=verbose)['data']
-        arr_l.append(arr)
+        data_array[n] = arr
+        n += 1
 
-    # Concatenate into an array of shape (n_channels, n_samples)
-    data_array = np.array(arr_l)
-    
     if verbose:
         time_taken = time.time() - t0
         print('Avg. Load Time: %0.3f sec' % (time_taken / len(filelist)))
@@ -607,8 +608,7 @@ def pack(folderpath, filename='openephys.dat', dref=None,
         if dref and not transpose:              
             # Choose a reference
             if dref == 'ave':
-                reference = np.mean(data_array, 1) if transpsoe \
-                  else np.mean(data_array, 0)
+                reference = np.mean(data_array, 1) if transpose else np.mean(data_array, 0)
             else:
                 # Figure out which channels are included
                 if 'channels' in kwargs and kwargs['channels'] != 'all':
