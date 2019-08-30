@@ -17,7 +17,7 @@ from ecogdata.datastore import load_bunch, save_bunch
 from ecogdata.parallel.array_split import shared_ndarray
 from ecogdata.parallel.split_methods import filtfilt
 
-from . import _OpenEphys as OE
+from . import DataPathError, _OpenEphys as OE
 
 from ecogdata.datasource import PlainArraySource
 from ecogdata.datasource.memmap import TempFilePool
@@ -397,7 +397,7 @@ class OpenEphysLoader(FileLoader):
             channel_files = OE.get_filelist(data_path, source=rec_num[0], ctype='CH')
             n_data_channels = len(channel_files)
         else:
-            with h5py.File(self.primary_data_file, 'r') as h5file:
+            with h5py.File(self.data_file, 'r') as h5file:
                 n_data_channels = h5file[self.data_array].shape[0]
         channel_map, grounded, reference = get_electrode_map(self.electrode)
         electrode_chans = [n for n in range(n_data_channels) if n not in grounded + reference]
@@ -541,13 +541,20 @@ def load_open_ephys(exp_path, test, electrode, rec_num='auto', downsamp=1, useFs
 
     # just silently drop this one
     loader_kwargs.pop('snip_transient', None)
-    loader_info = OpenEphysLoader(exp_path, test, electrode)
-    # normalize the various resample rate inputs
     if 'resample_rate' not in loader_kwargs:
-        if downsamp > 1:
-            loader_kwargs['resample_rate'] = loader_info.raw_sample_rate() / downsamp
-        elif useFs > 0:
+        # If possible, rename useFs to resample_rate
+        if useFs > 0:
             loader_kwargs['resample_rate'] = useFs
+        elif downsamp > 1:
+            # If downsample factor is given, try to find the original sample rate (needs access to primary data)
+            try:
+                loader_info = OpenEphysLoader(exp_path, test, electrode)
+                loader_kwargs['resample_rate'] = loader_info.raw_sample_rate() / downsamp
+            except DataPathError:
+                raise RuntimeError('Could not find the original sampling rate needed to compute a '
+                                   'resample rate given the downsample factor of {}. Try loading again '
+                                   'specifying "resample_rate" in Hz to see if a pre-computed downsample '
+                                   'can be loaded.'.format(downsamp))
     loader = OpenEphysLoader(exp_path, test, electrode, **loader_kwargs)
     return loader.create_dataset()
 
