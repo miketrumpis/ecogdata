@@ -370,6 +370,12 @@ class MappedSource(ElectrodeDataSource):
         if new_rate_ratio:
             T = calc_new_samples(T, new_rate_ratio)
 
+        # if casting to floating point, check for preferred precision
+        fp_precision = load_params().floating_point.lower()
+        fp_dtype = 'f' if fp_precision == 'single' else 'd'
+        fp_dtype = np.dtype(fp_dtype)
+
+        # unpack copy mode
         copy_electrodes_coded = copy.lower() in ('all', 'electrode')
         copy_aligned_coded = copy.lower() in ('all', 'aligned')
         diff_rate = T != self.shape[1]
@@ -401,7 +407,7 @@ class MappedSource(ElectrodeDataSource):
                 electrode_channels = None
                 channel_mask = None
             if writeable:
-                new_dtype = 'd'
+                new_dtype = fp_dtype
                 reopen_mode = 'r+'
                 units_scale = None
             else:
@@ -425,7 +431,7 @@ class MappedSource(ElectrodeDataSource):
                     if len(arr.shape) > 1:
                         dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
                     # is this correct ???
-                    dtype = 'd' if writeable else arr.dtype
+                    dtype = fp_dtype if writeable else arr.dtype
                     fw.create_dataset(name, shape=dims, dtype=dtype, chunks=True)
                     if copy_aligned:
                         aligned = getattr(self, name)[:]
@@ -437,7 +443,7 @@ class MappedSource(ElectrodeDataSource):
         else:
             self._check_slice_size(np.s_[:, :T])
             C = self.shape[0]
-            new_source = shared_ndarray((C, T), 'd')
+            new_source = shared_ndarray((C, T), fp_dtype)
             if copy_electrodes:
                 for block, sl in self.iter_blocks(return_slice=True):
                     new_source[sl] = block
@@ -448,7 +454,7 @@ class MappedSource(ElectrodeDataSource):
                 arr = getattr(self, name)
                 if len(arr.shape) > 1:
                     dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
-                aligned_arrays[name] = shared_ndarray(dims, 'd')
+                aligned_arrays[name] = shared_ndarray(dims, fp_dtype)
                 if copy_aligned:
                     aligned = getattr(self, name)[:]
                     aligned_arrays[name][:] = aligned.T if self._transpose else aligned

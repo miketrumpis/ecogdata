@@ -224,8 +224,10 @@ def loadContinuous(filepath, dtype=float, verbose=True,
         recordingNumber : the recording number of each record of data that
             was read. The length is the same as `timestamps`.
     """
-    if dtype not in [float, np.int16]:
-        raise ValueError("Invalid data type. Must be float or np.int16")
+
+    dtype = np.dtype(dtype)
+    if dtype.char not in ['f', 'd', 'h']:
+        raise ValueError("Invalid data type. Must be single-/double-float or np.int16")
 
     if verbose:
         print("Loading continuous data from " + filepath)
@@ -274,8 +276,7 @@ def loadContinuous(filepath, dtype=float, verbose=True,
         while f.tell() < fileLength and records_read < n_records_to_read:
             # Skip the last record if requested, which usually contains
             # incomplete data
-            if ignore_last_record and f.tell() == (
-                fileLength - record_length_bytes):
+            if ignore_last_record and f.tell() == (fileLength - record_length_bytes):
                 break
             
             # Read the timestamp for this record
@@ -300,9 +301,9 @@ def loadContinuous(filepath, dtype=float, verbose=True,
                 raise IOError("could not load the right number of samples")
             
             # Optionally convert dtype
-            if dtype == float: 
-                data = data * header['bitVolts']
-                        
+            if dtype.char in ('f', 'd'):
+                data = data.astype(dtype) * header['bitVolts']
+
             # Store the data
             samples.append(data)
 

@@ -3,6 +3,7 @@ import numpy as np
 from h5py._hl.selections import select
 from ecogdata.util import ToggleState
 from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.expconfig import load_params
 
 
 __all__ = ['slice_to_range', 'range_to_slice', 'unpack_ellipsis', 'tile_slices', 'MappedBuffer', 'HDF5Buffer']
@@ -191,7 +192,12 @@ class MappedBuffer(object):
                 self._units_scale = units_scale
             if self._units_scale == 1:
                 self._units_scale = None
-        self.dtype = array.dtype if units_scale is None else np.dtype('d')
+        if self._units_scale is None:
+            self.dtype = array.dtype
+        else:
+            fp_precision = load_params().floating_point.lower()
+            typecode = 'f' if fp_precision == 'single' else 'd'
+            self.dtype = np.dtype(typecode)
         self.shape = array.shape
         self._raise_bad_write = raise_bad_write
         # This is a callable -- when called, a content manager is created and the state is toggled in-context
@@ -329,7 +335,12 @@ class ReadCache(object):
                 self._units_scale = units_scale[1]
             else:
                 self._units_scale = units_scale
-        self.dtype = array.dtype if units_scale is None else np.dtype('d')
+        if self._units_scale is None:
+            self.dtype = array.dtype
+        else:
+            fp_precision = load_params().floating_point.lower()
+            typecode = 'f' if fp_precision == 'single' else 'd'
+            self.dtype = np.dtype(typecode)
         self.shape = array.shape
 
     def __len__(self):
@@ -357,7 +368,7 @@ class ReadCache(object):
         else:
             # with self._array.astype('d'):
             #     out = self._array[sl]
-            out_arr = shared_ndarray(out_shape, 'd')
+            out_arr = shared_ndarray(out_shape, self.dtype.char)
             self._array.read_direct(out_arr, source_sel=sl)
             return self._scale_segment(out_arr)
         # indx, srange = sl

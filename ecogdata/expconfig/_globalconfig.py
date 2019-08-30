@@ -1,12 +1,10 @@
 import os
-import six
-if six.PY3:
-    from configparser import ConfigParser
-    SafeConfigParser = ConfigParser
-else:
-    from ConfigParser import ConfigParser, SafeConfigParser
+from configparser import ConfigParser
 from ecogdata.util import Bunch
 from .config_decode import *
+
+
+SafeConfigParser = ConfigParser
 
 
 all_keys = {
@@ -15,6 +13,7 @@ all_keys = {
     'stash_path': Path,
     'user_sessions': Path,
     'clear_temp_converted': BoolOrNum,
+    'floating_point': Parameter,  # just a string
     'memory_limit': TypedParam.from_type(float),
     'channel_mask': Path
 }
