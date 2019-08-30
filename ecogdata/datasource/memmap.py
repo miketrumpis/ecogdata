@@ -496,6 +496,8 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
     # fir_size = len(b)
     zi = None
     itr = x.iter_blocks(return_slice=True)
+    # Disable verbose & tqdm -- garbage collection issue
+    verbose = False
     if verbose:
         itr = tqdm(itr, desc='Blockwise filtering', leave=True, total=len(itr))
     for xc, sl in itr:

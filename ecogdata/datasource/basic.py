@@ -181,13 +181,17 @@ class ElectrodeDataSource(object):
         if new_source.shape[1] != calc_new_samples(self.shape[1], new_rate_ratio):
             raise ValueError('Output source has the wrong series length: {}'.format(new_source.shape[1]))
         chan_itr = self.iter_channels(return_slice=True)
+        # DISABLE tqdm for now -- it seems to hold onto a reference for the iteration variable (i.e. big array) and
+        # prevents garbage collection
+        verbose = False
         if verbose:
             chan_itr = tqdm(chan_itr, desc='Downsampling channels', leave=True, total=len(chan_itr))
-        # for raw_channels, sl in self.iter_channels(return_slice=True):
+
         for raw_channels, sl in chan_itr:
             # kind of fake the sampling rate
             r = downsample(raw_channels, float(new_rate_ratio), r=new_rate_ratio, filter_inplace=filter_inplace)[0]
             new_source[sl] = r
+            del raw_channels
 
         # now decimate aligned_channels with or without anti-aliasing -- *assuming* that a full load won't bust RAM
         for k_src, k_dst in zip(self.aligned_arrays, new_source.aligned_arrays):
