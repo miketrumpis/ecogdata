@@ -321,7 +321,7 @@ class MappedSource(ElectrodeDataSource):
         kwargs['block_filter'] = bfilter
         # kwargs['inplace'] = True
         filter_array(self, **kwargs)
-        if kwargs.pop('out', None) is not None:
+        if kwargs.get('out', None) is not None:
             return kwargs['out']
         return self
 
@@ -329,7 +329,7 @@ class MappedSource(ElectrodeDataSource):
         kwargs['block_filter'] = bfilter
         # kwargs['inplace'] = True
         notch_all(self, **kwargs)
-        if kwargs.pop('out', None) is not None:
+        if kwargs.get('out', None) is not None:
             return kwargs['out']
         return self
 
