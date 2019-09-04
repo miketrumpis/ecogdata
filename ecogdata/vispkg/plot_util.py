@@ -383,7 +383,7 @@ def _median_ci(samps, boots=1000, ci=95.0):
     """
     Returns (med_ci_lo, median, med_ci_hi) and then 25th and 7th pctiles.
     """
-    from ecogdata.numutil import bootstrap_stat
+    from ecogdata.util import bootstrap_stat
 
     q1 = bootstrap_stat(samps, func=np.percentile, args=[25], n_boot=boots)
     md = bootstrap_stat(samps, func=np.percentile, args=[50], n_boot=boots)

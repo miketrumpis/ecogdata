@@ -1,11 +1,7 @@
-from functools import partial
-
 from ecogdata.parallel.split_methods import multi_taper_psd
 from ecogdata.filt.time import *
-import ecogdata.numutil as nut
-import ecogdata.util as ut
+from ecogdata.util import nextpow2, fenced_out, get_default_args
 
-from ecogdata.parallel.mproc import multiprocessing as mp
 from .plot_util import filled_interval, light_boxplot
 from .colormaps import nancmap
 from ecogdata.devices.units import nice_unit_text
@@ -56,7 +52,7 @@ def bad_channel_mask(pwr_est, iqr=4.0, **kwargs):
     kwargs.setdefault('quantiles', (25, 75))
     kwargs.setdefault('thresh', iqr)
     kwargs.setdefault('low', True)
-    msub = nut.fenced_out(pwr_est[m], **kwargs)
+    msub = fenced_out(pwr_est[m], **kwargs)
     m[m] = msub
     return m
 
@@ -94,7 +90,7 @@ def plot_psds(
 
     # compute outliers based on sum power
     if not iqr_thresh:
-        iqr_thresh = ut.get_default_args(nut.fenced_out)['thresh']
+        iqr_thresh = get_default_args(fenced_out)['thresh']
 
     import matplotlib.pyplot as pp
     fig = pp.figure()
@@ -191,7 +187,7 @@ def plot_mean_psd(
     import matplotlib.pyplot as pp
     # compute outliers based on sum power
     if not iqr_thresh:
-        iqr_thresh = ut.get_default_args(nut.fenced_out)['thresh']
+        iqr_thresh = get_default_args(fenced_out)['thresh']
 
     s_pwr = band_power(f, df, fc=fc, root_hz=root_hz)
     s_pwr_mask = bad_channel_mask(np.log(s_pwr), iqr=iqr_thresh)
@@ -230,7 +226,7 @@ def plot_mean_psd(
     if gf is not None and len(gf):
         g_pwr = band_power(f, gf, fc=fc, root_hz=root_hz)
         if len(g_pwr) > 1:
-            g_pwr_mask = nut.fenced_out(np.log(g_pwr), thresh=iqr_thresh)
+            g_pwr_mask = fenced_out(np.log(g_pwr), thresh=iqr_thresh)
         else:
             g_pwr_mask = np.array([True])
         g_pwr_mean = np.mean(g_pwr[g_pwr_mask])
@@ -324,7 +320,7 @@ def _old_block_psds(data, btime, Fs, max_blocks=-1, **mtm_kw):
     if max_blocks > 0:
         nblock = min(max_blocks, nblock)
 
-    nfft = nut.nextpow2(bsize)
+    nfft = nextpow2(bsize)
     # try to keep computation chunks to modest sizes.. 6 GB
     # so (2*NW) * nfft * nchan * sizeof(complex128) * comp_blocks < 3 GB
     n_tapers = 2.0 * mtm_kw['NW']
@@ -403,7 +399,7 @@ def block_psds(data, btime, Fs, max_blocks=-1, old_blocks=False, **mtm_kw):
     if max_blocks > 0:
         nblock = min(max_blocks, nblock)
 
-    nfft = nut.nextpow2(bsize)
+    nfft = nextpow2(bsize)
     # try to keep computation chunks to modest sizes.. 6 GB
     # so (2*NW) * nfft * nchan * sizeof(complex128) * comp_blocks < 3 GB
     n_tapers = 2.0 * mtm_kw['NW']
@@ -463,7 +459,7 @@ def safe_avg_power(
     axis = 0 if mask_per_chan else None
     if not mean:
         return rms_vals
-    omask = nut.fenced_out(rms_vals, thresh=iqr_thresh, axis=0)
+    omask = fenced_out(rms_vals, thresh=iqr_thresh, axis=0)
     rms_vals[~omask] = np.nan
     return np.nanmean(rms_vals, axis=0)
 
