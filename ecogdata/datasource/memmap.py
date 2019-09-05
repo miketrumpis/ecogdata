@@ -1,7 +1,8 @@
 import os
 from shutil import rmtree
 import atexit
-from tempfile import NamedTemporaryFile  # , _TemporaryFileCloser
+from tempfile import NamedTemporaryFile
+from ecogdata.parallel.mproc import Process
 import numpy as np
 import h5py
 from scipy.signal import lfilter_zi
@@ -50,6 +51,22 @@ def _remove_pool():
 
 
 atexit.register(_remove_pool)
+
+
+def slice_data_buffer(buffer, slicer, transpose=False, output=None):
+    """Slicing helper that can be run in a subprocess"""
+    if output is None:
+        with buffer.transpose_reads(transpose):
+            # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
+            # the output is going to get transposed. Handling the transpose logic in the buffer avoids some
+            # unnecessary array copies
+            data_slice = buffer[slicer]
+    else:
+        with buffer.direct_read(output), buffer.transpose_reads(transpose):
+            print('Buffering to given output')
+            buffer[slicer]
+            data_slice = output
+    return data_slice
 
 
 class MemoryBlowOutError(Exception):
@@ -129,6 +146,8 @@ class MappedSource(ElectrodeDataSource):
         self._raise_on_big_slice = raise_on_big_slice
         # Normally self[:10] will return an array. With this state toggled, it will return a new MappedSource
         self._slice_channels_as_maps = ToggleState(init_state=False)
+        # Allow for a subprocess that will cache buffer reads in the background
+        self._caching_process = None
 
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
@@ -262,7 +281,7 @@ class MappedSource(ElectrodeDataSource):
     def _check_slice_size(self, slicer):
         if not self._raise_on_big_slice:
             return
-        shape = self._data_buffer._get_output_array(slicer, only_shape=True)
+        shape = self._data_buffer.get_output_array(slicer, only_shape=True)
         size = np.prod(shape) * self._data_buffer.dtype.itemsize
         state = self._allow_big_slicing.state
         if size > load_params().memory_limit and not state:
@@ -275,6 +294,25 @@ class MappedSource(ElectrodeDataSource):
                             aligned_arrays=self.aligned_arrays, units_scale=self._units_scale, transpose=self._transpose,
                             raise_on_big_slice=self._raise_on_big_slice)
 
+    def cache_slice(self, slicer):
+        slicer = self._slice_logic(slicer)
+        self._check_slice_size(slicer)
+        output = self._data_buffer.get_output_array(slicer)
+        print('Buffering new output shape {}'.format(output.shape))
+        p = Process(target=slice_data_buffer, args=(self._data_buffer, slicer),
+                    kwargs=dict(transpose=self._transpose, output=output))
+        p.start()
+        self._caching_process = p
+        self._cache_output = output
+
+    def get_cached_slice(self):
+        if self._caching_process == None:
+            print('There is no cached read pending')
+            return
+        self._caching_process.join()
+        self._caching_process = None
+        return self._cache_output
+
     def __getitem__(self, slicer):
         """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
         # data goes out as [subset]channels x time
@@ -282,13 +320,13 @@ class MappedSource(ElectrodeDataSource):
         if len(slicer) == 1 and self.channels_are_maps.state:
             return self.slice_subset(slicer)
         self._check_slice_size(slicer)
-        # print('Slicing memmap as {}'.format(slicer))
-        with self._data_buffer.transpose_reads(self._transpose):
-            # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
-            # the output is going to get transposed. Handling the transpose logic in the buffer avoids some
-            # unnecessary array copies
-            data_slice = self._data_buffer[slicer]
-        return data_slice
+        return slice_data_buffer(self._data_buffer, slicer, self._transpose)
+        # with self._data_buffer.transpose_reads(self._transpose):
+        #     # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
+        #     # the output is going to get transposed. Handling the transpose logic in the buffer avoids some
+        #     # unnecessary array copies
+        #     data_slice = self._data_buffer[slicer]
+        # return data_slice
 
     def __setitem__(self, slicer, data):
         """Write the sub-series of samples selected by slicer (from possibly a subset of channels)"""

@@ -35,14 +35,6 @@ def calc_new_samples(N, rate_change):
     return num_pts
 
 
-# TODO: make a process-based dual buffer that continues to read-out data (e.g. network or local disk reads) during
-#  the time that one data block is yielded and processed in "iter_blocks".
-# class _DualStreamBuffer(object):
-#
-#     def __init__(self, datasource, buffer_a, buffer_b):
-#         pass
-
-
 class DataSourceBlockIter(object):
 
     def __init__(self, datasource, block_length=None, overlap=0, start_offset=0,
@@ -63,7 +55,7 @@ class DataSourceBlockIter(object):
         self.T = T
         self.overlap = overlap
         self.datasource = datasource
-        self.count = 0
+        self._count = 0
         self.return_slice = return_slice
         self.reverse = reverse
         self.start_offset = start_offset
@@ -77,12 +69,7 @@ class DataSourceBlockIter(object):
         self._count = 0
         return self
 
-    def __next__(self):
-        try:
-            i = self.itr[self._count]
-        except IndexError:
-            raise StopIteration
-        self._count += 1
+    def _make_slice(self, i):
         start = i * (self.L - self.overlap) + self.start_offset
         if start < 0 or start >= self.T:
             raise StopIteration
@@ -93,11 +80,27 @@ class DataSourceBlockIter(object):
             sl = (slice(None), slice(start, end))
         if self.axis == 0:
             sl = sl[::-1]
-        # print('Slicing datasource as {}'.format(sl))
+        return sl
+
+    def __next__(self):
+        try:
+            i = self.itr[self._count]
+        except IndexError:
+            raise StopIteration
+        sl = self._make_slice(i)
+        # Send data caching into motion on first iteration
+        if self._count == 0:
+            self.datasource.cache_slice(sl)
+        self._count += 1
+        # Wait on previous cache
+        output = self.datasource.get_cached_slice()
+        if self._count < len(self):
+            # Start caching the next load
+            self.datasource.cache_slice(self._make_slice(self._count))
         if self.return_slice:
-            return self.datasource[sl], sl
+            return output, sl
         else:
-            return self.datasource[sl]
+            return output
 
 
 class ElectrodeDataSource(object):
@@ -110,6 +113,12 @@ class ElectrodeDataSource(object):
     _auto_block_length = 20000
     writeable = True
     _transpose = False
+
+    def cache_slice(self, slicer):
+        self._cache_output = self[slicer]
+
+    def get_cache_slice(self):
+        return self._cache_output
 
     def iter_blocks(self, block_length=None, overlap=0, start_offset=0, return_slice=False, reverse=False):
         """

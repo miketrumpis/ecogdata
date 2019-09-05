@@ -1,4 +1,5 @@
 from itertools import product
+from contextlib import contextmanager
 import numpy as np
 from h5py._hl.selections import select
 from ecogdata.util import ToggleState
@@ -202,6 +203,9 @@ class MappedBuffer(object):
         self._raise_bad_write = raise_bad_write
         # This is a callable -- when called, a content manager is created and the state is toggled in-context
         self._transpose_state = ToggleState(init_state=False)
+        # A private output array that can be set using a context manager, allowing array reads in that context to be
+        # placed in this array
+        self._read_output = None
 
     def __len__(self):
         return len(self._array)
@@ -230,7 +234,15 @@ class MappedBuffer(object):
         x *= self._units_scale
         return x
 
-    def _get_output_array(self, slicer, only_shape=False):
+    @contextmanager
+    def direct_read(self, output_array):
+        self._read_output = output_array
+        try:
+            yield
+        finally:
+            self._read_output = None
+
+    def get_output_array(self, slicer, only_shape=False):
         slicer = _abs_slicer(slicer, self.shape)
         out_shape = select(self.shape, slicer, 0).mshape
         # if the output will be transposed, then pre-create the array in the right order
@@ -239,10 +251,15 @@ class MappedBuffer(object):
         if only_shape:
             return out_shape
         typecode = self.dtype.char
-        return shared_ndarray(out_shape, typecode)
+        if self._read_output is None:
+            return shared_ndarray(out_shape, typecode)
+        else:
+            if self._read_output.shape != out_shape:
+                raise ValueError('Direct read context was given an array with the wrong shape')
+            return self._read_output
 
     def __getitem__(self, sl):
-        out_arr = self._get_output_array(sl)
+        out_arr = self.get_output_array(sl)
         # not sure what the most efficient way to slice is?
         if self._transpose_state.state:
             out_arr[:] = self._array[sl].transpose()
@@ -264,7 +281,7 @@ class HDF5Buffer(MappedBuffer):
     def __getitem__(self, sl):
         # this function computes the output shape -- use ID=0 to explicitly *not* work for funky RegionReference slicing
 
-        out_arr = self._get_output_array(sl)
+        out_arr = self.get_output_array(sl)
         i_slices, o_slices = tile_slices(sl, self.shape, self._array.chunks)
         # print('Slicing buffer as {}'.format(i_slices))
         for isl, osl in zip(i_slices, o_slices):
