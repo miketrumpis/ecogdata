@@ -479,7 +479,7 @@ class MappedSource(ElectrodeDataSource):
         else:
             self._check_slice_size(np.s_[:, :T])
             C = self.shape[0]
-            new_source = shared_ndarray((C, T), fp_dtype)
+            new_source = shared_ndarray((C, T), fp_dtype.char)
             if copy_electrodes:
                 for block, sl in self.iter_blocks(return_slice=True):
                     new_source[sl] = block
@@ -490,7 +490,7 @@ class MappedSource(ElectrodeDataSource):
                 arr = getattr(self, name)
                 if len(arr.shape) > 1:
                     dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
-                aligned_arrays[name] = shared_ndarray(dims, fp_dtype)
+                aligned_arrays[name] = shared_ndarray(dims, fp_dtype.char)
                 if copy_aligned:
                     aligned = getattr(self, name)[:]
                     aligned_arrays[name][:] = aligned.T if self._transpose else aligned
