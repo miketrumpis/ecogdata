@@ -296,7 +296,8 @@ class MappedSource(ElectrodeDataSource):
     def cache_slice(self, slicer):
         slicer = self._slice_logic(slicer)
         self._check_slice_size(slicer)
-        output = self._data_buffer.get_output_array(slicer)
+        with self._data_buffer.transpose_reads(self._transpose):
+            output = self._data_buffer.get_output_array(slicer)
         p = Process(target=slice_data_buffer, args=(self._data_buffer, slicer),
                     kwargs=dict(transpose=self._transpose, output=output))
         p.start()
@@ -319,12 +320,6 @@ class MappedSource(ElectrodeDataSource):
             return self.slice_subset(slicer)
         self._check_slice_size(slicer)
         return slice_data_buffer(self._data_buffer, slicer, self._transpose)
-        # with self._data_buffer.transpose_reads(self._transpose):
-        #     # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
-        #     # the output is going to get transposed. Handling the transpose logic in the buffer avoids some
-        #     # unnecessary array copies
-        #     data_slice = self._data_buffer[slicer]
-        # return data_slice
 
     def __setitem__(self, slicer, data):
         """Write the sub-series of samples selected by slicer (from possibly a subset of channels)"""
