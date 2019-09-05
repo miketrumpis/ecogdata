@@ -45,12 +45,15 @@ class DataSourceBlockIter(object):
             L = block_length
         T = datasource.shape[axis] - start_offset
         N = T // (L - overlap)
-        # add in another block to trigger stop-iteration in forward mode
-        if not reverse and (L - overlap) * N <= T:
+        # account for any partial blocks
+        if (L - overlap) * N < T:
             N += 1
-        # if the advance size exactly divides T then adjust to start at N - 1 for reverse mode
-        if reverse and (L - overlap) * N == T:
-            N -= 1
+        # # add in another block to trigger stop-iteration in forward mode
+        # if not reverse and (L - overlap) * N <= T:
+        #     N += 1
+        # # if the advance size exactly divides T then adjust to start at N - 1 for reverse mode
+        # if reverse and (L - overlap) * N == T:
+        #     N -= 1
         self.L = L
         self.T = T
         self.overlap = overlap
@@ -60,7 +63,7 @@ class DataSourceBlockIter(object):
         self.reverse = reverse
         self.start_offset = start_offset
         self.axis = axis
-        self.itr = range(N, -2, -1) if reverse else range(0, N)
+        self.itr = range(0, N)[::-1] if reverse else range(0, N)
 
     def __len__(self):
         return len(self.itr)
@@ -71,9 +74,10 @@ class DataSourceBlockIter(object):
 
     def _make_slice(self, i):
         start = i * (self.L - self.overlap) + self.start_offset
-        if start < 0 or start >= self.T:
-            raise StopIteration
-        end = min(self.T, start + self.L)
+        # this really should not happen
+        # if start < 0 or start >= self.T:
+        #     raise StopIteration
+        end = min(self.T + self.start_offset, start + self.L)
         if self.reverse:
             sl = (slice(None), slice(end - 1, start - 1, -1))
         else:
@@ -96,7 +100,8 @@ class DataSourceBlockIter(object):
         output = self.datasource.get_cached_slice()
         if self._count < len(self):
             # Start caching the next load
-            self.datasource.cache_slice(self._make_slice(self._count))
+            i_next = self.itr[self._count]
+            self.datasource.cache_slice(self._make_slice(i_next))
         if self.return_slice:
             return output, sl
         else:
