@@ -63,7 +63,6 @@ def slice_data_buffer(buffer, slicer, transpose=False, output=None):
             data_slice = buffer[slicer]
     else:
         with buffer.direct_read(output), buffer.transpose_reads(transpose):
-            print('Buffering to given output')
             buffer[slicer]
             data_slice = output
     return data_slice
@@ -298,7 +297,6 @@ class MappedSource(ElectrodeDataSource):
         slicer = self._slice_logic(slicer)
         self._check_slice_size(slicer)
         output = self._data_buffer.get_output_array(slicer)
-        print('Buffering new output shape {}'.format(output.shape))
         p = Process(target=slice_data_buffer, args=(self._data_buffer, slicer),
                     kwargs=dict(transpose=self._transpose, output=output))
         p.start()
