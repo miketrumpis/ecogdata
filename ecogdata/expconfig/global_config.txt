@@ -2,9 +2,6 @@
 
 [globals]
 
-# The filesytem location of this code
-local_proj: /Users/mike/work/exp_ana/
-
 # A primary (local) path for (TDMS/MAT/HDF5) recording files
 local_exp: /Users/mike/experiment_data/
 
@@ -21,5 +18,8 @@ user_sessions: /Users/mike/tmp/sessions
 # Setting this to True deletes any converted TDMS files after loading
 clear_temp_converted: False
 
-# This is probably never used
-filter_highpass: 2
+# preference for disk mapping floating point numbers (single or double)
+floating_point: single
+
+# memory limit for processing tasks
+memory_limit: 2e9
