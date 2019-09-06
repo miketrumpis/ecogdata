@@ -302,8 +302,9 @@ class FileLoader:
             # *Always* downsample at micro-volts scaling
             print('Creating mapped primary source {}'.format(data_file))
             try:
+                aligned_arrays = (name for name in self.aligned_arrays if name in h5file.keys())
                 # Map the raw data source using all channels (leave default electrode_channels=None)
-                datasource = MappedSource(h5file, self.data_array, aligned_arrays=self.aligned_arrays,
+                datasource = MappedSource(h5file, self.data_array, aligned_arrays=aligned_arrays,
                                           units_scale=self.scale_to_uv, transpose=self.transpose_array)
                 print('Mirroring at 1 / {} rate'.format(downsamp_ratio))
                 downsamp = datasource.mirror(new_rate_ratio=downsamp_ratio, mapped=True, channel_compatible=True,
@@ -362,8 +363,10 @@ class FileLoader:
         h5file = h5py.File(data_file, open_mode)
         print('Opening source file {} in mode {}'.format(data_file, open_mode))
         print('Creating mapped sources: downsample ratio {}'.format(downsample_ratio))
+        # Only map aligned arrays *that exist in the file!*
+        aligned_arrays = (name for name in self.aligned_arrays if name in h5file.keys())
         datasource = MappedSource(h5file, self.data_array, electrode_channels=electrode_chans,
-                                  aligned_arrays=self.aligned_arrays, units_scale=self.units_scale,
+                                  aligned_arrays=aligned_arrays, units_scale=self.units_scale,
                                   transpose=self.transpose_array)
         if ground_chans:
             ground_chans = MappedSource(h5file, self.data_array, electrode_channels=ground_chans,
