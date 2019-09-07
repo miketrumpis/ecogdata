@@ -1,17 +1,15 @@
 """Manipulations of TDMS file format"""
-import six
 import tables
 import numpy as np
-if six.PY3:
-    import configparser
-else:
-    import ConfigParser as configparser
+import configparser
 import os
 import tempfile
 import nptdms
 from glob import glob
 
+
 __all__ = ['build_experiment_report', 'tdms_to_hdf5']
+
 
 def build_experiment_report(pth, ext='h5'):
     """Build a text report from a TDMS (or TMDS-converted HDF5) file"""
@@ -19,7 +17,7 @@ def build_experiment_report(pth, ext='h5'):
     if os.path.isfile(pth):
         all_h5 = [pth]
     else:
-        glob_ext = '*.'+ext
+        glob_ext = '*.' + ext
         all_h5 = glob(os.path.join(pth, glob_ext))
     config = configparser.RawConfigParser()
 
@@ -37,11 +35,11 @@ def build_experiment_report(pth, ext='h5'):
             config.add_section(exp_name)
             config.set(exp_name, 'Fs', str(h5.root.Fs.read()))
             for item in (
-                    'nrColumns', 'nrRows', 'nrBNCs', 
-                    'SampleStripLength', 'OverSampling', 
+                    'nrColumns', 'nrRows', 'nrBNCs',
+                    'SampleStripLength', 'OverSampling',
                     'SamplingRate', 'ColumnMixVector', 'Note'):
                 try:
-                    val = eval( 'info.'+item+'.read()' )
+                    val = eval('info.' + item + '.read()')
                 except tables.NoSuchNodeError:
                     val = 'ITEM NOT FOUND'
                 if not np.iterable(val):
@@ -49,12 +47,13 @@ def build_experiment_report(pth, ext='h5'):
                 config.set(exp_name, item, val)
 
             trig_info = _find_triggers(h5)
-            trig_fields = ('data_length', 'num_triggers', 
+            trig_fields = ('data_length', 'num_triggers',
                            'first_trigger', 'last_trigger')
             for item, val in zip(trig_fields, trig_info):
                 config.set(exp_name, item, str(val))
 
     return config
+
 
 def _find_triggers(h5_file):
     # returns data length, # triggers, first & last trigger times
@@ -62,37 +61,34 @@ def _find_triggers(h5_file):
     numrows = h5_file.root.info.nrRows.read()
     dshape = h5_file.root.data.shape
     chan_dim = np.argmin(dshape)
-    d_len = dshape[1-chan_dim]
+    d_len = dshape[1 - chan_dim]
 
     if not dshape[chan_dim] > numcols * numrows:
         return d_len, None, None, None
 
     if chan_dim:
-        trigs = h5_file.root.data[:,numcols*numrows:(numcols+1)*numrows].T
+        trigs = h5_file.root.data[:, numcols * numrows:(numcols + 1) * numrows].T
     else:
-        trigs = h5_file.root.data[numcols*numrows:(numcols+1)*numrows]
+        trigs = h5_file.root.data[numcols * numrows:(numcols + 1) * numrows]
     # use 40 % of max as the logical threshold
-    mx = np.median( trigs.max(axis=1) )
+    mx = np.median(trigs.max(axis=1))
     thresh = 0.4 * mx
 
     # do a quick check to make sure this is a binary BNC
-    a = np.var( trigs[ trigs > thresh] ) / mx**2
-    b = np.var( trigs[ trigs < thresh] ) / mx**2
-    if 0.5*(a+b) > 1e-2:
+    a = np.var(trigs[trigs > thresh]) / mx**2
+    b = np.var(trigs[trigs < thresh]) / mx**2
+    if 0.5 * (a + b) > 1e-2:
         return d_len, None, None, None
-    
-    trigger = np.any( trigs > thresh, axis=0 )
-    pos_edge = np.where( np.diff(trigger) > 0 )[0]
+
+    trigger = np.any(trigs > thresh, axis=0)
+    pos_edge = np.where(np.diff(trigger) > 0)[0]
     if len(pos_edge):
         return d_len, len(pos_edge), pos_edge[0], pos_edge[-1]
     else:
         return d_len, None, None, None
 
-def tdms_to_hdf5(
-        tdms_file, h5_file, 
-        load_data=True, chan_map='',
-        memmap=True, compression_level=0
-        ):
+
+def tdms_to_hdf5(tdms_file, h5_file, load_data=True, chan_map='', memmap=True, compression_level=0):
     """
     Converts TDMS data to a more standard HDF5 format.
 
@@ -109,7 +105,7 @@ def tdms_to_hdf5(
     compression_level : int
         Optionally compress the outgoing H5 rows with zlib compression.
         This can reduce the time cost caused by disk access.
-    
+
     """
 
     map_dir = tempfile.gettempdir() if memmap else None
@@ -135,28 +131,22 @@ def tdms_to_hdf5(
         special_conversion = dict(
             SamplingRate='sampRate', nrRows='numRow', nrColumns='numCol',
             OverSampling='OSR'
-            )
+        )
         h5_info = h5_file.create_group(h5_file.root, 'info')
         for (key, val) in g_obj.properties.items():
-            if type(val) == unicode:
-                # HDF5 doesn't support unicode
-                try:
-                    val = str(val)
-                except:
-                    print('**** Cannot convert this value:')
-                    print(val)
-                    continue
-            h5_file.create_array(h5_info, key, obj=val)
-            if key in special_conversion:
-                print('caught', key)
-                h5_file.create_array(
-                    h5_file.root, special_conversion[key], obj=val
-                    )
+            if isinstance(val, str):
+                # pytables doesn't support strings as arrays
+                arr = h5_file.create_vlarray('/', key, atom=tables.ObjectAtom())
+                arr.append(val)
+            else:
+                h5_file.create_array(h5_info, key, obj=val)
+                if key in special_conversion:
+                    print('caught', key)
+                    h5_file.create_array(h5_file.root, special_conversion[key], obj=val)
 
         # do extra extra conversions
         num_chan = g_obj.properties['nrColumns'] + g_obj.properties['nrBNCs']
-        Fs = float(g_obj.properties['SamplingRate']) / \
-          (g_obj.properties['OverSampling'] * g_obj.properties['nrRows'])
+        Fs = float(g_obj.properties['SamplingRate']) / (g_obj.properties['OverSampling'] * g_obj.properties['nrRows'])
         h5_file.create_array(h5_file.root, 'numChan', num_chan)
         h5_file.create_array(h5_file.root, 'Fs', Fs)
 
@@ -170,20 +160,17 @@ def tdms_to_hdf5(
         if compression_level > 0:
             filters = tables.Filters(
                 complevel=compression_level, complib='zlib'
-                )
+            )
         else:
             filters = None
 
         d_array = h5_file.create_earray(
             h5_file.root, 'data', atom=atom, shape=(0, n_row),
             filters=filters, expectedrows=n_col
-            )
-
-        ## col_mapping = [ch.properties.values()[0] for ch in chans]
+        )
 
         # create a reverse lookup to index channels by number
-        col_mapping = dict(( (ch.properties['NI_ArrayColumn'], ch)
-                             for ch in chans ))
+        col_mapping = dict([(ch.properties['NI_ArrayColumn'], ch) for ch in chans])
         # If a channel permutation is requested, lay down channels
         # in that order. Otherwise go in sequential order.
         if chan_map:
@@ -192,8 +179,8 @@ def tdms_to_hdf5(
                 print(chan_map.shape)
                 # the actual channel permutation is in the 1st column
                 # the array matrix coordinates are in the next columns
-                chan_ij = chan_map[:,1:3]
-                chan_map = chan_map[:,0]
+                chan_ij = chan_map[:, 1:3]
+                chan_map = chan_map[:, 0]
             else:
                 chan_ij = None
             # do any channels not specified at the end
@@ -211,11 +198,10 @@ def tdms_to_hdf5(
             # make a temp array here.. if all data in memory, then this is
             # slightly wasteful, but if it is mmap'd then this is more flexible
             d = ch.data[:]
-            d_array.append(d[None,:])
-            print('copied channel', n, d_array.shape)
+            d_array.append(d[None, :])
+            print('copied channel', ch.path, d_array.shape)
 
         if chan_ij is not None:
             h5_file.create_array(h5_file.root, 'channel_ij', obj=chan_ij)
 
     return h5_file
-
