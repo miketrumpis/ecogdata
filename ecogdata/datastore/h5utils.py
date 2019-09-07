@@ -11,7 +11,7 @@ from ecogdata.util import Bunch
 from ecogdata.parallel.array_split import shared_ndarray
 
 
-_h5_seq_types = (str, type(1.0), type(1j), type(True), type([]))
+_h5_seq_types = (type(1.0), type(1j), type(True), type([]))
 
 
 class HDF5Bunch(Bunch):
