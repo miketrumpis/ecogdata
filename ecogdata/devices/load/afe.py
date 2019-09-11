@@ -2,7 +2,7 @@ import tables
 import nptdms
 import numpy as np
 import os
-import ecogdata.util as ut
+from ecogdata.util import mkdir_p, Bunch
 import ecogdata.filt.time as ft
 import ecogdata.devices.electrode_pinouts as epins
 from ecogdata.parallel.array_split import shared_ndarray
@@ -21,11 +21,15 @@ range_lookup = {0: 0.13,
                 7: 9.6}
 
 
-def prepare_afe_primary_file(tdms_file, n_rows=None):
+def prepare_afe_primary_file(tdms_file, n_rows=None, write_path=None):
 
     tdms_path, tdms_name = os.path.split(tdms_file)
     tdms_name = os.path.splitext(tdms_name)[0]
-    new_primary_file = os.path.join(tdms_path, tdms_name + '.h5')
+    if write_path is None:
+        write_path = tdms_path
+    if not os.path.exists(write_path):
+        mkdir_p(write_path)
+    new_primary_file = os.path.join(write_path, tdms_name + '.h5')
 
     with tables.open_file(new_primary_file, 'w') as hdf:
         tdms = nptdms.TdmsFile(tdms_file)
@@ -252,7 +256,7 @@ def load_afe(
             trig = trig[..., snip_len:]
             pos_edge -= snip_len
 
-    dset = ut.Bunch()
+    dset = Bunch()
 
     dset.data = data
     dset.ground_chans = ground_chans
