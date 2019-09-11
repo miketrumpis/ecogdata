@@ -136,13 +136,14 @@ def tdms_to_hdf5(tdms_file, h5_file, load_data=True, chan_map='', memmap=True, c
         for (key, val) in g_obj.properties.items():
             if isinstance(val, str):
                 # pytables doesn't support strings as arrays
-                arr = h5_file.create_vlarray('/', key, atom=tables.ObjectAtom())
+                arr = h5_file.create_vlarray(h5_info, key, atom=tables.ObjectAtom())
                 arr.append(val)
             else:
                 h5_file.create_array(h5_info, key, obj=val)
                 if key in special_conversion:
                     print('caught', key)
-                    h5_file.create_array(h5_file.root, special_conversion[key], obj=val)
+                    # Put this array at the top level with new name
+                    h5_file.create_array('/', special_conversion[key], obj=val)
 
         # do extra extra conversions
         num_chan = g_obj.properties['nrColumns'] + g_obj.properties['nrBNCs']
