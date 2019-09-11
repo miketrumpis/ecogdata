@@ -1,4 +1,5 @@
 import tables
+import nptdms
 import numpy as np
 import os
 import ecogdata.util as ut
@@ -10,11 +11,80 @@ from ecogdata.parallel.split_methods import filtfilt
 from ..units import convert_dyn_range, convert_scale
 
 # different ranges code for dynamic range of charge
-range_lookup = dict(
-    [ (0, 0.13), (1, 0.25), (2, 0.5),
-      (3, 1.2), (4, 2.4), (5, 4.8), (6, 7.2), (7, 9.6) ]
-      )
+range_lookup = {0: 0.13,
+                1: 0.25,
+                2: 0.5,
+                3: 1.2,
+                4: 2.4,
+                5: 4.8,
+                6: 7.2,
+                7: 9.6}
 
+
+def prepare_afe_primary_file(tdms_file, n_rows=None):
+
+    tdms_path, tdms_name = os.path.split(tdms_file)
+    tdms_name = os.path.splitext(tdms_name)[0]
+    new_primary_file = os.path.join(tdms_path, tdms_name + '.h5')
+
+    with tables.open_file(new_primary_file, 'w') as hdf:
+        tdms = nptdms.TdmsFile(tdms_file)
+        # Translate metadata
+        t_group = tdms.groups()[0]
+        group = tdms.object(t_group)
+        rename_arrays = dict(
+            SamplingRate='sampRate', nrRows='numRow', nrColumns='numCol',
+            OverSampling='OSR'
+        )
+        h5_info = hdf.create_group('/', 'info')
+        for (key, val) in group.properties.items():
+            if isinstance(val, str):
+                # pytables doesn't support strings as arrays
+                arr = hdf.create_vlarray(h5_info, key, atom=tables.ObjectAtom())
+                arr.append(val)
+            else:
+                hdf.create_array(h5_info, key, obj=val)
+                if key in rename_arrays:
+                    hdf.create_array('/', rename_arrays[key], obj=val)
+
+        # do extra extra conversions
+        num_per_electrode_row = 100
+        fs = float(group.properties['SamplingRate']) / (num_per_electrode_row * group.properties['OverSampling'])
+        hdf.create_array(hdf.root, 'Fs', fs)
+
+        # Parse channels
+        chans = tdms.group_channels(t_group)
+        elec_chans = [c for c in chans if 'CH_' in c.channel]
+        bnc_chans = [c for c in chans if 'BNC_' in c.channel]
+
+        # ensure that channels are ordered correctly
+        elec_mapping = dict([(ch.properties['NI_ArrayColumn'], ch) for ch in elec_chans])
+        if n_rows is not None:
+            num_electrode_rows = n_rows
+        else:
+            num_electrode_rows = len(elec_chans) // num_per_electrode_row
+        if num_per_electrode_row * num_electrode_rows < len(elec_chans):
+            print('There were excess TDMS channels: {}'.format(len(elec_chans)))
+        channels_per_row = 32
+        sampling_offset = 6
+        hdf_array = hdf.create_carray('/', 'data', atom=tables.Float64Atom(),
+                                      shape=(channels_per_row * num_electrode_rows, len(elec_chans[0].data)))
+        for elec_group in range(num_electrode_rows):
+            for c in range(channels_per_row):
+                chan_a = elec_mapping[2 * c + sampling_offset]
+                chan_b = elec_mapping[2 * c + 1 + sampling_offset]
+                hdf_array[elec_group * channels_per_row + c, :] = 0.5 * (chan_a.data + chan_b.data)
+            sampling_offset += num_per_electrode_row
+
+        bnc_array = hdf.create_carray('/', 'bnc', atom=tables.Float64Atom(),
+                                      shape=(len(bnc_chans), len(bnc_chans[0].data)))
+        bnc_mapping = dict([(ch.properties['NI_ArrayColumn'] - len(elec_chans), ch) for ch in bnc_chans])
+        for n in range(len(bnc_mapping)):
+            bnc_array[n, :] = bnc_mapping[n].data
+    return
+
+
+# ---- Old code ----
 # valid units: (micro)Volts, (pico)Coulombs, (nano)Amps
 # encoding: 'uv', 'v', 'pc', 'c', 'na', 'a'
 
