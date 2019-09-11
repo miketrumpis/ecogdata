@@ -4,6 +4,7 @@ from tqdm import tqdm
 from ecogdata.expconfig import load_params
 from ecogdata.parallel.array_split import shared_copy
 from ecogdata.filt.time import downsample, filter_array, notch_all
+from ecogdata.filt.blocks import BlockSignalBase
 
 
 __all__ = ['calc_new_samples', 'ElectrodeDataSource', 'PlainArraySource']
@@ -35,7 +36,7 @@ def calc_new_samples(N, rate_change):
     return num_pts
 
 
-class DataSourceBlockIter(object):
+class DataSourceBlockIter(BlockSignalBase):
 
     def __init__(self, datasource, block_length=None, overlap=0, start_offset=0,
                  axis=1, return_slice=False, reverse=False):
@@ -43,52 +44,62 @@ class DataSourceBlockIter(object):
             L = datasource._auto_block_length
         else:
             L = block_length
-        T = datasource.shape[axis] - start_offset
-        N = T // (L - overlap)
-        # account for any partial blocks
-        if (L - overlap) * N < T:
-            N += 1
-        # # add in another block to trigger stop-iteration in forward mode
-        # if not reverse and (L - overlap) * N <= T:
+        super(DataSourceBlockIter, self).__init__(datasource, L, overlap=overlap, axis=axis,
+                                                  start_offset=start_offset, partial_block=True,
+                                                  reverse=reverse)
+        # T = datasource.shape[axis] - start_offset
+        # N = T // (L - overlap)
+        # # account for any partial blocks
+        # if (L - overlap) * N < T:
         #     N += 1
-        # # if the advance size exactly divides T then adjust to start at N - 1 for reverse mode
-        # if reverse and (L - overlap) * N == T:
+        # # add in another block to trigger stop-iteration in forward mode
+        # if not _reverse and (L - overlap) * N <= T:
+        #     N += 1
+        # # if the advance size exactly divides T then adjust to start at N - 1 for _reverse mode
+        # if _reverse and (L - overlap) * N == T:
         #     N -= 1
-        self.L = L
-        self.T = T
-        self.overlap = overlap
+        # self.L = L
+        # self.T = T
+        # self.overlap = overlap
         self.datasource = datasource
         self._count = 0
         self.return_slice = return_slice
-        self.reverse = reverse
-        self.start_offset = start_offset
-        self.axis = axis
-        self.itr = range(0, N)[::-1] if reverse else range(0, N)
+        # self._reverse = reverse
+        # self.start_offset = start_offset
+        # self._axis = axis
+        self._itr = range(0, self._n_block)[::-1] if reverse else range(0, self._n_block)
 
     def __len__(self):
-        return len(self.itr)
+        return len(self._itr)
 
     def __iter__(self):
         self._count = 0
         return self
 
+    def block(self, b):
+        if self._itr.start <= b < self._itr.stop:
+            sl = self._make_slice(b)
+            return self.datasource[sl]
+        else:
+            raise ValueError('Slice {} out of bounds'.format(b))
+
     def _make_slice(self, i):
-        start = i * (self.L - self.overlap) + self.start_offset
+        start = i * (self.L - self._overlap) + self.start_offset
         # this really should not happen
         # if start < 0 or start >= self.T:
         #     raise StopIteration
         end = min(self.T + self.start_offset, start + self.L)
-        if self.reverse:
+        if self._reverse:
             sl = (slice(None), slice(end - 1, start - 1, -1))
         else:
             sl = (slice(None), slice(start, end))
-        if self.axis == 0:
+        if self._axis == 0:
             sl = sl[::-1]
         return sl
 
     def __next__(self):
         try:
-            i = self.itr[self._count]
+            i = self._itr[self._count]
         except IndexError:
             raise StopIteration
         sl = self._make_slice(i)
@@ -100,7 +111,7 @@ class DataSourceBlockIter(object):
         output = self.datasource.get_cached_slice()
         if self._count < len(self):
             # Start caching the next load
-            i_next = self.itr[self._count]
+            i_next = self._itr[self._count]
             self.datasource.cache_slice(self._make_slice(i_next))
         if self.return_slice:
             return output, sl

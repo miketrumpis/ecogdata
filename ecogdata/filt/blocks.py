@@ -1,18 +1,50 @@
 import numpy as np
-
 from numpy.lib.stride_tricks import as_strided
 
-__all__ = ['BlockedSignal']
 
-class BlockedSignal(object):
+__all__ = ['BlockedSignal', 'BlockSignalBase', 'block_reduce', 'block_apply']
+
+
+class BlockSignalBase:
+
+    def __init__(self, array, block_length, overlap=0, axis=-1, start_offset=0, partial_block=True, reverse=False):
+        block_length = int(block_length)
+        shape = array.shape
+        while axis < 0:
+            axis += len(shape)
+        T = shape[axis] - start_offset
+        if isinstance(overlap, int) and overlap > 0:
+            lap = block_length - overlap
+            self._overlap = overlap
+        else:
+            lap = int(round((1 - overlap) * block_length))
+            self._overlap = block_length - lap
+        n_block = T // lap
+        if partial_block and (T > lap * n_block):
+            self._last_block_sz = T - lap * n_block
+            n_block += 1
+        else:
+            self._last_block_sz = block_length
+        self._n_block = n_block
+        self._axis = axis
+        self.L = block_length
+        self.T = T
+        self.start_offset = start_offset
+        self._reverse = reverse
+
+    def __len__(self):
+        return self._n_block
+
+
+class BlockedSignal(BlockSignalBase):
     """A class that transforms an N-dimension signal into multiple
-    blocks along a given axis. The resulting object can yield blocks
-    in forward or reverse sequence.
+    blocks along a given _axis. The resulting object can yield blocks
+    in forward or _reverse sequence.
     """
 
-    def __init__(self, x, bsize, overlap=0, axis=-1, partial_block=True):
+    def __init__(self, x, bsize, overlap=0, axis=-1, partial_block=True, reverse=False):
         """
-        Split a (possibly quite large) array into blocks along one axis.
+        Split a (possibly quite large) array into blocks along one _axis.
 
         Parameters
         ----------
@@ -20,111 +52,100 @@ class BlockedSignal(object):
         x : ndarray
           The signal to blockify.
         bsize : int
-          The maximum blocksize for the given axis.
+          The maximum blocksize for the given _axis.
         overlap : float 0 <= overlap <= 1 or int 0 < bsize
           The proportion of overlap between adjacent blocks. The (k+1)th
           block will begin at an offset of (1-overlap)*bsize points into
           the kth block. If overlap is an integer, it will be used literally.
         axis : int (optional)
-          The axis to split into blocks
+          The _axis to split into blocks
         partial_block : bool
-          If blocks don't divide the axis length exactly, allow a partial
+          If blocks don't divide the _axis length exactly, allow a partial
           block at the end (default True).
 
         """
         # if x is not contiguous then I think we're out of luck
         if not x.flags.c_contiguous:
             raise RuntimeError('The data to be blocked must be C-contiguous')
-        # first reshape x to have shape (..., nblock, bsize, ...),
-        # where the (nblock, bsize) pair replaces the axis in kwargs
+        # This object does not support start offset
+        super(BlockedSignal, self).__init__(x, bsize, overlap=overlap, axis=axis, partial_block=partial_block,
+                                            reverse=reverse, start_offset=0)
         shape = x.shape
         strides = x.strides
         bitdepth = x.dtype.itemsize
-        while axis < 0:
-            axis += len(shape)
-        bsize = int(bsize)
-        if isinstance(overlap, int) and overlap > 0:
-            L = bsize - overlap
-        else:
-            L = int( round( (1-overlap) * bsize ) )
-        nblock = (shape[axis] - bsize) // L
-        if partial_block and (shape[axis] > L*nblock + bsize):
-            nblock += 1
-            self._last_block_sz = shape[axis] - L*nblock
-        else:
-            self._last_block_sz = bsize
-        nblock += 1
-        nshape = shape[:axis] + (nblock, bsize) + shape[axis+1:]
+        # first reshape x to have shape (..., _n_block, bsize, ...),
+        # where the (_n_block, bsize) pair replaces the _axis in kwargs
+        nshape = shape[:self._axis] + (self._n_block, bsize) + shape[self._axis + 1:]
         # Assuming C-contiguous, strides were previously
         # (..., nx*ny, nx, 1) * bitdepth
-        # Change the strides at axis to reflect new shape
-        b_offset = int( np.prod(shape[axis+1:]) * bitdepth )
-        nstrides = strides[:axis] + \
-          (L*b_offset, b_offset) + \
-          strides[axis+1:]
-        self.nblock = nblock
-        self._axis = axis
+        # Change the strides at _axis to reflect new shape
+        b_offset = int(np.prod(shape[self._axis + 1:]) * bitdepth)
+        nstrides = strides[:self._axis] + (self.L * b_offset, b_offset) + strides[self._axis + 1:]
         self._x_blk = as_strided(x, shape=nshape, strides=nstrides)
+
+    def __iter__(self):
+        self._gen = self.bwd() if self._reverse else self.fwd()
+        return self
+
+    def __next__(self):
+        return next(self._gen)
 
     def fwd(self):
         "Yield the blocks one at a time in forward sequence"
         # this object will be repeatedly modified in the following loop(s)
         blk_slice = [slice(None)] * self._x_blk.ndim
-        axis = self._axis
-        for blk in range(self.nblock):
+        for blk in range(self._n_block):
             blk_slice[self._axis] = blk
-            if blk == self.nblock-1:
+            if blk == self._n_block - 1:
                 # VERY important! don't go out of bounds in memory!
-                blk_slice[self._axis+1] = slice(0, self._last_block_sz)
+                blk_slice[self._axis + 1] = slice(0, self._last_block_sz)
             else:
-                blk_slice[self._axis+1] = slice(None)
-            xc = self._x_blk[ tuple(blk_slice) ]
+                blk_slice[self._axis + 1] = slice(None)
+            xc = self._x_blk[tuple(blk_slice)]
             yield xc
 
     def bwd(self):
-        "Yield the blocks one at a time in reverse sequence"
-        # loop through in reverse order, slicing out reverse-time blocks
-        bsize = self._x_blk.shape[self._axis+1]
+        "Yield the blocks one at a time in _reverse sequence"
+        # loop through in _reverse order, slicing out _reverse-time blocks
+        bsize = self._x_blk.shape[self._axis + 1]
         # this object will be repeatedly modified in the following loop(s)
         blk_slice = [slice(None)] * self._x_blk.ndim
-        for blk in range(self.nblock-1, -1, -1):
+        for blk in range(self._n_block - 1, -1, -1):
             blk_slice[self._axis] = blk
-            if blk == self.nblock-1:
+            if blk == self._n_block - 1:
                 # VERY important! don't go out of bounds in memory!
-                # (XXX: since when does this not work??)
-                # blk_slice[axis+1] = slice(last_block_sz-1, -1, -1)
-                # confusing.. but want to count down from the *negative*
+                # confusing syntax.. but want to count down from the *negative*
                 # index of the last good point: -(bsize+1-last_block_sz)
                 # down to the *negative* index of the
                 # beginning of the block: -(bsize+1)
-                blk_slice[self._axis+1] = slice(
-                    -(bsize+1) + self._last_block_sz, -(bsize+1), -1
-                    )
+                blk_slice[self._axis+1] = slice(-(bsize + 1) + self._last_block_sz, -(bsize + 1), -1)
             else:
-                blk_slice[self._axis+1] = slice(None, None, -1)
-            xc = self._x_blk[ tuple(blk_slice) ]
+                blk_slice[self._axis + 1] = slice(None, None, -1)
+            xc = self._x_blk[tuple(blk_slice)]
             yield xc
 
     def block(self, b):
         "Yield the index b block"
         blk_slice = [slice(None)] * self._x_blk.ndim
         while b < 0:
-            b += self.nblock
-        if b >= self.nblock:
+            b += self._n_block
+        if b >= self._n_block:
             raise IndexError
         blk_slice[self._axis] = b
-        if b == self.nblock-1:
-            blk_slice[self._axis+1] = slice(0, self._last_block_sz)
+        if b == self._n_block - 1:
+            blk_slice[self._axis + 1] = slice(0, self._last_block_sz)
         else:
-            blk_slice[self._axis+1] = slice(None)
-        return self._x_blk[ tuple(blk_slice) ]
+            blk_slice[self._axis + 1] = slice(None)
+        return self._x_blk[tuple(blk_slice)]
+
 
 def block_reduce(rfn, array, bsize, f_axis=1, **kwargs):
     bsig = BlockedSignal(array, bsize, **kwargs)
     reduced = list()
     for blk in bsig.fwd():
-        reduced.append( rfn(blk, axis=f_axis) )
-    return np.array( reduced )
+        reduced.append(rfn(blk, axis=f_axis))
+    return np.array(reduced)
+
 
 def block_apply(fn, bsize, args, block_arg=0, b_axis=-1, **kwargs):
     """
@@ -160,7 +181,7 @@ def block_apply(fn, bsize, args, block_arg=0, b_axis=-1, **kwargs):
     a_proc = np.empty_like(array)
     b_proc = BlockedSignal(a_proc, bsize, partial_block=True, axis=b_axis)
 
-    for b_in, b_out in zip( b_sig.fwd(), b_proc.fwd() ):
+    for b_in, b_out in zip(b_sig.fwd(), b_proc.fwd()):
         a = _hotswap_block(b_in)
         b_out[:] = fn(*a, **kwargs)
     return a_proc

@@ -40,7 +40,7 @@ def bfilter(b, a, x, out=None, bsize=0, axis=-1, zi=None, filtfilt=False):
     x_iter = x_blk.fwd()
     if out:
         y_iter = y_blk.fwd()
-    for n in range(x_blk.nblock):
+    for n in range(len(x_blk)):
         xc = next(x_iter)
         if out:
             xo = next(y_iter)
@@ -61,7 +61,7 @@ def bfilter(b, a, x, out=None, bsize=0, axis=-1, zi=None, filtfilt=False):
         x_iter = y_blk.bwd()
     else:
         x_iter = x_blk.bwd()
-    for n in range(x_blk.nblock):
+    for n in range(len(x_blk)):
         xc = next(x_iter)
         if zi is None:
             zi = zii[ tuple(zi_sl) ] * xc[ tuple(xc_sl) ]
@@ -110,8 +110,8 @@ def overlap_add(x, w, progress=False):
     #blocks_f = BlockedSignal(xf, nfft, overlap=1.0 - float(N)/nfft, axis=-1)
     blocks_f = BlockedSignal(xf, nfft, overlap=M-1, axis=-1)
 
-    nb1 = blocks.nblock
-    nb2 = blocks_f.nblock
+    nb1 = len(blocks)
+    nb2 = len(blocks_f)
 
     #print M, N, nfft, nb1, nb2
 
