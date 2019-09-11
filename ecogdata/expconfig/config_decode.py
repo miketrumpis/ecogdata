@@ -52,9 +52,9 @@ class NSequence(Parameter):
         cmd = cmd.replace(' ', '')
         if len(cmd):
             try:
-                return map(int, cmd.split(','))
+                return list(map(int, cmd.split(',')))
             except ValueError:
-                return map(float, cmd.split(','))
+                return list(map(float, cmd.split(',')))
         return ()
 
 

@@ -541,7 +541,7 @@ def load_open_ephys(exp_path, test, electrode, rec_num='auto', downsamp=1, useFs
 
     # just silently drop this one
     loader_kwargs.pop('snip_transient', None)
-    if 'resample_rate' not in loader_kwargs:
+    if loader_kwargs.get('resample_rate', None) is None:
         # If possible, rename useFs to resample_rate
         if useFs > 0:
             loader_kwargs['resample_rate'] = useFs

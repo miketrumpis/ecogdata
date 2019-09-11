@@ -8,6 +8,7 @@ class DataPathError(Exception):
     pass
 
 
+from .file2data import FileLoader
 from .mux import load_mux, mux_headstages
 from .blackrock import load_blackrock
 from .wireless import load_wireless

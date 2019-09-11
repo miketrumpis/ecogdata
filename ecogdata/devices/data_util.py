@@ -12,6 +12,7 @@ from .load.util import convert_tdms
 
 from ecogdata.parallel.array_split import shared_ndarray
 from ecogdata.expconfig.config_decode import Parameter, TypedParam, BoolOrNum, NSequence, NoneOrStr, uniform_bunch_case
+from ecogdata.datasource import ElectrodeDataSource
 
 
 _loading = dict(
@@ -45,19 +46,28 @@ params_table = {
     'exp_path': Path,
     'test': Parameter,
     'electrode': Parameter,
-    # (mostly) common kwargs
+    # FileLoader args
     'bandpass': NSequence,
     'notches': NSequence,
+    'units': Parameter,
+    'load_channels': NSequence,
+    'trigger_idx': NSequence,
+    'mapped': TypedParam.from_type(bool),
+    'resample_rate': TypedParam.from_type(int),
+    'use_stored': BoolOrNum,
+    'save_downsamp': BoolOrNum,
+    'store_path': Path,
+    'raise_on_glitch': BoolOrNum,
+    # (mostly) common kwargs
     'trigger': TypedParam.from_type(int),
     'snip_transient': BoolOrNum,
-    'units': Parameter,
     'save': BoolOrNum,
-    'bnc': NSequence,
     # active
     'daq': Parameter,
     'headstage': Parameter,
     'row_order': NSequence,
-    # afe 
+    'bnc': NSequence,
+    # afe
     'n_data': TypedParam.from_type(int),
     'range_code': TypedParam.from_type(int),
     'cycle_rate': TypedParam.from_type(float),
@@ -76,17 +86,11 @@ params_table = {
     # open ephys
     'rec_num': NoneOrStr,
     'downsamp': TypedParam.from_type(int),
-    'trigger_idx': NSequence,
     'usefs': TypedParam.from_type(float),
-    'save_downsamp': BoolOrNum,
-    'store_path': Path,
-    'use_stored': BoolOrNum,
     'memmap': BoolOrNum,
     'connectors': NSequence,
     # RHD (mostly shares options with open ephys load)
-    'mapped': TypedParam.from_type(bool)
     }
-
 
 
 post_load_params = {
@@ -111,6 +115,10 @@ def load_experiment_auto(session, test, **load_kwargs):
         Base name (no extension) of recording. If this is also a section
         in the config file, then further information is taken from that
         section.
+
+    Returns
+    -------
+    dataset: ElectrodeDataSource
     
     """
 
@@ -121,9 +129,6 @@ def load_experiment_auto(session, test, **load_kwargs):
     test_info = cfg.session
     # fill in session info with any specific instructions for the test
     test_info.update(cfg.get(test, {}))
-    # normalize all test_info parameter keys to be lower case so that
-    # they will be detected for any case
-    test_info = uniform_bunch_case(test_info)
 
     electrode = test_info.electrode
     headstage = test_info.headstage
@@ -136,14 +141,24 @@ def load_experiment_auto(session, test, **load_kwargs):
 
     # finally update test info with kwargs which have top priority
     test_info.update(load_kwargs)
+    # normalize all test_info parameter keys to be lower case so that
+    # they will be detected for any case
+    test_info = uniform_bunch_case(test_info)
 
     load_fn = _loading[headstage]
 
-    # try to parse some args
-    a = inspect.getargspec(load_fn)
+    # try to parse some args, starting with FileLoader arguments
+    a = inspect.getfullargspec(FileLoader)
+    vals = a.defaults
+    loader_kwargs = dict(zip(a.args[-len(vals):], vals))
+
+    # now go to the module-specific loader function
+    a = inspect.getfullargspec(load_fn)
     args = a.args
     vals = a.defaults
     n_pos = len(args) - len(vals)
+    # any keyword argument over-rides here are respected
+    loader_kwargs.update(dict(zip(a.args[n_pos:], vals)))
 
     # first three arguments are known (standard), find any others
     extra_pos_names = args[3:n_pos]
@@ -154,15 +169,14 @@ def load_experiment_auto(session, test, **load_kwargs):
     except KeyError:
         raise ValueError('A required load argument is missing: {}'.format(n))
 
-    # now get keyword arguments
-    kws = dict(zip(args[n_pos:], vals))
-    for n in kws.keys():
+    # now get any keyword arguments from the test info config file
+    for n in loader_kwargs.keys():
         if n.lower() in test_info:
-            kws[n] = test_info.get(n.lower())
+            loader_kwargs[n] = test_info.get(n.lower())
     # check to see if any meta-load parameters are present in the given kwargs or the session file
     for n in post_load_params.keys():
         if n.lower() in test_info:
-            kws[n] = test_info.get(n.lower())
+            loader_kwargs[n] = test_info.get(n.lower())
 
     if headstage in _converts_tdms:
         clear = params.clear_temp_converted
@@ -174,14 +188,14 @@ def load_experiment_auto(session, test, **load_kwargs):
     try:
         exp_path = test_info.exp_path
         dset = load_experiment_manual(
-            exp_path, test, headstage, electrode, *extra_pos_args, **kws
+            exp_path, test, headstage, electrode, *extra_pos_args, **loader_kwargs
         )
 
     except (IOError, DataPathError) as e:
         try:
             exp_path = test_info.nwk_path
             dset = load_experiment_manual(
-                exp_path, test, headstage, electrode, *extra_pos_args, **kws
+                exp_path, test, headstage, electrode, *extra_pos_args, **loader_kwargs
             )
         except (IOError, DataPathError) as e:
             raise DataPathError('Recording not found')
@@ -195,9 +209,7 @@ def load_experiment_auto(session, test, **load_kwargs):
     return dset
 
 
-def load_experiment_manual(
-        exp_path, test, headstage, electrode, *load_args, **load_kwargs
-        ):
+def load_experiment_manual(exp_path, test, headstage, electrode, *load_args, **load_kwargs):
     """
     Loads a recording given a directory and test name and other labels
     identifying the hardware.  Depending on hardware, further information
@@ -209,15 +221,16 @@ def load_experiment_manual(
 
     exp_path: str
         Path on file system where recordings live
-
     test: str
-        Base name (no extension) of recording. 
-
+        Base name (no extension) of recording.
     headstage: str
         Designated name of headstage.
-
     electrode: str
         Designated name of electrode.
+
+    Returns
+    -------
+    dataset: ElectrodeDataSource
 
     """
 
