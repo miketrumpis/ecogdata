@@ -279,7 +279,7 @@ class ChannelMap(list):
         if ax is None:
             import matplotlib.pyplot as pp
             f = pp.figure()
-            ax = pp.subplot(111)
+            ax = f.add_subplot(111)
         else:
             f = ax.figure
 
@@ -388,7 +388,7 @@ class CoordinateChannelMap(ChannelMap):
         if ax is None:
             import matplotlib.pyplot as pp
             f = pp.figure()
-            ax = pp.subplot(111)
+            ax = f.add_subplot(111)
         else:
             f = ax.figure
         if arr is None:
