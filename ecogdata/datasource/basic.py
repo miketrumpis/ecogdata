@@ -47,26 +47,9 @@ class DataSourceBlockIter(BlockSignalBase):
         super(DataSourceBlockIter, self).__init__(datasource, L, overlap=overlap, axis=axis,
                                                   start_offset=start_offset, partial_block=True,
                                                   reverse=reverse)
-        # T = datasource.shape[axis] - start_offset
-        # N = T // (L - overlap)
-        # # account for any partial blocks
-        # if (L - overlap) * N < T:
-        #     N += 1
-        # # add in another block to trigger stop-iteration in forward mode
-        # if not _reverse and (L - overlap) * N <= T:
-        #     N += 1
-        # # if the advance size exactly divides T then adjust to start at N - 1 for _reverse mode
-        # if _reverse and (L - overlap) * N == T:
-        #     N -= 1
-        # self.L = L
-        # self.T = T
-        # self.overlap = overlap
         self.datasource = datasource
         self._count = 0
         self.return_slice = return_slice
-        # self._reverse = reverse
-        # self.start_offset = start_offset
-        # self._axis = axis
         self._itr = range(0, self._n_block)[::-1] if reverse else range(0, self._n_block)
 
     def __len__(self):
@@ -93,7 +76,7 @@ class DataSourceBlockIter(BlockSignalBase):
             sl = (slice(None), slice(end - 1, start - 1, -1))
         else:
             sl = (slice(None), slice(start, end))
-        if self._axis == 0:
+        if self.axis == 0:
             sl = sl[::-1]
         return sl
 

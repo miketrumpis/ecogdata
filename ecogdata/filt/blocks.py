@@ -26,7 +26,8 @@ class BlockSignalBase:
         else:
             self._last_block_sz = block_length
         self._n_block = n_block
-        self._axis = axis
+        self.axis = axis
+        self.array_shape = shape
         self.L = block_length
         self.T = T
         self.start_offset = start_offset
@@ -75,12 +76,12 @@ class BlockedSignal(BlockSignalBase):
         bitdepth = x.dtype.itemsize
         # first reshape x to have shape (..., _n_block, bsize, ...),
         # where the (_n_block, bsize) pair replaces the _axis in kwargs
-        nshape = shape[:self._axis] + (self._n_block, bsize) + shape[self._axis + 1:]
+        nshape = shape[:self.axis] + (self._n_block, bsize) + shape[self.axis + 1:]
         # Assuming C-contiguous, strides were previously
         # (..., nx*ny, nx, 1) * bitdepth
         # Change the strides at _axis to reflect new shape
-        b_offset = int(np.prod(shape[self._axis + 1:]) * bitdepth)
-        nstrides = strides[:self._axis] + (self.L * b_offset, b_offset) + strides[self._axis + 1:]
+        b_offset = int(np.prod(shape[self.axis + 1:]) * bitdepth)
+        nstrides = strides[:self.axis] + (self.L * b_offset, b_offset) + strides[self.axis + 1:]
         self._x_blk = as_strided(x, shape=nshape, strides=nstrides)
 
     def __iter__(self):
@@ -95,32 +96,32 @@ class BlockedSignal(BlockSignalBase):
         # this object will be repeatedly modified in the following loop(s)
         blk_slice = [slice(None)] * self._x_blk.ndim
         for blk in range(self._n_block):
-            blk_slice[self._axis] = blk
+            blk_slice[self.axis] = blk
             if blk == self._n_block - 1:
                 # VERY important! don't go out of bounds in memory!
-                blk_slice[self._axis + 1] = slice(0, self._last_block_sz)
+                blk_slice[self.axis + 1] = slice(0, self._last_block_sz)
             else:
-                blk_slice[self._axis + 1] = slice(None)
+                blk_slice[self.axis + 1] = slice(None)
             xc = self._x_blk[tuple(blk_slice)]
             yield xc
 
     def bwd(self):
         "Yield the blocks one at a time in _reverse sequence"
         # loop through in _reverse order, slicing out _reverse-time blocks
-        bsize = self._x_blk.shape[self._axis + 1]
+        bsize = self._x_blk.shape[self.axis + 1]
         # this object will be repeatedly modified in the following loop(s)
         blk_slice = [slice(None)] * self._x_blk.ndim
         for blk in range(self._n_block - 1, -1, -1):
-            blk_slice[self._axis] = blk
+            blk_slice[self.axis] = blk
             if blk == self._n_block - 1:
                 # VERY important! don't go out of bounds in memory!
                 # confusing syntax.. but want to count down from the *negative*
                 # index of the last good point: -(bsize+1-last_block_sz)
                 # down to the *negative* index of the
                 # beginning of the block: -(bsize+1)
-                blk_slice[self._axis+1] = slice(-(bsize + 1) + self._last_block_sz, -(bsize + 1), -1)
+                blk_slice[self.axis+1] = slice(-(bsize + 1) + self._last_block_sz, -(bsize + 1), -1)
             else:
-                blk_slice[self._axis + 1] = slice(None, None, -1)
+                blk_slice[self.axis + 1] = slice(None, None, -1)
             xc = self._x_blk[tuple(blk_slice)]
             yield xc
 
@@ -131,11 +132,11 @@ class BlockedSignal(BlockSignalBase):
             b += self._n_block
         if b >= self._n_block:
             raise IndexError
-        blk_slice[self._axis] = b
+        blk_slice[self.axis] = b
         if b == self._n_block - 1:
-            blk_slice[self._axis + 1] = slice(0, self._last_block_sz)
+            blk_slice[self.axis + 1] = slice(0, self._last_block_sz)
         else:
-            blk_slice[self._axis + 1] = slice(None)
+            blk_slice[self.axis + 1] = slice(None)
         return self._x_blk[tuple(blk_slice)]
 
 
