@@ -211,6 +211,10 @@ class MappedBuffer(object):
         return len(self._array)
 
     @property
+    def ndim(self):
+        return self._array.ndim
+
+    @property
     def transpose_reads(self):
         """
         This is a callable ToggleState object that can create a context in which this buffer will return __getitem__

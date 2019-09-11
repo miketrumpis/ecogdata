@@ -132,9 +132,9 @@ class MappedSource(ElectrodeDataSource):
         # This data cache will need special logic to expose only (active) electrode channels, depending on the
         # electrode_channels list and the current channel mask
         self._units_scale = units_scale
-        self._data_buffer = HDF5Buffer(self._electrode_array, units_scale=units_scale)
+        self.data_buffer = HDF5Buffer(self._electrode_array, units_scale=units_scale)
         self._transpose = transpose
-        self.dtype = self._data_buffer.dtype
+        self.dtype = self.data_buffer.dtype
 
         # channel_mask is the list of data indices for the active electrode set (mutable)
         self._active_channels = self.__electrode_channels
@@ -177,13 +177,13 @@ class MappedSource(ElectrodeDataSource):
     @property
     def shape(self):
         if self._transpose:
-            return len(self._active_channels), self._data_buffer.shape[0]
+            return len(self._active_channels), self.data_buffer.shape[0]
         else:
-            return len(self._active_channels), self._data_buffer.shape[1]
+            return len(self._active_channels), self.data_buffer.shape[1]
 
     @property
     def writeable(self):
-        return self._data_buffer.writeable
+        return self.data_buffer.writeable
 
     @property
     def big_slices(self):
@@ -199,7 +199,7 @@ class MappedSource(ElectrodeDataSource):
         # quick short-circuit: False if there are masked channels
         if not all_active:
             return False
-        num_disk_channels = self._data_buffer.shape[1] if self._transpose else self._data_buffer.shape[0]
+        num_disk_channels = self.data_buffer.shape[1] if self._transpose else self.data_buffer.shape[0]
         mapped_channels = np.array(self.__electrode_channels)
         all_mapped = np.array_equal(mapped_channels, np.arange(num_disk_channels))
         return all_mapped
@@ -280,8 +280,8 @@ class MappedSource(ElectrodeDataSource):
     def _check_slice_size(self, slicer):
         if not self._raise_on_big_slice:
             return
-        shape = self._data_buffer.get_output_array(slicer, only_shape=True)
-        size = np.prod(shape) * self._data_buffer.dtype.itemsize
+        shape = self.data_buffer.get_output_array(slicer, only_shape=True)
+        size = np.prod(shape) * self.data_buffer.dtype.itemsize
         state = self._allow_big_slicing.state
         if size > load_params().memory_limit and not state:
             raise MemoryBlowOutError('A read with shape {} will be *very* large. Use the big_slices context to '
@@ -296,9 +296,9 @@ class MappedSource(ElectrodeDataSource):
     def cache_slice(self, slicer):
         slicer = self._slice_logic(slicer)
         self._check_slice_size(slicer)
-        with self._data_buffer.transpose_reads(self._transpose):
-            output = self._data_buffer.get_output_array(slicer)
-        p = Process(target=slice_data_buffer, args=(self._data_buffer, slicer),
+        with self.data_buffer.transpose_reads(self._transpose):
+            output = self.data_buffer.get_output_array(slicer)
+        p = Process(target=slice_data_buffer, args=(self.data_buffer, slicer),
                     kwargs=dict(transpose=self._transpose, output=output))
         p.start()
         self._caching_process = p
@@ -319,7 +319,7 @@ class MappedSource(ElectrodeDataSource):
         if len(slicer) == 1 and self.channels_are_maps.state:
             return self.slice_subset(slicer)
         self._check_slice_size(slicer)
-        return slice_data_buffer(self._data_buffer, slicer, self._transpose)
+        return slice_data_buffer(self.data_buffer, slicer, self._transpose)
 
     def __setitem__(self, slicer, data):
         """Write the sub-series of samples selected by slicer (from possibly a subset of channels)"""
@@ -333,7 +333,7 @@ class MappedSource(ElectrodeDataSource):
         with self.channels_are_maps(False):
             slicer = self._slice_logic(slicer)
         try:
-            self._data_buffer[slicer] = data
+            self.data_buffer[slicer] = data
         except IndexError as e:
             if suspect_call:
                 tb = e.__traceback__
@@ -356,10 +356,10 @@ class MappedSource(ElectrodeDataSource):
             return kwargs['out']
         return self
 
-    def notch_filter(self, **kwargs):
+    def notch_filter(self, *args, **kwargs):
         kwargs['block_filter'] = bfilter
         # kwargs['inplace'] = True
-        notch_all(self, **kwargs)
+        notch_all(self, *args, **kwargs)
         if kwargs.get('out', None) is not None:
             return kwargs['out']
         return self

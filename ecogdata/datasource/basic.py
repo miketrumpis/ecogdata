@@ -111,7 +111,20 @@ class ElectrodeDataSource(object):
     dtype = None
     _auto_block_length = 20000
     writeable = True
+    # data buffer should be array like, exposing: shape, ndim, len, dtype
+    data_buffer = None
     _transpose = False
+
+    def __len__(self):
+        return len(self.data_buffer)
+
+    @property
+    def shape(self):
+        return self.data_buffer.shape
+
+    @property
+    def ndim(self):
+        return self.data_buffer.ndim
 
     def cache_slice(self, slicer):
         self._cache_output = self[slicer]
@@ -260,18 +273,22 @@ class PlainArraySource(ElectrodeDataSource):
             preserved if this source is mirrored or copied to another source.
         """
 
-        self._data_matrix = shared_copy(data_matrix) if use_shared_mem else data_matrix
-        self.shape = data_matrix.shape
+        self.data_buffer = shared_copy(data_matrix) if use_shared_mem else data_matrix
         self.dtype = data_matrix.dtype
         for name in aligned_arrays:
             setattr(self, name, (shared_copy(aligned_arrays[name]) if use_shared_mem else aligned_arrays[name]))
         self.aligned_arrays = list(aligned_arrays.keys())
 
+    def set_channel_mask(self, channel_mask):
+        """Apply the binary channel mask to the current data matrix"""
+        # TODO: preserve shared memory
+        self.data_buffer = self.data_buffer[channel_mask]
+
     def __getitem__(self, slicer):
-        return self._data_matrix[slicer]
+        return self.data_buffer[slicer]
 
     def __setitem__(self, slicer, data):
-        self._data_matrix[slicer] = data
+        self.data_buffer[slicer] = data
 
     def filter_array(self, **kwargs):
         """
@@ -290,14 +307,14 @@ class PlainArraySource(ElectrodeDataSource):
         """
 
         inplace = kwargs.get('inplace', True)
-        f_arr = filter_array(self._data_matrix, **kwargs)
+        f_arr = filter_array(self.data_buffer, **kwargs)
         if inplace:
             return self
         aligned_arrays = dict([(a, getattr(self, a)) for a in self.aligned_arrays])
         # use_shared_mem = False b/c the array returned from filter_array is already shared mem.
         return PlainArraySource(f_arr, use_shared_mem=False, **aligned_arrays)
 
-    def notch_filter(self, **kwargs):
+    def notch_filter(self, *args, **kwargs):
         """
         Apply the `ecogdata.filt.time.proc.notch_all` method to this data matrix and return a new PlainArraySource.
         If `inplace=True` then the returned source will be this data source
@@ -314,7 +331,7 @@ class PlainArraySource(ElectrodeDataSource):
         """
 
         inplace = kwargs.get('inplace', True)
-        f_arr = notch_all(self._data_matrix, **kwargs)
+        f_arr = notch_all(self.data_buffer, *args, **kwargs)
         if inplace:
             return self
         aligned_arrays = dict([(a, getattr(self, a)) for a in self.aligned_arrays])
