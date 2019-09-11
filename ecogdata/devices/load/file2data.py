@@ -526,12 +526,15 @@ class FileLoader:
                 ref_chans = ref_chans.filter_array(out=ref_chans_w, **filter_kwargs)
         if self.notches:
             print('Notch filtering')
-            notch_kwargs = dict(inplace=True, lines=self.notches, filtfilt=True, verbose=True)
-            datasource = datasource.notch_filter(out=datasource_w, **notch_kwargs)
+            notch_kwargs = dict(inplace=datasource_w is None,
+                                lines=self.notches, filt_kwargs=dict(filtfilt=True))
+            if self.mapped:
+                notch_kwargs['filt_kwargs']['verbose'] = True
+            datasource = datasource.notch_filter(Fs, out=datasource_w, **notch_kwargs)
             if ground_chans:
-                ground_chans = ground_chans.notch_filter(out=datasource_w, **notch_kwargs)
+                ground_chans = ground_chans.notch_filter(Fs, out=ground_chans_w, **notch_kwargs)
             if ref_chans:
-                ref_chans = ref_chans.notch_filter(out=ref_chans_w, **notch_kwargs)
+                ref_chans = ref_chans.notch_filter(Fs, out=ref_chans_w, **notch_kwargs)
 
         trigger_signal, pos_edge = self.find_trigger_signals(data_file)
 

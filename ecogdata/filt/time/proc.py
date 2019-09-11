@@ -45,7 +45,7 @@ def filter_array(
         Filter type to design.
     inplace: bool
         If True, then arr must be a shared memory array. Otherwise a
-        shared copy will be made from the input.
+        shared copy will be made from the input. This is a shortcut for using "out=arr".
     out: ndarray
         If not None, place filter output here (if inplace is specified, any output array is ignored).
     block_filter: str or callable
@@ -124,10 +124,17 @@ def notch_all(
     notched : ndarray
     
     """
-    if not inplace:
+
+    if inplace:
+        # If filtering inplace, then set the output array as such
+        filt_kwargs['out'] = arr
+    elif filt_kwargs.get('out', None) is None:
+        # If inplace is False and no output array is set,
+        # then make the array copy here and do inplace filtering on the copy
         arr_f = shared_copy(arr)
-    else:
-        arr_f = arr
+        arr = arr_f
+        filt_kwargs['out'] = arr
+    # otherwise an output array is set
 
     if isinstance(lines, (float, int)):
         # repeat lines until nmax
@@ -143,10 +150,7 @@ def notch_all(
     notch_defs['Fs'] = Fs
     for nf in lines:
         notch_defs['fcut'] = nf
-        filter_array(
-            arr_f, 'notch', inplace=True,
-            design_kwargs=notch_defs, filt_kwargs=filt_kwargs
-            )
+        arr_f = filter_array(arr, 'notch', inplace=False, design_kwargs=notch_defs, **filt_kwargs)
     return arr_f
 
 def downsample(x, fs, appx_fs=None, r=None, filter_inplace=False):
