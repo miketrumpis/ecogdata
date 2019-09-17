@@ -302,7 +302,12 @@ class FileLoader:
             # *Always* downsample at micro-volts scaling
             print('Creating mapped primary source {}'.format(data_file))
             try:
-                aligned_arrays = (name for name in self.aligned_arrays if name in h5file.keys())
+                aligned_arrays = []
+                for name in self.aligned_arrays:
+                    if isinstance(name, str) and name in h5file.keys():
+                        aligned_arrays.append(name)
+                    elif name[0] in h5file.keys():
+                        aligned_arrays.append(name)
                 # Map the raw data source using all channels (leave default electrode_channels=None)
                 datasource = MappedSource(h5file, self.data_array, aligned_arrays=aligned_arrays,
                                           units_scale=self.scale_to_uv, transpose=self.transpose_array)
@@ -364,7 +369,12 @@ class FileLoader:
         print('Opening source file {} in mode {}'.format(data_file, open_mode))
         print('Creating mapped sources: downsample ratio {}'.format(downsample_ratio))
         # Only map aligned arrays *that exist in the file!*
-        aligned_arrays = (name for name in self.aligned_arrays if name in h5file.keys())
+        aligned_arrays = []
+        for name in self.aligned_arrays:
+            if isinstance(name, str) and name in h5file.keys():
+                aligned_arrays.append(name)
+            elif name[0] in h5file.keys():
+                aligned_arrays.append(name)
         datasource = MappedSource(h5file, self.data_array, electrode_channels=electrode_chans,
                                   aligned_arrays=aligned_arrays, units_scale=self.units_scale,
                                   transpose=self.transpose_array)
