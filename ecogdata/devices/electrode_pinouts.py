@@ -906,6 +906,7 @@ electrode_maps = dict(
                                       zif_by_intan64, pitch=0.420),
     # direct maps
     psv_256_rhd=psv_256_rhd,
+    psv_1024_rhd=psv_1024_rhd,
     psv_244_rhd=psv_244_rhd,
     psv_244_mux1=psv_244_mux1,
     psv_32=psv_32,
