@@ -129,7 +129,7 @@ class ElectrodeDataSource(object):
     def cache_slice(self, slicer):
         self._cache_output = self[slicer]
 
-    def get_cache_slice(self):
+    def get_cached_slice(self):
         return self._cache_output
 
     def iter_blocks(self, block_length=None, overlap=0, start_offset=0, return_slice=False, reverse=False):
