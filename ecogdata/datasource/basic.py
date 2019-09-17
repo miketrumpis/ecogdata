@@ -39,7 +39,7 @@ def calc_new_samples(N, rate_change):
 class DataSourceBlockIter(BlockSignalBase):
 
     def __init__(self, datasource, block_length=None, overlap=0, start_offset=0,
-                 axis=1, return_slice=False, reverse=False):
+                 axis=1, return_slice=False, reverse=False, **kwargs):
         if block_length is None:
             L = datasource._auto_block_length
         else:
@@ -51,6 +51,7 @@ class DataSourceBlockIter(BlockSignalBase):
         self._count = 0
         self.return_slice = return_slice
         self._itr = range(0, self._n_block)[::-1] if reverse else range(0, self._n_block)
+        self._slice_cache_args = kwargs
 
     def __len__(self):
         return len(self._itr)
@@ -88,14 +89,14 @@ class DataSourceBlockIter(BlockSignalBase):
         sl = self._make_slice(i)
         # Send data caching into motion on first iteration
         if self._count == 0:
-            self.datasource.cache_slice(sl)
+            self.datasource.cache_slice(sl, **self._slice_cache_args)
         self._count += 1
         # Wait on previous cache
         output = self.datasource.get_cached_slice()
         if self._count < len(self):
             # Start caching the next load
             i_next = self._itr[self._count]
-            self.datasource.cache_slice(self._make_slice(i_next))
+            self.datasource.cache_slice(self._make_slice(i_next), **self._slice_cache_args)
         if self.return_slice:
             return output, sl
         else:
@@ -126,13 +127,35 @@ class ElectrodeDataSource(object):
     def ndim(self):
         return self.data_buffer.ndim
 
-    def cache_slice(self, slicer):
-        self._cache_output = self[slicer]
+    def cache_slice(self, slicer, not_strided=False, sharedmem=False):
+        """
+        Caches a slice to yield during iteration. This takes place in a background thread for mapped sources.
+
+        Parameters
+        ----------
+        slicer: slice
+            Array __getitem__ slice spec.
+        not_strided: bool
+            If True, ensure that sliced array is not strided
+        sharedmem: bool
+            If True, cast the slice into a shared ctypes array
+
+        """
+        if sharedmem:
+            self._cache_output = shared_copy(self[slicer])
+        elif not_strided:
+            output = self[slicer]
+            if output.__array_interface__['strides']:
+                self._cache_output = output.copy()
+            else:
+                self._cache_output = output
+        else:
+            self._cache_output = self[slicer]
 
     def get_cached_slice(self):
         return self._cache_output
 
-    def iter_blocks(self, block_length=None, overlap=0, start_offset=0, return_slice=False, reverse=False):
+    def iter_blocks(self, block_length=None, overlap=0, start_offset=0, return_slice=False, reverse=False, **kwargs):
         """
         Yield data blocks with given length (in samples)
 
@@ -145,18 +168,38 @@ class ElectrodeDataSource(object):
         start_offset: int
             Number of samples to skip before iteration.
         return_slice: bool
-            If True return the ndarray block followed by the memmap array slice to yield this block. Helpful for
+            If True return the ndarray block followed by the array slice to yield this block. Helpful for
             pairing the yielded blocks with the same position in a follower array, or writing back transformed data
-            to this memmap (if writeable).
+            to this datasource (if writeable).
         reverse: bool
             If True, yield the blocks in reverse sequence.
+        kwargs: dict
+            Arguments for ElectrodeDataSource.cache_slice
 
         """
 
         return DataSourceBlockIter(self, axis=1, block_length=block_length, overlap=overlap, start_offset=start_offset,
-                                   return_slice=return_slice, reverse=reverse)
+                                   return_slice=return_slice, reverse=reverse, **kwargs)
 
-    def iter_channels(self, chans_per_block=None, use_max_memory=False, return_slice=False):
+    def iter_channels(self, chans_per_block=None, use_max_memory=False, return_slice=False, **kwargs):
+        """
+        Yield data channels.
+
+        Parameters
+        ----------
+        chans_per_block: int
+            Number of channels per iteration. The default value is either 16 or based on memory limit if 
+            use_max_memory=True.
+        use_max_memory: bool
+            Set the number of channels based on the "memory_limit" config value.
+        return_slice: bool
+            If True return the ndarray block followed by the array slice to yield this block. Helpful for
+            pairing the yielded blocks with the same position in a follower array, or writing back transformed data
+            to this datasource (if writeable).
+        kwargs: dict
+            Arguments for ElectrodeDataSource.cache_slice
+
+        """
         C, T = self.shape
         if chans_per_block is None:
             if use_max_memory:
@@ -168,7 +211,7 @@ class ElectrodeDataSource(object):
                 chans_per_block = max(1, int(max_memory / T / bytes_per_samp))
             else:
                 chans_per_block = 16
-        return DataSourceBlockIter(self, axis=0, block_length=chans_per_block, return_slice=return_slice)
+        return DataSourceBlockIter(self, axis=0, block_length=chans_per_block, return_slice=return_slice, **kwargs)
 
     def batch_change_rate(self, new_rate_ratio, new_source, antialias_aligned=False, aggregate_aligned=True,
                           verbose=False, filter_inplace=False):

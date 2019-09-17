@@ -293,7 +293,7 @@ class MappedSource(ElectrodeDataSource):
                             aligned_arrays=self.aligned_arrays, units_scale=self._units_scale, transpose=self._transpose,
                             raise_on_big_slice=self._raise_on_big_slice)
 
-    def cache_slice(self, slicer):
+    def cache_slice(self, slicer, **kwargs):
         slicer = self._slice_logic(slicer)
         self._check_slice_size(slicer)
         with self.data_buffer.transpose_reads(self._transpose):
