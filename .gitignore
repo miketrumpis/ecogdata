@@ -1,5 +1,8 @@
 *.pyc
+*.so
+*.c
 build
+ecogdata.egg-info/
 .idea
 sandbox
 
