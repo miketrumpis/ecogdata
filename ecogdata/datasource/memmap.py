@@ -74,6 +74,9 @@ class MemoryBlowOutError(Exception):
 
 
 class MappedSource(ElectrodeDataSource):
+    # TODO:
+    #  1. need to allow multiple source_files so that different recordings can be joined.
+    #  2. a mapped source should have a start/stop index that only exposes data inside a range
 
     def __init__(self, source_file, electrode_field, electrode_channels=None, channel_mask=None,
                  aligned_arrays=(), units_scale=None, transpose=False, raise_on_big_slice=True):
@@ -107,8 +110,6 @@ class MappedSource(ElectrodeDataSource):
             Either the scaling value or (offset, scaling) values such that signal = (memmap + offset) * scaling
         transpose: bool
             The is the mapped array stored in transpose (Time x Channels)?
-        raise_on_big_slice: bool
-            If True (default), then raise an exception if the proposed read slice will be larger than the memory
             limit. If you really want to read-out anyway, use the `with source.big_slices(True)` context.
         """
 
