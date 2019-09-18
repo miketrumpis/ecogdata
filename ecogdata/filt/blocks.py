@@ -81,7 +81,8 @@ class BlockedSignal(BlockSignalBase):
         # (..., nx*ny, nx, 1) * bitdepth
         # Change the strides at _axis to reflect new shape
         b_offset = int(np.prod(shape[self.axis + 1:]) * bitdepth)
-        nstrides = strides[:self.axis] + (self.L * b_offset, b_offset) + strides[self.axis + 1:]
+        lap = self.L - self._overlap
+        nstrides = strides[:self.axis] + (lap * b_offset, b_offset) + strides[self.axis + 1:]
         self._x_blk = as_strided(x, shape=nshape, strides=nstrides)
 
     def __iter__(self):
