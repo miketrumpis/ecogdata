@@ -14,14 +14,17 @@ class BlockSignalBase:
             axis += len(shape)
         T = shape[axis] - start_offset
         if isinstance(overlap, int) and overlap > 0:
-            lap = block_length - overlap
+            step = block_length - overlap
             self._overlap = overlap
         else:
-            lap = int(round((1 - overlap) * block_length))
-            self._overlap = block_length - lap
-        n_block = T // lap
-        if partial_block and (T > lap * n_block):
-            self._last_block_sz = T - lap * n_block
+            step = int(round((1 - overlap) * block_length))
+            self._overlap = block_length - step
+        # The last full block is (T - block size) // step length
+        # So 0, ..., last_block is last_block + 1
+        n_block = (T - block_length) // step + 1
+        # if the next step starts before T and ends after T then a partial block is possible
+        if partial_block and n_block * step < T < n_block * step + block_length:
+            self._last_block_sz = T - step * n_block
             n_block += 1
         else:
             self._last_block_sz = block_length
