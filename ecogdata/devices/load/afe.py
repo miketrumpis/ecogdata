@@ -21,7 +21,7 @@ range_lookup = {0: 0.13,
                 7: 9.6}
 
 
-def prepare_afe_primary_file(tdms_file, n_rows=None, write_path=None):
+def prepare_afe_primary_file(tdms_file, write_path=None):
 
     tdms_path, tdms_name = os.path.split(tdms_file)
     tdms_name = os.path.splitext(tdms_name)[0]
@@ -51,22 +51,21 @@ def prepare_afe_primary_file(tdms_file, n_rows=None, write_path=None):
                 if key in rename_arrays:
                     hdf.create_array('/', rename_arrays[key], obj=val)
 
-        # do extra extra conversions
-        num_per_electrode_row = 100
-        fs = float(group.properties['SamplingRate']) / (num_per_electrode_row * group.properties['OverSampling'])
-        hdf.create_array(hdf.root, 'Fs', fs)
-
         # Parse channels
         chans = tdms.group_channels(t_group)
         elec_chans = [c for c in chans if 'CH_' in c.channel]
         bnc_chans = [c for c in chans if 'BNC_' in c.channel]
+        # For now, files only have 1 row and all channels relate to that row
+        num_per_electrode_row = len(elec_chans)
+
+        # do extra extra conversions
+        fs = float(group.properties['SamplingRate']) / (num_per_electrode_row * group.properties['OverSampling'])
+        hdf.create_array(hdf.root, 'Fs', fs)
 
         # ensure that channels are ordered correctly
         elec_mapping = dict([(ch.properties['NI_ArrayColumn'], ch) for ch in elec_chans])
-        if n_rows is not None:
-            num_electrode_rows = n_rows
-        else:
-            num_electrode_rows = len(elec_chans) // num_per_electrode_row
+        # This value is currently always 1 -- but leave this factor in for future flexibility
+        num_electrode_rows = len(elec_chans) // num_per_electrode_row
         if num_per_electrode_row * num_electrode_rows < len(elec_chans):
             print('There were excess TDMS channels: {}'.format(len(elec_chans)))
         channels_per_row = 32
