@@ -7,9 +7,9 @@ import warnings
 from lxml import etree
 
 import numpy as np
-import tables
 import h5py
 
+from ecogdata.expconfig import load_params
 from ecogdata.trigger_fun import process_trigger
 from ecogdata.filt.time import cheby2_bp, downsample
 from ecogdata.util import Bunch, mkdir_p
@@ -34,8 +34,6 @@ _srates = (1000, 1250, 1500, 2000, 2500, 3000, 1e4/3,
 
 def get_robust_samplingrate(rec_path):
     settings = glob(osp.join(rec_path, 'settings*.xml'))
-    #xml = osp.join(rec_path, 'settings.xml')
-    #if not osp.exists(xml):
     if not len(settings):
         return None
     xml = settings[0]
@@ -152,9 +150,9 @@ def hdf5_open_ephys_channels(
     else:
         d_len = ch_data.shape[-1]
     if quantized:
-        atom = tables.Atom.from_sctype('h')
+        arr_dtype = 'h'
     else:
-        atom = tables.Atom.from_sctype('d')
+        arr_dtype = 'f' if load_params().floating_point == 'single' else 'd'
     
     def _proc_block(block, antialias=True):
         if not quantized:
@@ -166,11 +164,9 @@ def hdf5_open_ephys_channels(
                 block = block[:, ::downsamp]
         return block
 
-    ## with closing(tables.open_file(f, mode)) as f:
-    with tables.open_file(hdf5_name, mode='w') as h5:
-        h5.create_array('/', 'Fs', trueFs / downsamp)
-        chans = h5.create_carray('/', 'chdata', atom=atom, shape=(n_chan, d_len))
-
+    with h5py.File(hdf5_name, 'w', libver='latest') as h5:
+        h5.create_dataset('Fs', data=trueFs / downsamp)
+        chans = h5.create_dataset('chdata', dtype=arr_dtype, chunks=True, shape=(n_chan, d_len))
 
         # Pack in channel data
         chans[0] = _proc_block(ch_data)
@@ -193,8 +189,8 @@ def hdf5_open_ephys_channels(
         n_extra = len(OE.get_filelist(rec_path, ctype=arr, source=rec_num[0]))
         if not n_extra:
             continue
-        with tables.open_file(hdf5_name, mode='a') as h5:
-            chans = h5.create_carray('/', arr.lower(), atom=atom, shape=(n_extra, d_len))
+        with h5py.File(hdf5_name, 'r+') as h5:
+            chans = h5.create_dataset(arr.lower(), dtype=arr_dtype, chunks=True, shape=(n_extra, d_len))
             start_chan = 0
             while True:
                 stop_chan = min(n_extra, start_chan + load_chans)
@@ -679,224 +675,3 @@ def plot_Z(
         cb.set_label(u'Impedance (k\u03A9)')
     f.tight_layout()
     return f
-
-
-# def memmap_open_ephys_channels(
-#         exp_path, test, rec_num='auto', quantized=False, data_chans='all'
-#         ):
-#
-#     """Load memory-mapped arrays of the full band timeseries.
-#
-#     This option provides a way to load massive multi-channel datasets
-#     sampled at 20 kS/s. Channels are cached to disk in flat files and then
-#     loaded as "memmap" arrays. Down-sampling is not supported.
-#
-#     TODO: reference channels are not supported
-#
-#     """
-#
-#     rec_path, rec_num = prepare_paths(exp_path, test, rec_num)
-#     OE_type = np.int16 if quantized else float
-#     NP_type = 'h' if quantized else 'd'
-#
-#     chan_names = OE.get_filelist(
-#         rec_path, source=rec_num[0], ctype='CH', channels=data_chans
-#         )
-#     n_chan = len(chan_names )
-#     if not n_chan:
-#         raise IOError('no channels found')
-#     from ecogdata.expconfig import params
-#     # loading in transpose mode, so channels have to be packed
-#     # in full one after another.
-#     bytes_per_channel = OE.get_channel_bytes(chan_names[0])
-#     if not quantized:
-#         bytes_per_channel *= 4
-#
-#     load_chans = int(float(params.memory_limit) // (2 * bytes_per_channel) )
-#
-#     if sys.platform == 'win32':
-#         chans_ = NamedTemporaryFile(mode='ab', delete=False)
-#         OE.pack(
-#             rec_path, filename=chans_.file, transpose=True,
-#             dtype=OE_type, ctype='CH', channels=data_chans,
-#             chunk_size=load_chans, source=rec_num[0]
-#             )
-#         chans = np.memmap(chans_.name, dtype=NP_type).reshape(n_chan, -1)
-#     else:
-#         with NamedTemporaryFile(mode='ab') as chans_:
-#             OE.pack(
-#                 rec_path, filename=chans_.file, transpose=True,
-#                 dtype=OE_type, ctype='CH', channels=data_chans,
-#                 chunk_size=load_chans, source=rec_num[0]
-#                 )
-#             chans = np.memmap(chans_.name, dtype=NP_type).reshape(n_chan, -1)
-#
-#     dset = Bunch(chdata = chans)
-#     for arr in ('ADC', 'AUX'):
-#
-#         n_extra = len(OE.get_filelist(rec_path, ctype=arr))
-#         if n_extra:
-#             if sys.platform == 'win32':
-#                 tfile = NamedTemporaryFile(mode='ab', delete=False)
-#                 OE.pack(
-#                     rec_path, filename=tfile.file, transpose=True,
-#                     dtype=OE_type, ctype=arr, chunk_size=load_chans,
-#                     source=rec_num[0]
-#                     )
-#                 mm = np.memmap(tfile.name, dtype=NP_type).reshape(n_extra, -1)
-#                 dset[ arr.lower() ] = mm
-#             else:
-#                 with NamedTemporaryFile(mode='ab') as tfile:
-#                     OE.pack(
-#                         rec_path, filename=tfile.file, transpose=True,
-#                         dtype=OE_type, ctype=arr, chunk_size=load_chans,
-#                         source=rec_num[0]
-#                         )
-#                     mm = np.memmap(tfile.name, dtype=NP_type).reshape(n_extra, -1)
-#                     dset[ arr.lower() ] = mm
-#         else:
-#             dset[ arr.lower() ] = ()
-#
-#     header = OE.get_header_from_folder(rec_path)
-#     trueFs = get_robust_samplingrate(rec_path)
-#     if trueFs is None:
-#         trueFs = header['sampleRate']
-#     dset.header = header
-#     dset.Fs = trueFs
-#     return dset
-
-#
-#
-# def load_open_ephys(exp_path, test, electrode,
-#                     bandpass=(), notches=(), units='uV',
-#                     snip_transient=True, rec_num='auto',
-#                     trigger_idx=(), useFs=-1,
-#                     save_downsamp=True, use_stored=True, store_path='',
-#                     downsamp=1, memmap=False, connectors=(), **extra):
-#     chan_map, gnd_chans, ref_chans = get_electrode_map(electrode, connectors=connectors)
-#     all_chans = np.arange(len(chan_map) + len(gnd_chans) + len(ref_chans))
-#     not_connected = np.union1d(gnd_chans, ref_chans)
-#     el_chans = np.setdiff1d(all_chans, not_connected)
-#
-#     if memmap:
-#         channel_data = memmap_open_ephys_channels(
-#             exp_path, test, rec_num=rec_num,
-#             data_chans=list(el_chans + 1), **extra
-#         )
-#         ecog_chans = channel_data.chdata
-#         ground_chans = ()
-#         ref_chans = ()
-#         snip_transient = False
-#     else:
-#         # Load Data/ADC/AUX channels (perhaps pre-computed downsample)
-#         channel_data = load_open_ephys_channels(
-#             exp_path, test, rec_num=rec_num, shared_array=False,
-#             target_Fs=useFs, save_downsamp=save_downsamp,
-#             use_stored=use_stored, store_path=store_path, **extra
-#         )
-#         ground_chans = channel_data.chdata[gnd_chans]
-#         T = channel_data.chdata.shape[1]
-#         if len(ref_chans):
-#             ref_channels = shared_ndarray((len(ref_chans), T), typecode='d')
-#             np.take(channel_data.chdata, ref_chans, axis=0, out=ref_channels)
-#         else:
-#             ref_channels = ()
-#         ecog_chans = shared_ndarray((len(el_chans), T), typecode='d')
-#         np.take(channel_data.chdata, el_chans, axis=0, out=ecog_chans)
-#
-#     Fs = channel_data.Fs
-#
-#     # Now do a pretty standard set of operations (some day will be
-#     # "standardized" in a data loading class)
-#     # * separate electrode / trigger / aux data
-#     # * process trigger edges
-#     # * bandpass filtering
-#     # * advance starting index
-#     # * convert units
-#
-#     if not np.iterable(trigger_idx):
-#         trigger_idx = [trigger_idx]
-#     if not len(trigger_idx):
-#         trig_chan = ()
-#     else:
-#         try:
-#             trig_chan = channel_data.adc[trigger_idx]
-#         except:
-#             print("No trig chans found")
-#             trig_chan = ()
-#
-#     try:
-#         stim_chan = channel_data.adc[max(trigger_idx) + 1];
-#     except:
-#         print("Stim chan not loaded")
-#         stim_chan = ()
-#
-#     if len(trig_chan):
-#         pos_edge, _ = process_trigger(trig_chan)
-#     else:
-#         pos_edge = ()
-#
-#     with parallel_controller(not memmap):
-#         ### bandpass filter
-#         if len(bandpass):
-#             lo, hi = bandpass
-#             (b, a) = butter_bp(lo=lo, hi=hi, Fs=Fs, ord=4)
-#             filtfilt(ecog_chans, b, a)
-#         ### notch filters
-#         if len(notches):
-#             notch_all(
-#                 ecog_chans, Fs, lines=notches, inplace=True, filtfilt=True
-#             )
-#
-#     # Don't parallel filter reference channel(s)
-#     if len(ref_channels):
-#         ref_channels = np.atleast_2d(ref_channels)
-#         with parallel_controller(False):
-#             if len(bandpass):
-#                 lo, hi = bandpass
-#                 (b, a) = butter_bp(lo=lo, hi=hi, Fs=Fs, ord=4)
-#                 filtfilt(ref_channels, b, a)
-#             ### notch filters
-#             if len(notches):
-#                 notch_all(ecog_chans, Fs, lines=notches, inplace=True, filtfilt=True)
-#         ref_channels = ref_channels.squeeze()
-#
-#     ### advance index
-#     if snip_transient:
-#         if isinstance(snip_transient, bool):
-#             snip = int(5 * Fs)
-#         else:
-#             snip = int(snip_transient * Fs)
-#
-#         ecog_chans = ecog_chans[:, snip:].copy()
-#         if len(ground_chans):
-#             ground_chans = ground_chans[:, snip:].copy()
-#         if len(ref_channels):
-#             ref_channels = ref_channels[:, snip:].copy()
-#         if len(trig_chan):
-#             trig_chan = trig_chan[snip:].copy()
-#             pos_edge -= snip
-#             pos_edge = pos_edge[pos_edge > 0]
-#         if len(stim_chan):
-#             stim_chan = stim_chan[snip:].copy()
-#
-#     ### convert units
-#     if units.lower() != 'uv':
-#         convert_scale(ecog_chans, 'uv', units)
-#
-#     dset = Bunch()
-#     dset.data = ecog_chans
-#     if 'adc' in channel_data:
-#         dset.adc = channel_data.adc  # added in for loading in behavior tables
-#     dset.ground_chans = ground_chans
-#     dset.ref_chans = ref_channels
-#     dset.chan_map = chan_map
-#     dset.pos_edge = pos_edge
-#     dset.trig_chan = trig_chan
-#     dset.stim_chan = stim_chan
-#     dset.Fs = Fs
-#     dset.bandpass = bandpass
-#     dset.transient_snipped = snip_transient
-#     dset.notches = notches
-#     dset.units = units
-#     return dset

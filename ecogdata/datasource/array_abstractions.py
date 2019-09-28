@@ -275,6 +275,7 @@ class MappedBuffer(object):
         if self.writeable:
             # if the datatypes are a mismatch then don't try to fix it here
             self._array[sl] = data
+            self._array.flush()
         elif self._raise_bad_write:
             raise RuntimeError('Tried to write to a not-writeable MappedBuffer')
 
@@ -321,6 +322,7 @@ class HDF5Buffer(MappedBuffer):
         for isl, osl in zip(i_slices, o_slices):
             osl = osl[(len(osl) - data_dim):]
             self._array[isl] = (data[osl] if len(osl) else data)
+        self._array.flush()
 
 
 class ReadCache(object):

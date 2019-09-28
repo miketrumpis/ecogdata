@@ -134,6 +134,8 @@ class MappedSource(ElectrodeDataSource):
         # electrode_channels list and the current channel mask
         self._units_scale = units_scale
         self.data_buffer = HDF5Buffer(self._electrode_array, units_scale=units_scale)
+        if self.data_buffer.writeable and not source_file.swmr_mode:
+            source_file.swmr_mode = True
         self._transpose = transpose
         self.dtype = self.data_buffer.dtype
 
@@ -452,7 +454,7 @@ class MappedSource(ElectrodeDataSource):
                     # punt on the unlink-on-close issue for now with "delete=False"
                     # f.file.close()
                     filename = f.name
-            with h5py.File(filename, 'w') as fw:
+            with h5py.File(filename, 'w', libver='latest') as fw:
                 # Create all new datasets as non-transposed
                 fw.create_dataset(self._electrode_field, shape=(C, T), dtype=new_dtype, chunks=True)
                 if copy_electrodes:
