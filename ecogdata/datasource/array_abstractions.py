@@ -250,7 +250,7 @@ class MappedBuffer(object):
         slicer = _abs_slicer(slicer, self.shape)
         out_shape = select(self.shape, slicer, 0).mshape
         # if the output will be transposed, then pre-create the array in the right order
-        if self._transpose_state.state:
+        if self._transpose_state:
             out_shape = out_shape[::-1]
         if only_shape:
             return out_shape
@@ -265,7 +265,7 @@ class MappedBuffer(object):
     def __getitem__(self, sl):
         out_arr = self.get_output_array(sl)
         # not sure what the most efficient way to slice is?
-        if self._transpose_state.state:
+        if self._transpose_state:
             out_arr[:] = self._array[sl].transpose()
         else:
             out_arr[:] = self._array[sl]
@@ -290,7 +290,7 @@ class HDF5Buffer(MappedBuffer):
         i_slices, o_slices = tile_slices(sl, self.shape, self._array.chunks)
         # print('Slicing buffer as {}'.format(i_slices))
         for isl, osl in zip(i_slices, o_slices):
-            if self._transpose_state.state:
+            if self._transpose_state:
                 # generally need to reverse the slice order
                 if isinstance(osl, int):
                     osl = (osl,)

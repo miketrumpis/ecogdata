@@ -267,7 +267,7 @@ class MappedSource(ElectrodeDataSource):
         else:
             # If the slice is for channels only and we're in map-subset mode, then simply return the slice without
             # modifying the range
-            if self.channels_are_maps.state:
+            if self.channels_are_maps:
                 return slicer
             time_range = slice(None)
         if isinstance(chan_range, (int, np.integer)):
@@ -285,7 +285,7 @@ class MappedSource(ElectrodeDataSource):
             return
         shape = self.data_buffer.get_output_array(slicer, only_shape=True)
         size = np.prod(shape) * self.data_buffer.dtype.itemsize
-        state = self._allow_big_slicing.state
+        state = self._allow_big_slicing
         if size > load_params().memory_limit and not state:
             raise MemoryBlowOutError('A read with shape {} will be *very* large. Use the big_slices context to '
                                      'proceed'.format(shape))
@@ -319,7 +319,7 @@ class MappedSource(ElectrodeDataSource):
         """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
         # data goes out as [subset]channels x time
         slicer = self._slice_logic(slicer)
-        if len(slicer) == 1 and self.channels_are_maps.state:
+        if len(slicer) == 1 and self.channels_are_maps:
             return self.slice_subset(slicer)
         self._check_slice_size(slicer)
         return slice_data_buffer(self.data_buffer, slicer, self._transpose)
