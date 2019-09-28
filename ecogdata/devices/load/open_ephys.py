@@ -27,7 +27,7 @@ from ecogdata.devices.units import convert_scale
 from .file2data import FileLoader
 
 
-_srates = (1000, 1250, 1500, 2000, 2500, 3000, 1e4/3,
+_srates = (1000, 1250, 1500, 2000, 2500, 3000, 1e4 / 3,
            4000, 5000, 6250, 8000, 10000, 12500, 15000,
            20000, 25000, 30000)
 
@@ -53,7 +53,7 @@ def get_robust_samplingrate(rec_path):
         raise RuntimeError('bar')
     editor = rhythm_proc.find('EDITOR')
     sr_code = int(editor.attrib['SampleRate'])
-    return float(_srates[sr_code-1])
+    return float(_srates[sr_code - 1])
 
 
 def get_robust_recording(session_path, rec_pattern):
@@ -71,14 +71,14 @@ def prepare_paths(exp_path, test, rec_num):
 
     # The channel data will be in separate files in the directory
     # exp_path/test.  This method should return the fully-specified
-    # recording from the literal recording name, or from a short-cut 
+    # recording from the literal recording name, or from a short-cut
     # path name (e.g. "002" w/o timestamp)
     hits = get_robust_recording(exp_path, test)
     if not len(hits):
         raise IOError('Recording not found: {0} {1}'.format(exp_path, test))
     rec_path = hits[0]
 
-    # regularize the rec_num input -- it might be 
+    # regularize the rec_num input -- it might be
     # * a single string
     # * a single integer
     # * a sequence of integer/strings
@@ -87,7 +87,7 @@ def prepare_paths(exp_path, test, rec_num):
         rec_num = (rec_num,)
     if np.iterable(rec_num):
         rec_num = [str(r) for r in rec_num]
-        
+
     if rec_num[0].lower() == 'auto':
         # try to find the logical recording prefix, i.e. the first one
         # found that has "ADC" channels
@@ -96,7 +96,7 @@ def prepare_paths(exp_path, test, rec_num):
             raise IOError('No files found')
         prefixes = set(['_'.join(osp.split(f)[1].split('_')[:-1]) for f in all_files])
         for pre in sorted(list(prefixes)):
-            if len(glob(osp.join(rec_path, pre+'*ADC*.continuous'))):
+            if len(glob(osp.join(rec_path, pre + '*ADC*.continuous'))):
                 rec_num = (pre,)
                 break
         # if still auto, then choose one (works with older formats?)
@@ -110,7 +110,6 @@ def hdf5_open_ephys_channels(
         exp_path, test, hdf5_name, rec_num='auto',
         quantized=False, data_chans='all', downsamp=1,
         load_chans=None):
-    
     """Load HDF5-mapped arrays of the full band timeseries.
 
     This option provides a way to load massive multi-channel datasets
@@ -121,7 +120,7 @@ def hdf5_open_ephys_channels(
     downsamp = int(downsamp)
     if downsamp > 1:
         quantized = False
-    
+
     rec_path, rec_num = prepare_paths(exp_path, test, rec_num)
 
     chan_names = OE.get_filelist(rec_path, ctype='CH', channels=data_chans, source=rec_num[0])
@@ -130,7 +129,7 @@ def hdf5_open_ephys_channels(
         raise IOError('no channels found')
     from ecogdata.expconfig import params
     # load channel at a time to be able to downsample
-    bytes_per_channel = OE.get_channel_bytes(chan_names[0]) 
+    bytes_per_channel = OE.get_channel_bytes(chan_names[0])
     if not quantized:
         bytes_per_channel *= 4
 
@@ -153,7 +152,7 @@ def hdf5_open_ephys_channels(
         arr_dtype = 'h'
     else:
         arr_dtype = 'f' if load_params().floating_point == 'single' else 'd'
-    
+
     def _proc_block(block, antialias=True):
         if not quantized:
             block = block * ch_record['header']['bitVolts']
@@ -176,9 +175,9 @@ def hdf5_open_ephys_channels(
             print('load chan', start_chan, 'to', stop_chan)
             ch_data = OE.loadFolderToTransArray(
                 rec_path, dtype=np.int16, verbose=False,
-                start_chan = start_chan, stop_chan=stop_chan, ctype='CH',
+                start_chan=start_chan, stop_chan=stop_chan, ctype='CH',
                 channels=data_chans, source=rec_num[0]
-                )
+            )
             chans[start_chan:stop_chan] = _proc_block(ch_data)
             start_chan += load_chans
             if start_chan >= len(chan_names):
@@ -196,8 +195,8 @@ def hdf5_open_ephys_channels(
                 stop_chan = min(n_extra, start_chan + load_chans)
                 ch_data = OE.loadFolderToTransArray(
                     rec_path, dtype=np.int16, verbose=False, source=rec_num[0],
-                    start_chan = start_chan, stop_chan=stop_chan, ctype=arr
-                    )
+                    start_chan=start_chan, stop_chan=stop_chan, ctype=arr
+                )
                 chans[start_chan:stop_chan] = _proc_block(ch_data, antialias=False)
                 start_chan += load_chans
                 if start_chan >= n_extra:
@@ -207,7 +206,7 @@ def hdf5_open_ephys_channels(
 def load_open_ephys_channels(
         exp_path, test, rec_num='auto', shared_array=False,
         downsamp=1, target_Fs=-1, lowpass_ord=12, page_size=8,
-        save_downsamp=True, use_stored=True, store_path='', 
+        save_downsamp=True, use_stored=True, store_path='',
         quantized=False):
 
     # first off, check if there is a stored file at target_Fs (if valid)
@@ -231,7 +230,7 @@ def load_open_ephys_channels(
                   'downsample not calculated for {0:.1f} Hz'.format(target_Fs))
             raise ValueError
         else:
-            # find the correct (integer) downsample rate 
+            # find the correct (integer) downsample rate
             # to get (approx) target Fs
             # target_fs * downsamp <= Fs
             # downsamp <= Fs / target_fs
@@ -242,10 +241,10 @@ def load_open_ephys_channels(
         print('Cannot return quantized data when downsampling')
         quantized = False
     downsamp = int(downsamp)
-        
+
     all_files = list()
     for pre in rec_num:
-        all_files.extend(glob(osp.join(rec_path, pre+'*.continuous')))
+        all_files.extend(glob(osp.join(rec_path, pre + '*.continuous')))
     if not len(all_files):
         raise IOError('No files found')
     c_nums = list()
@@ -261,11 +260,11 @@ def load_open_ephys_channels(
         f_parts = f_part.split('_')
         if len(f_parts[-1]) == 1 and f_parts[-1] in '0123456789':
             f_parts = f_parts[:-1]
-        ch = f_parts[-1] # last file part is CHx or AUXx
+        ch = f_parts[-1]  # last file part is CHx or AUXx
         if ch[0:2] == 'CH':
             chan_files.append(f)
             c_nums.append(int(ch[2:]))
-        elif ch[0:3] == 'AUX': #separate chan and AUX files
+        elif ch[0:3] == 'AUX':  # separate chan and AUX files
             aux_files.append(f)
             aux_nums.append(int(ch[3:]))
         elif ch[0:3] == 'ADC':
@@ -273,8 +272,7 @@ def load_open_ephys_channels(
             adc_nums.append(int(ch[3:]))
 
     if downsamp > 1:
-        (b_lp, a_lp) = cheby2_bp(60, hi=1.0/downsamp, Fs=2, ord=lowpass_ord)
-
+        (b_lp, a_lp) = cheby2_bp(60, hi=1.0 / downsamp, Fs=2, ord=lowpass_ord)
 
     def _load_array_block(files, shared_array=False, antialias=True):
         Fs = 1
@@ -296,11 +294,11 @@ def load_open_ephys_channels(
             saved_array = shared_ndarray((len(files), sub_len), typecode=dtype)
         else:
             saved_array = np.zeros((len(files), sub_len), dtype=dtype)
-        
+
         for f in files[1:]:
             ch_record = OE.loadContinuous(
                 f, dtype=np.int16, verbose=False
-               ) # load data
+            )  # load data
             Fs = float(ch_record['header']['sampleRate'])
             proc_block[b_idx] = ch_record['data'].astype(dtype)
             b_idx += 1
@@ -312,7 +310,7 @@ def load_open_ephys_channels(
                     proc_block *= ch_record['header']['bitVolts']
                 if downsamp > 1 and antialias:
                     filtfilt(proc_block, b_lp, a_lp)
-                sl = slice(b_cnt*page_size, n)
+                sl = slice(b_cnt * page_size, n)
                 saved_array[sl] = proc_block[:b_idx, ::downsamp]
                 # update / reset block counters
                 b_idx = 0
@@ -322,14 +320,14 @@ def load_open_ephys_channels(
         while gc.collect():
             pass
         return saved_array, Fs, ch_record['header']
-    
+
     # sort CH, AUX, and ADC by the channel number
     sorted_chans = np.argsort(c_nums)
     # sorts list ed on sorted_chans
     chan_files = [chan_files[n] for n in sorted_chans]
-    chdata, Fs, header = _load_array_block(chan_files, 
+    chdata, Fs, header = _load_array_block(chan_files,
                                            shared_array=shared_array)
-    
+
     aux_data = list()
     if len(aux_files) > 0:
         sorted_aux = np.argsort(aux_nums)
@@ -341,10 +339,10 @@ def load_open_ephys_channels(
         sorted_adc = np.argsort(adc_nums)
         adc_files = [adc_files[n] for n in sorted_adc]
         adc_data, _, _ = _load_array_block(adc_files, antialias=False)
-        
+
     if not trueFs:
-        print('settings.xml not found, relying on sampling rate from ' \
-          'recording header files')
+        print('settings.xml not found, relying on sampling rate from '
+              'recording header files')
         trueFs = Fs
     if downsamp > 1:
         trueFs /= downsamp
@@ -404,7 +402,7 @@ class OpenEphysLoader(FileLoader):
             return super(OpenEphysLoader, self).find_trigger_signals(data_file)
         data_path, rec_num = prepare_paths(self.experiment_path, self.recording, 'auto')
         assert data_path == data_file, \
-               'Mismatched data sources: named data file {} and raw data file {}'.format(data_file, data_path)
+            'Mismatched data sources: named data file {} and raw data file {}'.format(data_file, data_path)
         trigger_idx = self.trigger_idx
         if not np.iterable(trigger_idx):
             trigger_idx = (trigger_idx,)
@@ -555,7 +553,7 @@ def load_open_ephys(exp_path, test, electrode, rec_num='auto', downsamp=1, useFs
     return loader.create_dataset()
 
 
-def load_open_ephys_impedance(exp_path, test, electrode, magphs=True,electrode_connections=()):
+def load_open_ephys_impedance(exp_path, test, electrode, magphs=True, electrode_connections=()):
 
     xml = osp.join(osp.join(exp_path, test), 'impedance_measurement.xml')
     if not osp.exists(xml):
@@ -570,7 +568,7 @@ def load_open_ephys_impedance(exp_path, test, electrode, magphs=True,electrode_c
         # n = int(ch.attrib['channel_number'])
         mag[n] = float(ch.attrib['magnitude'])
         phs[n] = float(ch.attrib['phase'])
-    
+
     chan_map, gnd_chans, ref_chans = get_electrode_map(electrode, connectors=electrode_connections)
     ix = np.arange(len(phs))
     cx = np.setdiff1d(ix, np.union1d(gnd_chans, ref_chans))
@@ -579,6 +577,7 @@ def load_open_ephys_impedance(exp_path, test, electrode, magphs=True,electrode_c
     if magphs:
         return (chan_mag, chan_phs), chan_map
     return chan_mag * np.exp(1j * chan_phs * np.pi / 180.0), chan_map
+
 
 def debounce_trigger(pos_edges):
     if len(pos_edges) < 3:
@@ -593,17 +592,17 @@ def debounce_trigger(pos_edges):
         if not edge_mask[i]:
             continue
 
-        # look ahead and kill any edges that are 
+        # look ahead and kill any edges that are
         # too close to the current edge
         pt = pos_edges[i]
-        kill_mask = (pos_edges > pt) & (pos_edges < pt + isi_guess/2)
+        kill_mask = (pos_edges > pt) & (pos_edges < pt + isi_guess / 2)
         edge_mask[kill_mask] = False
 
     return pos_edges[edge_mask]
 
 
 def plot_Z(
-        path_or_Z, electrode, minZ, maxZ, cmap, 
+        path_or_Z, electrode, minZ, maxZ, cmap,
         phs=False, title='', ax=None, cbar=True, clim=None,
         electrode_connections=()):
     # from ecogana.anacode.colormaps import nancmap
@@ -616,12 +615,12 @@ def plot_Z(
         Z, chan_map = load_open_ephys_impedance(
             path, test, electrode,
             electrode_connections=electrode_connections
-            )
+        )
         Z = Z[1] if phs else Z[0]
     else:
         Z = path_or_Z.copy()
         chan_map = get_electrode_map(electrode)[0]
-    
+
     if not phs:
         Z *= 1e-3
         Z_open = Z > maxZ
@@ -636,7 +635,7 @@ def plot_Z(
     if np.abs(lo - round(lo)) < np.abs(hi - round(hi)):
         lo = round(lo)
         hi = np.ceil(hi)
-    ## else:
+    # else:
     ##     lo = np.floor(lo)
     ##     hi = round(hi)
 
@@ -665,9 +664,9 @@ def plot_Z(
         return f
     if cbar:
         c_ticks = np.array([0.1, 0.2, 0.5,
-                            1, 2, 5, 
-                            10, 20, 50, 
-                            100, 200, 500, 
+                            1, 2, 5,
+                            10, 20, 50,
+                            100, 200, 500,
                             1000, 2000, 5000])
         c_ticks = c_ticks[(c_ticks >= 10**lo) & (c_ticks <= 10**hi)]
         cb.set_ticks(np.log10(c_ticks))
