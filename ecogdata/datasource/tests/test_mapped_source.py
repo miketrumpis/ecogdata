@@ -11,7 +11,7 @@ def _create_hdf5(n_rows=20, n_cols=1000, extra_dims=(), rand=False,
 
     with NamedTemporaryFile(mode='ab', dir='.') as f:
         f.file.close()
-        fw = h5py.File(f.name, 'w')
+        fw = h5py.File(f.name, 'w', libver='latest')
         arrays = ('data',) + tuple(aux_arrays)
         array_shape = (n_rows, n_cols) + extra_dims
         if transpose:
