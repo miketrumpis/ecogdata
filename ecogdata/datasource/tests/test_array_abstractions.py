@@ -2,9 +2,18 @@ from nose.tools import assert_true, assert_equal
 import numpy as np
 
 from ecogdata.datasource.array_abstractions import slice_to_range, range_to_slice, unpack_ellipsis, tile_slices, \
-    HDF5Buffer
+    HDF5Buffer, BufferBinder
 
 from .test_mapped_source import _create_hdf5
+
+
+def _create_binder(num_buffers=3, axis=0, units_scale=None, **kwargs):
+    hdf_files = [_create_hdf5(**kwargs)[0] for i in range(num_buffers)]
+    buffers = [HDF5Buffer(f['data'], units_scale=units_scale) for f in hdf_files]
+    data = np.concatenate([b[:] for b in buffers], axis=axis)
+    buffer_binder = BufferBinder(buffers, axis=axis)
+    return buffer_binder, data
+
 
 def test_slice_range_conv():
     slice = np.s_[5::2]
@@ -149,7 +158,6 @@ def test_hdf_buffer_transpose_negative_step():
     assert_true((data[::10, ::-20, 2].T == seg2).all(), 'neg step tiled buffer failed in transpose')
 
 
-
 # Can't open the file since it is already "deleted" by the OS
 # @raises(RuntimeError)
 # def test_hdf_buffer_basic_write_fail():
@@ -211,3 +219,162 @@ def test_hdf_buffer_broadcast_tiled_write_negative_step():
     assert_true((buf[::6, ::20] == rand_pattern[::-20]).all(), 'Should have written out')
 
 
+def test_hdf_buffer_direct_read():
+    f = _create_hdf5(n_rows=20, n_cols=100, dtype='i')[0]
+    buf = HDF5Buffer(f['data'])
+    data = f['data'][:]
+    direct_out = np.empty((5, 10), dtype='i')
+    sl = np.s_[2:7, 20:30]
+    with buf.direct_read(direct_out):
+        out1 = buf[sl]
+    assert_true(out1 is direct_out, 'direct read returned indirect array')
+    out1 = data[sl]
+    assert_true(np.all(out1 == direct_out), 'direct read returned wrong values')
+
+
+def test_hdf_buffer_direct_read_transpose():
+    f = _create_hdf5(n_rows=20, n_cols=100, dtype='i')[0]
+    buf = HDF5Buffer(f['data'])
+    data = f['data'][:]
+    direct_out = np.empty((10, 5), dtype='i')
+    sl = np.s_[2:7, 20:30]
+    with buf.transpose_reads(True), buf.direct_read(direct_out):
+        out1 = buf[sl]
+    assert_true(out1 is direct_out, 'direct read returned indirect array')
+    out1 = data[sl].T
+    assert_true(np.all(out1 == direct_out), 'direct read returned wrong values')
+
+
+# All these tests should pass with BufferBinders
+
+def test_buffer_binder_basic():
+    buf, data = _create_binder(axis=1, n_rows=20, n_cols=1000, dtype='i')
+    assert_true((data[:5, :] == buf[:5, :]).all(), 'basic buffer failed')
+    assert_true((data[:, ::2] == buf[:, ::2]).all(), 'basic buffer failed')
+    buf, data = _create_binder(axis=1, units_scale=(1000, 0.5), n_rows=20, n_cols=1000, dtype='i')
+    assert_true((data[:5, :] == buf[:5, :]).all(), 'basic buffer with scale failed')
+    assert_true((data[:, ::2] == buf[:, ::2]).all(), 'basic buffer with scale failed')
+
+
+def test_buffer_binder_tiled():
+    # chunking should kick-in on the first two axes
+    buf, data = _create_binder(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(5, 10, 5, 10))
+    assert_true((data[::10, ::20] == buf[::10, ::20]).all(), 'tiled buffer failed')
+    assert_true((data[::10, ::20, 0] == buf[::10, ::20, 0]).all(), 'tiled buffer failed')
+    # chunking should kick-in on the first and third axes
+    buf, data = _create_binder(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(5, 50, 5, 10))
+    assert_true((data[::10, ::20] == buf[::10, ::20]).all(), 'tiled buffer failed')
+    assert_true((data[::10, ::20, 0] == buf[::10, ::20, 0]).all(), 'tiled buffer failed')
+
+
+def test_buffer_binder_in_transpose():
+    buf, data = _create_binder(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(20, 100, 5, 10))
+    with buf.transpose_reads(True):
+        # slice the buffer in the same way as norm, but the output should be transposed
+        seg1 = buf[::10, ::20]
+        seg2 = buf[::10, ::20, 2]
+    assert_true((data[::10, ::20].T == seg1).all(), 'tiled buffer failed in transpose')
+    assert_true((data[::10, ::20, 2].T == seg2).all(), 'tiled buffer failed in transpose')
+
+
+def test_buffer_binder_in_transpose_tiled():
+    buf, data = _create_binder(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(5, 10, 5, 10))
+    with buf.transpose_reads(True):
+        # slice the buffer in the same way as norm, but the output should be transposed
+        seg1 = buf[::10, ::20]
+        seg2 = buf[::10, ::20, 2]
+    assert_true((data[::10, ::20].T == seg1).all(), 'tiled buffer failed in transpose')
+    assert_true((data[::10, ::20, 2].T == seg2).all(), 'tiled buffer failed in transpose')
+
+
+def test_buffer_binder_tiled_negative_step():
+    # chunking should kick-in on the first two axes
+    buf, data = _create_binder(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(5, 10, 5, 10))
+    assert_true((data[::10, ::-20] == buf[::10, ::-20]).all(), 'neg step tiled buffer failed')
+    assert_true((data[::10, ::-20, 0] == buf[::10, ::-20, 0]).all(), 'neg step tiled buffer failed')
+    # chunking should kick-in on the first and third axes
+    buf, data = _create_binder(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(5, 50, 5, 10))
+    assert_true((data[::-10, ::20] == buf[::-10, ::20]).all(), 'neg step tiled buffer failed')
+    assert_true((data[::-10, ::20, 0] == buf[::-10, ::20, 0]).all(), 'neg step tiled buffer failed')
+
+
+def test_buffer_binder_transpose_negative_step():
+    buf, data = _create_binder(n_rows=20, n_cols=100, extra_dims=(5, 10), dtype='i', chunks=(5, 10, 5, 10))
+    with buf.transpose_reads(True):
+        # slice the buffer in the same way as norm, but the output should be transposed
+        seg1 = buf[::10, ::-20]
+        seg2 = buf[::10, ::-20, 2]
+    assert_true((data[::10, ::-20].T == seg1).all(), 'neg step tiled buffer failed in transpose')
+    assert_true((data[::10, ::-20, 2].T == seg2).all(), 'neg step tiled buffer failed in transpose')
+
+
+def test_buffer_binder_basic_write():
+    buf = _create_binder(n_rows=20, n_cols=1000, dtype='i')[0]
+    assert_true(buf.writeable, 'Should be write mode')
+    buf[:5, :] = 0
+    assert_true(not buf[:5, :].any(), 'Should have zeroed out')
+    buf[:, ::2] = 0
+    assert_true(not buf[:, ::2].any(), 'Should have zeroed out')
+
+
+def test_buffer_binder_tiled_write():
+    buf = _create_binder(n_rows=20, n_cols=1000, dtype='i', chunks=(5, 10))[0]
+    assert_true(buf.writeable, 'Should be write mode')
+    buf[::6, :] = 0
+    assert_true(not buf[::6, :].any(), 'Should have zeroed out')
+    buf[:, ::2] = 0
+    assert_true(not buf[:, ::2].any(), 'Should have zeroed out')
+
+
+def test_buffer_binder_broadcast_write():
+    buf = _create_binder(n_rows=20, n_cols=1000, dtype='i')[0]
+    rand_pattern = np.random.randint(0, 2 ** 14, size=1000)
+    buf[:5, :] = rand_pattern
+    assert_true((buf[:5, :] == rand_pattern).all(), 'Should have written')
+    buf[::6, ::20] = rand_pattern[::20]
+    assert_true((buf[::6, ::20] == rand_pattern[::20]).all(), 'Should have written out')
+
+
+def test_buffer_binder_broadcast_tiled_write():
+    buf = _create_binder(n_rows=20, n_cols=1000, dtype='i', chunks=(5, 10))[0]
+    assert_true(buf.writeable, 'Should be write mode')
+    rand_pattern = np.random.randint(0, 2 ** 14, size=1000)
+    buf[::6, :] = rand_pattern
+    assert_true((buf[::6, :] == rand_pattern).all(), 'Should have written')
+    buf[::6, ::20] = rand_pattern[::20]
+    assert_true((buf[::6, ::20] == rand_pattern[::20]).all(), 'Should have written out')
+
+
+def test_buffer_binder_broadcast_tiled_write_negative_step():
+    buf = _create_binder(n_rows=20, n_cols=1000, dtype='i', chunks=(5, 10))[0]
+    assert_true(buf.writeable, 'Should be write mode')
+    rand_pattern = np.random.randint(0, 2 ** 14, size=1000)
+    buf[::6, ::-1] = rand_pattern
+    assert_true((buf[::6, :] == rand_pattern[::-1]).all(), 'Should have written')
+    buf[::6, ::-20] = rand_pattern[::-20]
+    assert_true((buf[::6, ::20] == rand_pattern[::-20]).all(), 'Should have written out')
+
+
+def test_buffer_binder_direct_read():
+    buf, data = _create_binder(n_rows=20, n_cols=100, dtype='i')
+    direct_out = np.empty((5, 10), dtype='i')
+    sl = np.s_[2:7, 20:30]
+    with buf.direct_read(sl, direct_out):
+        out1 = buf[sl]
+    assert_true(out1 is direct_out, 'direct read returned indirect array')
+    out1 = data[sl]
+    assert_true(np.all(out1 == direct_out), 'direct read returned wrong values')
+
+
+def test_buffer_binder_direct_read_transpose():
+    buf, data = _create_binder(n_rows=20, n_cols=100, dtype='i')
+    direct_out = np.empty((10, 5), dtype='i')
+    sl = np.s_[2:7, 20:30]
+    with buf.transpose_reads(True), buf.direct_read(sl, direct_out):
+        out1 = buf[sl]
+    assert_true(out1 is direct_out, 'direct read returned indirect array')
+    out1 = data[sl].T
+    assert_true(np.all(out1 == direct_out), 'direct read returned wrong values')
+
+
+# TODO: test cached reading in a subprocess

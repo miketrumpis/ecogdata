@@ -1,5 +1,6 @@
 from itertools import product
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
+from typing import Sequence
 import numpy as np
 from h5py._hl.selections import select
 from ecogdata.util import ToggleState
@@ -34,12 +35,12 @@ def range_to_slice(range, offset=None):
         offset = 0
     step = range[1] - range[0]
     start = range[0] - offset
-    stop = range[-1] + 1 - offset
+    stop = range[-1] + np.sign(step) - offset
     return slice(start, stop, step)
 
 
 def _abs_slicer(slicer, shape):
-    """Convert a bunch of slices to be positive-step only in order to work with the "select" merthod."""
+    """Convert a bunch of slices to be positive-step only in order to work with the "select" method."""
     if not np.iterable(slicer):
         slicer = (slicer,)
     fwd_slices = []
@@ -52,6 +53,8 @@ def _abs_slicer(slicer, shape):
 
 def unpack_ellipsis(slicer, dims):
     """Transform e.g. (..., slice(0, 10)) --> (slice(None), slice(None), slice(0, 10)) for three dimensions"""
+    if not np.iterable(slicer):
+        slicer = (slicer,)
     if Ellipsis not in slicer:
         return slicer
     index = slicer.index(Ellipsis)
@@ -103,6 +106,7 @@ def tile_slices(slicers, shape, chunks):
     """
     if not isinstance(slicers, tuple):
         slicers = (slicers,)
+
     slicers = unpack_ellipsis(slicers, len(shape))
     dim = 0
     new_slicers = []
@@ -300,10 +304,12 @@ class HDF5Buffer(MappedBuffer):
                 # can't avoid making a copy here?
                 out_arr[osl] = self._array[isl].T
             else:
-                # try a direct read, but this will fail if there are negative steps going on
+                # try a direct read, but this will fail if
+                # 1) there are negative steps going on (ValueError)
+                # 2) output is not C-contiguous (TypeError)
                 try:
                     self._array.read_direct(out_arr, source_sel=isl, dest_sel=osl)
-                except ValueError:
+                except (ValueError, TypeError):
                     out_arr[osl] = self._array[isl]
         return self._scale_segment(out_arr)
 
@@ -323,6 +329,219 @@ class HDF5Buffer(MappedBuffer):
             osl = osl[(len(osl) - data_dim):]
             self._array[isl] = (data[osl] if len(osl) else data)
         self._array.flush()
+
+
+class BufferBinder:
+    """We've got binders full of buffers!"""
+
+    def __init__(self, buffers: Sequence[MappedBuffer], axis=-1):
+        if not np.iterable(buffers):
+            buffers = (buffers,)
+        # raise exception on any heterogeneity
+        # 1) number of dimensions
+        ndim = set([b.ndim for b in buffers])
+        if len(ndim) > 1:
+            raise ValueError('Mixture of dims: {}'.format(ndim))
+        self._ndim = ndim.pop()
+        # 2 array shapes: I think all but "axis" dimension need to be equal size?
+        while axis < 0:
+            axis += self._ndim
+        dim_sizes = []
+        for d in range(self._ndim):
+            if d == axis:
+                # this dimension can vary
+                continue
+            sizes_this_dim = set([b.shape[d] for b in buffers])
+            dim_sizes.append(len(sizes_this_dim))
+        if max(dim_sizes) > 1:
+            raise ValueError('Inconsistent dimension sizes all first {} axes'.format(self._ndim - 1))
+        self._buffer_lengths = [b.shape[axis] for b in buffers]
+        self._total_length = sum(self._buffer_lengths)
+        other_dims = list(buffers[0].shape)
+        other_dims.pop(axis)
+        self._other_dims = tuple(other_dims)
+        self._concat_axis = axis
+        # 3) write mode
+        write_mode = [b.writeable for b in buffers]
+        if any(write_mode) and not all(write_mode):
+            raise ValueError('Some writeable buffers, but not all')
+        self._writeable = all(write_mode)
+        # 4) dtype -- but maybe this could be relaxed if it becomes a burden
+        dtypes = set([b.dtype for b in buffers])
+        if len(dtypes) > 1:
+            raise ValueError('Mixture of dtypes: {}'.format(dtypes))
+        self.dtype = dtypes.pop()
+
+        self._buffers = buffers
+        self._transpose_state = ToggleState(init_state=False)
+        self._read_output = None
+
+    @property
+    def ndim(self):
+        return self._ndim
+
+    @property
+    def writeable(self):
+        return self._writeable
+
+    @property
+    def shape(self):
+        dims = list(self._other_dims)
+        dims.insert(self._concat_axis, self._total_length)
+        return tuple(dims)
+
+    @property
+    def transpose_reads(self):
+        """
+        This is a callable ToggleState object that can create a context in which this buffer will return __getitem__
+        slices in transpose.
+        """
+        return self._transpose_state
+
+    def target_sources(self, slicer):
+        # This will parse the slicer into a list of (source, sub-slice) pairs.
+        # Reminder to self: the requested slices *always* have the correct dimension order,
+        # regardless of transpose status
+
+        slicer = unpack_ellipsis(slicer, self.ndim)
+        if len(slicer) < self.ndim:
+            slicer = slicer + (slice(None),) * (self.ndim - len(slicer))
+        slicer = list(slicer)
+        axis = self._concat_axis
+        skip_slice = slicer[axis]
+        step = 1 if skip_slice.step is None else skip_slice.step
+        rev_slice = step < 0
+        skip_slice = _abs_slicer(skip_slice, self.shape[axis:axis + 1])[0]
+        start = 0 if skip_slice.start is None else skip_slice.start
+        stop = self._total_length if skip_slice.stop is None else skip_slice.stop
+        step = skip_slice.step
+        running_length = np.cumsum(self._buffer_lengths)
+        for n in range(len(self._buffers)):
+            if start < running_length[n]:
+                start_buffer = n
+                break
+        buffer = start_buffer
+        if buffer > 0:
+            start_pt = start - running_length[buffer - 1]
+        else:
+            start_pt = start
+        sources_and_slices = []
+        while True:
+            this_slice = slicer[:]
+            if stop <= running_length[buffer]:
+                # stop at this buffer
+                if buffer > 0:
+                    stop_pt = stop - running_length[buffer - 1]
+                else:
+                    stop_pt = stop
+            else:
+                # otherwise slice thru the end of this buffer and find the correct start point in the next buffer
+                stop_pt = self._buffer_lengths[buffer]
+            sl = slice(start_pt, stop_pt, step)
+            if rev_slice:
+                sl = range_to_slice(slice_to_range(sl, self.shape[axis])[::-1])
+            this_slice[axis] = sl
+            sources_and_slices.append((self._buffers[buffer], tuple(this_slice)))
+            if stop <= running_length[buffer]:
+                break
+            if step is not None:
+                # this is the number of points to skip into the next buffer:
+                # (stop_pt - 1 - start_pt) % step is the remainder of points from this buffer
+                start_pt = step - (stop_pt - 1 - start_pt) % step - 1
+            else:
+                start_pt = 0
+            buffer += 1
+        if rev_slice:
+            return sources_and_slices[::-1]
+        else:
+            return sources_and_slices
+
+    @contextmanager
+    def direct_read(self, slicer, output_array):
+        # This is going to need to assign partitions of the output_array to one or more buffers,
+        # and then tell the buffers to clear the _read_output in the "exit/finally" clause
+        buffer_slices = self.target_sources(slicer)
+        # slicer is always in the correct permutation, so using concat_axis will return the correct split sizes
+        output_sizes = [b.get_output_array(s, only_shape=True)[self._concat_axis] for b, s in buffer_slices]
+        break_points = np.cumsum(output_sizes)[:-1]
+        # BUT the output array needs to be split on a different axis depending on transpose_reads
+        if self.transpose_reads:
+            axis = self.ndim - self._concat_axis - 1
+        else:
+            axis = self._concat_axis
+        splits = np.split(output_array, break_points, axis=axis)
+        try:
+            self._read_output = output_array
+            with ExitStack() as stack:
+                for b, arr in zip(buffer_slices, splits):
+                    stack.enter_context(b[0].direct_read(arr))
+                yield
+        finally:
+            self._read_output = None
+            pass
+
+    def get_output_array(self, slicer, only_shape=False):
+        # Currently this is used to
+        # 1) check a slice size (easy)
+        # 2) create an output array for slice caching (tricky)
+        # When case (2) happens, shared memory is returned to the consumer of a buffer.
+        # Then the consumer asks the buffer to direct-read into that shared memory ("with direct_read").
+        # As shared memory, the caching can be done in a subprocess.
+        # For a BufferBinder, I think the usage can be exactly the same, only with the binder
+        # mapping out reads as appropriate.
+        # **NOTE** that the output needs to respect `transpose_state`
+        slicer = _abs_slicer(slicer, self.shape)
+        out_shape = select(self.shape, slicer, 0).mshape
+        # if the output will be transposed, then pre-create the array in the right order
+        if self._transpose_state:
+            out_shape = out_shape[::-1]
+        if only_shape:
+            return out_shape
+        typecode = self.dtype.char
+        return shared_ndarray(out_shape, typecode)
+
+    def __getitem__(self, slicer):
+        buffer_slices = self.target_sources(slicer)
+        output = []
+        for b, s in buffer_slices:
+            with b.transpose_reads(self.transpose_reads.state):
+                output.append(b[s])
+        if self._read_output is not None:
+            return self._read_output
+        elif len(output) == 1:
+            return output[0]
+        else:
+            if self.transpose_reads:
+                # use output ndim because it's possible the slicing ate some dimensions?
+                ndim = output[0].ndim
+                axis = ndim - self._concat_axis - 1
+            else:
+                axis = self._concat_axis
+            return np.concatenate(output, axis)
+
+    def __setitem__(self, slicer, array):
+        buffer_slices = self.target_sources(slicer)
+        axis = self._concat_axis
+        # TODO: need to handle broadcasting here
+        array = np.asanyarray(array)
+        # # If the array can broadcast to every buffer, then don't use array splitting..
+        # # This would be true if the number of dims after the concatenate axis is >= array.ndim
+        # if array.ndim < (self.ndim - axis):
+        #     # just copy the reference a few times
+        #     splits = [array] * len(buffer_slices)
+        # else:
+        #     # Otherwise, the concatenate axis splits over an axis in array
+        new_dims = (1,) * (self.ndim - array.ndim) + array.shape
+        full_array = array.reshape(*new_dims)
+        if full_array.shape[axis] > 1:
+            output_sizes = [b.get_output_array(s, only_shape=True)[axis] for b, s in buffer_slices]
+            break_points = np.cumsum(output_sizes)[:-1]
+            splits = np.split(array, break_points, axis=axis)
+        else:
+            splits = [array] * len(buffer_slices)
+        for bs, sub_arr in zip(buffer_slices, splits):
+            buffer, sl = bs
+            buffer[sl] = sub_arr
 
 
 class ReadCache(object):
