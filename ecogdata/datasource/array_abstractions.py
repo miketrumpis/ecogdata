@@ -187,22 +187,23 @@ class MappedBuffer:
         self._current_slice = None
         self._current_seg = ()
         self._raw_offset = None
-        self._units_scale = None
+        self.units_scale = None
         if units_scale is not None:
             # Ignore the (0, 1) scaling to save cycles
             if np.iterable(units_scale):
                 self._raw_offset = units_scale[0] if units_scale[0] != 0 else None
-                self._units_scale = units_scale[1]
+                self.units_scale = units_scale[1]
             else:
-                self._units_scale = units_scale
-            if self._units_scale == 1:
-                self._units_scale = None
-        if self._units_scale is None:
+                self.units_scale = units_scale
+            if self.units_scale == 1:
+                self.units_scale = None
+        if self.units_scale is None:
             self.dtype = array.dtype
         else:
             fp_precision = load_params().floating_point.lower()
             typecode = 'f' if fp_precision == 'single' else 'd'
             self.dtype = np.dtype(typecode)
+        self.map_dtype = array.dtype
         self.shape = array.shape
         self._raise_bad_write = raise_bad_write
         # This is a callable -- when called, a content manager is created and the state is toggled in-context
@@ -213,6 +214,10 @@ class MappedBuffer:
 
     def __len__(self):
         return len(self._array)
+
+    @property
+    def filename(self):
+        return self._array.filename
 
     @property
     def ndim(self):
@@ -235,11 +240,11 @@ class MappedBuffer:
         return self.__writeable
 
     def _scale_segment(self, x):
-        if self._units_scale is None:
+        if self.units_scale is None:
             return x
         if self._raw_offset is not None:
             x += self._raw_offset
-        x *= self._units_scale
+        x *= self.units_scale
         return x
 
     @contextmanager
@@ -287,11 +292,19 @@ class MappedBuffer:
 class HDF5Buffer(MappedBuffer):
     """Optimized mapped file reading for HDF5 files (h5py.File)"""
 
+    @property
+    def filename(self):
+        return self._array.file.filename
+
+    @property
+    def chunks(self):
+        return self._array.chunks
+
     def __getitem__(self, sl):
         # this function computes the output shape -- use ID=0 to explicitly *not* work for funky RegionReference slicing
 
         out_arr = self.get_output_array(sl)
-        i_slices, o_slices = tile_slices(sl, self.shape, self._array.chunks)
+        i_slices, o_slices = tile_slices(sl, self.shape, self.chunks)
         # print('Slicing buffer as {}'.format(i_slices))
         for isl, osl in zip(i_slices, o_slices):
             if self._transpose_state:
@@ -317,7 +330,7 @@ class HDF5Buffer(MappedBuffer):
         if not self.writeable:
             super(HDF5Buffer, self).__setitem__(sl, data)
         # this should work for writing too?
-        i_slices, o_slices = tile_slices(sl, self.shape, self._array.chunks)
+        i_slices, o_slices = tile_slices(sl, self.shape, self.chunks)
         # if broadcasting, then pull only the first data_dim slices from the output slicer?
         if isinstance(data, np.ndarray):
             data_dim = data.ndim
@@ -371,10 +384,21 @@ class BufferBinder:
         if len(dtypes) > 1:
             raise ValueError('Mixture of dtypes: {}'.format(dtypes))
         self.dtype = dtypes.pop()
+        # assume underlying maps have the same dtype if everything else is consistent
+        self.map_dtype = buffers[0].map_dtype
+        self.units_scale = buffers[0].units_scale
 
         self._buffers = buffers
         self._transpose_state = ToggleState(init_state=False)
         self._read_output = None
+
+    @property
+    def filename(self):
+        return [b.filename for b in self._buffers]
+
+    @property
+    def chunks(self):
+        return [b.chunks for b in self._buffers]
 
     @property
     def ndim(self):
@@ -570,14 +594,14 @@ class ReadCache:
         self._current_slice = None
         self._current_seg = ()
         self._raw_offset = None
-        self._units_scale = None
+        self.units_scale = None
         if units_scale is not None:
             if np.iterable(units_scale):
                 self._raw_offset = units_scale[0]
-                self._units_scale = units_scale[1]
+                self.units_scale = units_scale[1]
             else:
-                self._units_scale = units_scale
-        if self._units_scale is None:
+                self.units_scale = units_scale
+        if self.units_scale is None:
             self.dtype = array.dtype
         else:
             fp_precision = load_params().floating_point.lower()
@@ -593,17 +617,17 @@ class ReadCache:
         return self._array
 
     def _scale_segment(self, x):
-        if self._units_scale is None:
+        if self.units_scale is None:
             return x
         if self._raw_offset is not None:
             x += self._raw_offset
-        x *= self._units_scale
+        x *= self.units_scale
         return x
 
     def __getitem__(self, sl):
         # this function computes the output shape -- use ID=0 to explicitly *not* work for funky RegionReference slicing
         out_shape = select(self.shape, sl, 0).mshape
-        if self._units_scale is None:
+        if self.units_scale is None:
             out_arr = shared_ndarray(out_shape, self._array.dtype.char)
             self._array.read_direct(out_arr, source_sel=sl)
             return out_arr
@@ -616,7 +640,7 @@ class ReadCache:
         # indx, srange = sl
         # if not isinstance(indx, (np.integer, int)):
         #     # make sure to release a copy if no scaling happens
-        #     if self._units_scale is None:
+        #     if self.units_scale is None:
         #         # read creates copy
         #         return self._array[sl]
         #     return self._scale_segment(self._array[sl])

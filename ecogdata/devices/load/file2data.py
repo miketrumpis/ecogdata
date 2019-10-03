@@ -309,12 +309,13 @@ class FileLoader:
                     elif name[0] in h5file.keys():
                         aligned_arrays.append(name)
                 # Map the raw data source using all channels (leave default electrode_channels=None)
-                datasource = MappedSource(h5file, self.data_array, aligned_arrays=aligned_arrays,
-                                          units_scale=self.scale_to_uv, transpose=self.transpose_array)
+                datasource = MappedSource.from_hdf_sources(h5file, self.data_array, aligned_arrays=aligned_arrays,
+                                                           units_scale=self.scale_to_uv, transpose=self.transpose_array)
                 print('Mirroring at 1 / {} rate'.format(downsamp_ratio))
                 downsamp = datasource.mirror(new_rate_ratio=downsamp_ratio, mapped=True, channel_compatible=True,
                                              filename=downsamp_file)
-                ds_filename = downsamp._source_file.filename
+                # TODO: this seems buried too deep -- maybe mirror should return the file name if requested
+                ds_filename = downsamp.data_buffer.filename
                 datasource.batch_change_rate(downsamp_ratio, downsamp, verbose=True, filter_inplace=True,
                                              antialias_aligned=antialias_aligned,
                                              aggregate_aligned=aggregate_aligned)
@@ -375,15 +376,15 @@ class FileLoader:
                 aligned_arrays.append(name)
             elif name[0] in h5file.keys():
                 aligned_arrays.append(name)
-        datasource = MappedSource(h5file, self.data_array, electrode_channels=electrode_chans,
-                                  aligned_arrays=aligned_arrays, units_scale=self.units_scale,
-                                  transpose=self.transpose_array)
+        datasource = MappedSource.from_hdf_sources(h5file, self.data_array, electrode_channels=electrode_chans,
+                                                   aligned_arrays=aligned_arrays, units_scale=self.units_scale,
+                                                   transpose=self.transpose_array)
         if ground_chans:
-            ground_chans = MappedSource(h5file, self.data_array, electrode_channels=ground_chans,
-                                        units_scale=self.units_scale, transpose=self.transpose_array)
+            ground_chans = MappedSource.from_hdf_sources(h5file, self.data_array, electrode_channels=ground_chans,
+                                                         units_scale=self.units_scale, transpose=self.transpose_array)
         if ref_chans:
-            ref_chans = MappedSource(h5file, self.data_array, electrode_channels=ref_chans,
-                                     units_scale=self.units_scale, transpose=self.transpose_array)
+            ref_chans = MappedSource.from_hdf_sources(h5file, self.data_array, electrode_channels=ref_chans,
+                                                      units_scale=self.units_scale, transpose=self.transpose_array)
         if downsample_ratio > 1:
             print('Downsampling straight to memory')
             datasource = downsample_and_load(datasource, downsample_ratio, aggregate_aligned=True, verbose=True)

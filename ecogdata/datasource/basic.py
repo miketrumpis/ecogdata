@@ -103,7 +103,7 @@ class DataSourceBlockIter(BlockSignalBase):
             return output
 
 
-class ElectrodeDataSource(object):
+class ElectrodeDataSource:
     """
     a parent class for all types
     """
