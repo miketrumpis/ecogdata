@@ -1,3 +1,5 @@
+*~
+.DS_Store
 *.pyc
 *.so
 *.c
@@ -5,4 +7,4 @@ build
 ecogdata.egg-info/
 .idea
 sandbox
-
+scratch
