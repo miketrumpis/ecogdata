@@ -157,7 +157,7 @@ def tile_slices(slicers, shape, chunks):
     return list(product(*new_slicers)), list(product(*out_slicers))
 
 
-class MappedBuffer(object):
+class MappedBuffer:
     """
     Abstracts indexing from memmap file, with reads being converted to shared memory and possibly transformed to
     unit-ful values.
@@ -544,7 +544,7 @@ class BufferBinder:
             buffer[sl] = sub_arr
 
 
-class ReadCache(object):
+class ReadCache:
     # TODO -- re-enable read-caching (or change name/nature of the object)
     # TODO -- make mapped access compatible with numpy "memmap" arrays
     """

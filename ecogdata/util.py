@@ -31,16 +31,16 @@ class Bunch(dict):
         return table.strip()
 
     def __copy__(self):
-        d = dict([ (k, copy.copy(v)) for k, v in list(self.items()) ])
+        d = dict([(k, copy.copy(v)) for k, v in list(self.items())])
         return Bunch(**d)
-    
+
     def copy(self):
         return copy.copy(self)
 
     def __deepcopy__(self, memo):
-        d = dict([ (k, copy.deepcopy(v)) for k, v in list(self.items()) ])
+        d = dict([(k, copy.deepcopy(v)) for k, v in list(self.items())])
         return Bunch(**d)
-    
+
     def deepcopy(self):
         return copy.deepcopy(self)
 
@@ -50,26 +50,27 @@ def flat_to_mat(mn, idx, col_major=True):
     idx = np.asarray(idx)
     # convert a flat matrix index into (i,j) style
     (m, n) = mn if col_major else mn[::-1]
-    if (idx < 0).any() or (idx >= m*n).any():
+    if (idx < 0).any() or (idx >= m * n).any():
         raise ValueError(
-            'The flat index does not lie inside the matrix: '+str(mn)
-            )
+            'The flat index does not lie inside the matrix: ' + str(mn)
+        )
     j = idx // m
-    i = (idx - j*m)
+    i = (idx - j * m)
     return (i, j) if col_major else (j, i)
 
 
 def mat_to_flat(mn, i, j, col_major=True):
     i, j = list(map(np.asarray, (i, j)))
     if (i < 0).any() or (i >= mn[0]).any() \
-      or (j < 0).any() or (j >= mn[1]).any():
-        raise ValueError('The matrix index does not fit the geometry: '+str(mn))
+            or (j < 0).any() or (j >= mn[1]).any():
+        raise ValueError('The matrix index does not fit the geometry: ' + str(mn))
     (i, j) = list(map(np.asarray, (i, j)))
     # covert matrix indexing to a flat (linear) indexing
     (fast, slow) = (i, j) if col_major else (j, i)
     block = mn[0] if col_major else mn[1]
-    idx = slow*block + fast
+    idx = slow * block + fast
     return idx
+
 
 def flat_to_flat(mn, idx, col_major=True):
     # convert flat indexing from one convention to another
@@ -86,25 +87,26 @@ def get_default_args(func):
     return dict(list(zip(reversed(args), reversed(defaults))))
 
 
-### Path trick from SO:
-### http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
+# Path trick from SO:
+# http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
 def mkdir_p(path):
     try:
         os.makedirs(path)
-    except OSError as exc: # Python >2.5
+    except OSError as exc:  # Python >2.5
         if exc.errno == errno.EEXIST and os.path.isdir(path):
             pass
-        else: raise
+        else:
+            raise
 
 
 def nextpow2(n):
     l2 = np.log2(n)
-    return int( 2 ** (int(l2) + 1 if l2 != int(l2) else l2) )
+    return int(2 ** (int(l2) + 1 if l2 != int(l2) else l2))
 
 
-### Reshape into categories with possible padding
+# Reshape into categories with possible padding
 def equalize_groups(x, group_sizes, axis=0, fill=np.nan, reshape=True):
-    
+
     mx_size = max(group_sizes)
     n_groups = len(group_sizes)
     steps = np.r_[0, np.cumsum(group_sizes)]
@@ -114,32 +116,32 @@ def equalize_groups(x, group_sizes, axis=0, fill=np.nan, reshape=True):
         # already has consistent size for equalized groups
         if reshape:
             new_shape[axis] = n_groups
-            new_shape.insert(axis+1, mx_size)
+            new_shape.insert(axis + 1, mx_size)
             return x.reshape(new_shape)
         return x
     if x.shape[axis] != steps[-1]:
         raise ValueError('axis {0} in x has wrong size'.format(axis))
-    if all( [g==mx_size for g in group_sizes] ):
+    if all([g == mx_size for g in group_sizes]):
         if reshape:
             new_shape[axis] = n_groups
-            new_shape.insert(axis+1, mx_size)
+            new_shape.insert(axis + 1, mx_size)
             x = x.reshape(new_shape)
         return x
     y = np.empty(new_shape, dtype=x.dtype)
     new_shape[axis] = n_groups
-    new_shape.insert(axis+1, mx_size)
+    new_shape.insert(axis + 1, mx_size)
     y = y.reshape(new_shape)
     y.fill(fill)
     y_slice = [slice(None)] * len(new_shape)
     x_slice = [slice(None)] * len(x.shape)
     for g in range(n_groups):
         y_slice[axis] = g
-        y_slice[axis+1] = slice(0, group_sizes[g])
-        x_slice[axis] = slice(steps[g], steps[g+1])
+        y_slice[axis + 1] = slice(0, group_sizes[g])
+        x_slice[axis] = slice(steps[g], steps[g + 1])
         y[tuple(y_slice)] = x[tuple(x_slice)]
     if not reshape:
         new_shape[axis] *= mx_size
-        new_shape.pop(axis+1)
+        new_shape.pop(axis + 1)
         y = y.reshape(new_shape)
     return y
 
@@ -200,11 +202,11 @@ def search_results(path, filter=''):
     if existing:
         print('Precomputed results exist:')
         for n, path in enumerate(existing):
-            print('\t(%d)\t%s'%(n,path))
+            print('\t(%d)\t%s' % (n, path))
         mode = input(
-            'Enter a choice to load existing work,'\
+            'Enter a choice to load existing work,'
             'or (c) to compute new results: '
-            )
+        )
         try:
             return load_bunch(existing[int(mode)], '/')
         except ValueError:
@@ -213,8 +215,8 @@ def search_results(path, filter=''):
 
 def input_as_2d(in_arr=0, out_arr=-1):
     """
-    A decorator to reshape input to be 2D and then bring output back 
-    to original size (possibly with loss of last dimension). 
+    A decorator to reshape input to be 2D and then bring output back
+    to original size (possibly with loss of last dimension).
     Vectors will also be reshaped to (1, N) on input.
 
     Parameters
@@ -222,7 +224,7 @@ def input_as_2d(in_arr=0, out_arr=-1):
     in_arr : int (sequence)
         position of argument(s) (input) to be reshaped
     out_arr : int
-        Non-negative position of output to be reshaped. 
+        Non-negative position of output to be reshaped.
         If None, then no output is reshaped. If the method's
         return type is not a tuple, this argument has no effect.
 
@@ -230,7 +232,7 @@ def input_as_2d(in_arr=0, out_arr=-1):
 
     if not np.iterable(in_arr):
         in_arr = (in_arr,)
-    
+
     @decorator
     def _wrap(fn, *args, **kwargs):
         args = list(args)
@@ -263,13 +265,13 @@ def input_as_2d(in_arr=0, out_arr=-1):
             shp = shp[:-1] + (x.shape[-1],)
         x = x.reshape(shp)
         if isinstance(r, tuple) and out_arr >= 0:
-            return r[:out_arr] + (x,) + r[out_arr+1:]
+            return r[:out_arr] + (x,) + r[out_arr + 1:]
         else:
             return x
     return _wrap
 
 
-class ToggleState(object):
+class ToggleState:
     """
     A callable that flips an internal state within the scope of a with-statement context (subject to a possible hard
     over-ride)
@@ -507,10 +509,10 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1, axis=-1):
     order_range = list(range(order + 1))
     half_window = (window_size - 1) // 2
     # precompute coefficients
-    ## b = np.mat(
-    ##     [[k**i for i in order_range]
-    ##      for k in range(-half_window, half_window+1)]
-    ##     )
+    # b = np.mat(
+    # [[k**i for i in order_range]
+    # for k in range(-half_window, half_window+1)]
+    # )
     ## m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
     ix = np.arange(-half_window, half_window + 1, dtype='d')
     bt = np.array([np.power(ix, k) for k in order_range])

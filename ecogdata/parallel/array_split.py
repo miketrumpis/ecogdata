@@ -17,7 +17,7 @@ if platform.system().lower().find('windows') >= 0:
     parallel_controller = ToggleState(name='Parallel Controller', permanent_state=False)
 else:
     parallel_controller = ToggleState(name='Parallel Controller')
-        
+
 # from the "array" module docstring
 """
 This module defines an object type which can efficiently represent
@@ -27,31 +27,32 @@ except that the type of objects stored in them is constrained.  The
 type is specified at object creation time by using a type code, which
 is a single character.  The following type codes are defined:
 
-    Type code   C Type             Minimum size in bytes 
-    'c'         character          1 
-    'b'         signed integer     1 
-    'B'         unsigned integer   1 
-    'u'         Unicode character  2 
-    'h'         signed integer     2 
-    'H'         unsigned integer   2 
-    'i'         signed integer     2 
-    'I'         unsigned integer   2 
-    'l'         signed integer     4 
-    'L'         unsigned integer   4 
-    'f'         floating point     4 
-    'd'         floating point     8 
+    Type code   C Type             Minimum size in bytes
+    'c'         character          1
+    'b'         signed integer     1
+    'B'         unsigned integer   1
+    'u'         Unicode character  2
+    'h'         signed integer     2
+    'H'         unsigned integer   2
+    'i'         signed integer     2
+    'I'         unsigned integer   2
+    'l'         signed integer     4
+    'L'         unsigned integer   4
+    'f'         floating point     4
+    'd'         floating point     8
 
 """
 
 # can only think of booleans
-dtype_maps_to = dict([ ('?', 'b') ])
+dtype_maps_to = dict([('?', 'b')])
 
-dtype_ctype = dict( (('F', 'f'), ('D', 'd'), ('G', 'g')) )
-ctype_dtype = dict( ( (v, k) for k, v in dtype_ctype.items() ) )
+dtype_ctype = dict((('F', 'f'), ('D', 'd'), ('G', 'g')))
+ctype_dtype = dict(((v, k) for k, v in dtype_ctype.items()))
+
 
 def shared_ndarray(shape, typecode='d'):
     if not parallel_controller.state:
-        return np.empty( shape, dtype=typecode )
+        return np.empty(shape, dtype=typecode)
     N = reduce(np.multiply, shape)
     if typecode in dtype_ctype:
         N *= 2
@@ -60,6 +61,7 @@ def shared_ndarray(shape, typecode='d'):
         ctypecode = typecode
     shm = mp.Array(ctypecode, int(N))
     return SharedmemManager.tonumpyarray(shm, shape=shape, dtype=typecode)
+
 
 def shared_copy(x):
     # don't create wasteful copy if not doing parallel
@@ -70,7 +72,8 @@ def shared_copy(x):
     y[:] = x.astype(typecode, copy=False)
     return y
 
-class SharedmemManager(object):
+
+class SharedmemManager:
 
     def __init__(self, np_array, use_lock=False):
         self.dtype = np_array.dtype.char
@@ -79,11 +82,11 @@ class SharedmemManager(object):
             ctype_view = dtype_ctype[self.dtype]
             self.shm = mp.sharedctypes.synchronized(
                 np.ctypeslib.as_ctypes(np_array.view(ctype_view))
-                )
+            )
         else:
             self.shm = mp.sharedctypes.synchronized(
                 np.ctypeslib.as_ctypes(np_array)
-                )
+            )
         # There may be some cases where you'd want to use locking intermittently?
         self.use_lock = ToggleState(init_state=use_lock)
 
@@ -100,6 +103,7 @@ class SharedmemManager(object):
         if shape is None:
             shape = shape_
         return np.frombuffer(mp_arr.get_obj(), dtype=dtype).reshape(shape)
+
 
 def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurrent=False):
     """
@@ -126,12 +130,12 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
     info('{} Starting wrap'.format(timestamp()))
     # short circuit if the platform is Windows-based (look into doing
     # real multiproc later)
-    if n_jobs==0 or platform.system().lower().find('windows') >= 0:
+    if n_jobs == 0 or platform.system().lower().find('windows') >= 0:
         @decorator
         def inner_split_method(method, *args, **kwargs):
             return method(*args, **kwargs)
         return inner_split_method
-    
+
     # normalize inputs
     if not np.iterable(splice_at):
         splice_at = (splice_at,)
@@ -148,7 +152,7 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
         # make available short-cut to not use subprocesses:
         if not parallel_controller.state:
             return method(*args, **kwargs)
-        pop_args = sorted( split_arg + shared_args )
+        pop_args = sorted(split_arg + shared_args)
         sh_args = list()
         n = 0
         args = list(args)
@@ -158,25 +162,25 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
             pos = pos - n
             a = args.pop(pos)
             info('{} Wrapping shared memory size {} MB'.format(timestamp(), a.size * a.dtype.itemsize / 1024. / 1000.))
-            x = SharedmemManager( a, use_lock=concurrent )
-            if pos+n in split_arg:
-                shm.append( x )
-                split_x.append( a )
+            x = SharedmemManager(a, use_lock=concurrent)
+            if pos + n in split_arg:
+                shm.append(x)
+                split_x.append(a)
             else:
-                sh_args.append( x )
+                sh_args.append(x)
             n += 1
         static_args = tuple(args)
         sh_args = tuple(sh_args)
 
-        split_lens = set([ len(sx) for sx in split_x ])
+        split_lens = set([len(sx) for sx in split_x])
         if len(split_lens) > 1:
             raise ValueError(
                 'all of the arrays to split must have the same length '
                 'on the first axis'
-                )
-            
+            )
+
         # create a pool and map the shared memory array over the method
-        init_args = (split_arg, shm, 
+        init_args = (split_arg, shm,
                      [getattr(x, 'shape') for x in split_x],
                      shared_args, sh_args,
                      method, static_args, kwargs)
@@ -185,12 +189,12 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
         with closing(mp.Pool(
                 processes=n_jobs, initializer=_init_globals,
                 initargs=init_args
-                )) as p:
+        )) as p:
             n_div = estimate_chunks(split_x[0].size, len(p._pool))
             dim_size = split_x[0].shape[0]
 
             # if there are less or equal dims as procs, then split it up 1 per
-            # otherwise, balance it with some procs having 
+            # otherwise, balance it with some procs having
             # N=ceil(dims / procs) dims, and the rest having N-1
 
             max_dims = int(np.ceil(float(dim_size) / n_div))
@@ -207,11 +211,11 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
             job_slices = list()
             # now form the data slicing to map out to the jobs
             for dims in job_dims:
-                job_slices.extend( [slice(n, n+dims)] )
+                job_slices.extend([slice(n, n + dims)])
                 n += dims
             # map the jobs
             info('{} Mapping jobs'.format(timestamp()))
-            res = p.map_async( _global_method_wrap, job_slices )
+            res = p.map_async(_global_method_wrap, job_slices)
 
         p.join()
         if res.successful():
@@ -221,15 +225,17 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
         else:
             # raises exception ?
             res.get()
-        #gc.collect()
+        # gc.collect()
         info('{} Wrap done'.format(timestamp()))
         return res
 
     return inner_split_method
-    
+
+
 def estimate_chunks(arr_size, nproc):
     # do nothing now
     return nproc
+
 
 def splice_results(map_list, splice_at):
     if [x for x in map_list if x is None]:
@@ -248,12 +254,13 @@ def splice_results(map_list, splice_at):
         res = res + (np.concatenate(arr_list, axis=0),)
         pres = sres + 1
     res = res + map_list[0][pres:]
-        
+
     return res
 
 # --- the following are initialized in the global state of the subprocesses
 
-class shared_readonly(object):
+
+class shared_readonly:
     def __init__(self, mem_mgr):
         self.mem_mgr = mem_mgr
 
@@ -261,11 +268,12 @@ class shared_readonly(object):
         with self.mem_mgr.get_ndarray() as shm_ndarray:
             return shm_ndarray[idx].copy()
 
+
 def _init_globals(
         split_arg, shm, shm_shape,
         shared_args, sh_arg_mem,
         method, args, kwdict
-        ):
+):
     """
     Initialize the pool worker global state with the method to run and shared arrays + info + other args and kwargs
 
@@ -288,7 +296,7 @@ def _init_globals(
     kwdict:
         keyword arguments
     """
-    
+
     # globals for primary shared array
     global shared_arr_
     shared_arr_ = shm
@@ -301,7 +309,7 @@ def _init_globals(
     global shared_args_
     shared_args_ = shared_args
     global shared_args_mem_
-    shared_args_mem_ = tuple( [ shared_readonly(mm) for mm in sh_arg_mem ] )
+    shared_args_mem_ = tuple([shared_readonly(mm) for mm in sh_arg_mem])
 
     # globals for pickled method and other arguments
     global method_
@@ -316,7 +324,8 @@ def _init_globals(
 
     info = mp.get_logger().info
     info('{} Initialized globals'.format(timestamp()))
-    
+
+
 def _global_method_wrap(aslice):
     arrs = []
     # cycle through shared arrays and translate to ndarray (possibly in a locking context)
@@ -324,11 +333,11 @@ def _global_method_wrap(aslice):
         with arr_.get_ndarray() as array:
             arrs.append(array)
     info = mp.get_logger().info
-    
-    spliced_in = list(zip( 
-        split_arg_+shared_args_, 
+
+    spliced_in = list(zip(
+        split_arg_ + shared_args_,
         [arr_[aslice] for arr_ in arrs] + list(shared_args_mem_)
-        ))
+    ))
     spliced_in = sorted(spliced_in, key=lambda x: x[0])
     # assemble argument order correctly
     args = list()
@@ -341,7 +350,7 @@ def _global_method_wrap(aslice):
         else:
             args.append(l_args.pop(0))
         n += 1
-    args.extend( [spl[1] for spl in spliced_in] )
+    args.extend([spl[1] for spl in spliced_in])
     args = tuple(args)
     #info(repr(map(type, args)))
 
@@ -353,4 +362,3 @@ def _global_method_wrap(aslice):
     time_lapse = (datetime.now() - then).total_seconds()
     info('{} method {} slice {} elapsed time: {}'.format(timestamp(), method_, aslice, time_lapse))
     return r
-

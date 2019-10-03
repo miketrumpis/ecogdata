@@ -18,14 +18,15 @@ if 'user_sessions' not in params or not params.user_sessions:
     _cpath = osp.join(osp.dirname(__file__), 'sessions')
 else:
     _cpath = osp.abspath(params.user_sessions)
-    
+
+
 def find_conf(conf, extra_paths=None):
     """
     Session config "conf" is given in "group/session" syntax.
     Use "extra_paths" to specify anywhere else the "session" file
     might be found.
     """
-    
+
     group, session = conf.split('/')
     if extra_paths is None:
         extra_paths = list()
@@ -41,7 +42,7 @@ def find_conf(conf, extra_paths=None):
         if osp.exists(p2):
             return p2
 
-    raise IOError('config file not found: '+conf)
+    raise IOError('config file not found: ' + conf)
 
 
 def __isdir(p):
@@ -55,7 +56,7 @@ def __isdir(p):
 def session_groups():
     return [name for name in os.listdir(_cpath)
             if __isdir(osp.join(_cpath, name))]
-    
+
 
 def available_sessions(group=''):
     groups = [group] if len(group) else session_groups()
@@ -69,7 +70,7 @@ def available_sessions(group=''):
         try:
             cp.read(txt)
             conf_files.append(txt)
-        except:
+        except BaseException:
             pass
 
     def _two_path(x):
@@ -123,7 +124,7 @@ def sessions_to_delta(sessions, reference=None, num=False, sortable=False):
     num : (default False) return numbers (as opposed to "Day X" strings)
     sortable : (default False) return date strings that sort correctly
     """
-    
+
     import re
     from datetime import datetime
     fmt = '%Y-%m-%d'
@@ -140,7 +141,7 @@ def sessions_to_delta(sessions, reference=None, num=False, sortable=False):
         if m is None:
             raise ValueError(
                 'Reference {0} not in YYYY-MM-DD format'.format(reference)
-                )
+            )
         s0 = '-'.join(m.groups())
     else:
         s0 = dates[0]
@@ -150,7 +151,7 @@ def sessions_to_delta(sessions, reference=None, num=False, sortable=False):
         return deltas
     if sortable and len(deltas) > 1:
         dig = int(np.log10(max(deltas))) + 1
-        deltas = ['Day {day:{width}}'.format(day=d, width=dig) 
+        deltas = ['Day {day:{width}}'.format(day=d, width=dig)
                   for d in deltas]
     else:
         deltas = ['Day {0}'.format(d) for d in deltas]

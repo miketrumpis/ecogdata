@@ -15,45 +15,48 @@ __all__ = ['build_experiment']
 #                synonymous with tone_onset)
 # * ...
 
+
 def _gen_params_table():
     param_to_type = {
-        'tone_onset' : ('froemke tonotopy', 'tonotopy', 'puretones_amtones', 
-                        'noise_amnoise', 'qt_amnoise', 'qt_amtones',
-                        'puretonebursts', 'qt_puretones'),
-        'tone_width' : ('froemke tonotopy', 'tonotopy', 'puretones_amtones', 
-                        'noise_amnoise', 'qt_amnoise', 'qt_amtones',
-                        'puretonebursts', 'qt_puretones'),
-        'eye' : ('movshon exp',),
-        }
+        'tone_onset': ('froemke tonotopy', 'tonotopy', 'puretones_amtones',
+                       'noise_amnoise', 'qt_amnoise', 'qt_amtones',
+                       'puretonebursts', 'qt_puretones'),
+        'tone_width': ('froemke tonotopy', 'tonotopy', 'puretones_amtones',
+                       'noise_amnoise', 'qt_amnoise', 'qt_amtones',
+                       'puretonebursts', 'qt_puretones'),
+        'eye': ('movshon exp',),
+    }
 
-    all_types = set( chain( *list(param_to_type.values()) ) )
+    all_types = set(chain(*list(param_to_type.values())))
     type_to_params = dict()
     for t in all_types:
         # add 'onset_delay' to all types
         type_to_params[t] = ['onset_delay']
         for p in list(param_to_type.keys()):
             if t in param_to_type[p]:
-                type_to_params[t].append( p )
+                type_to_params[t].append(p)
 
     return type_to_params
 
+
 _params_table = _gen_params_table()
 _condition_order_table = {
-    'froemke tonotopy' : ('tones', 'amps'),
-    'tonotopy' : ('tones', 'amps'),
-    'puretones_amtones' : ('carrier_tone', 'mod_freq', 'am_depth'),
-    'noise_amnoise' : ('mod_freq', 'am_depth')[::-1],
-    'qt_amnoise' : ('mod_freq', 'am_depth')[::-1],
-    'qt_amtones' :  ('carrier_tone', 'mod_freq', 'am_depth'),
-    'puretonebursts' : ('tone', 'as_amp'),
-    'qt_puretones' : ('tone', 'as_amp')
-    }
+    'froemke tonotopy': ('tones', 'amps'),
+    'tonotopy': ('tones', 'amps'),
+    'puretones_amtones': ('carrier_tone', 'mod_freq', 'am_depth'),
+    'noise_amnoise': ('mod_freq', 'am_depth')[::-1],
+    'qt_amnoise': ('mod_freq', 'am_depth')[::-1],
+    'qt_amtones': ('carrier_tone', 'mod_freq', 'am_depth'),
+    'puretonebursts': ('tone', 'as_amp'),
+    'qt_puretones': ('tone', 'as_amp')
+}
+
 
 def build_tonotopy(session, test, event_times):
     cfg = session_conf(session)
     exp_info = cfg.session
     exp_info.update(cfg[test])
-    
+
     tone_tab = exp_info.tone_tab
     amp_tab = exp_info.amp_tab
     tone_onset = float(exp_info.get('tone_onset', 0))
@@ -66,35 +69,36 @@ def build_tonotopy(session, test, event_times):
     try:
         tone_tab = find_conf('/'.join([group, tone_tab]), extra_paths=paths)
         tone_tab = np.loadtxt(tone_tab)
-        tone_tab = tone_tab[ tone_tab > 0 ]        
+        tone_tab = tone_tab[tone_tab > 0]
     except IOError:
         try:
-            tone_tab = np.array( list(map(float, tone_tab.split(','))) )
+            tone_tab = np.array(list(map(float, tone_tab.split(','))))
         except ValueError:
             # the tone_tab was not recognized, or was
             # coded to indicate no-stimulation
             return None
 
-    n_tones = len( tone_tab )
+    n_tones = len(tone_tab)
 
     try:
         amp_tab = find_conf('/'.join([group, amp_tab]), extra_paths=paths)
     except IOError:
         amp_tab = osp.split(amp_tab)[1]
-        amp_tab = np.array( list(map(int, amp_tab.split(','))) )
-        amp_tab = np.tile(amp_tab[:,None], (1, n_tones)).ravel()
+        amp_tab = np.array(list(map(int, amp_tab.split(','))))
+        amp_tab = np.tile(amp_tab[:, None], (1, n_tones)).ravel()
 
     exp = TonotopyExperiment.from_repeating_sequences(
         event_times, dict(tones=tone_tab, amps=amp_tab),
         tone_onset=tone_onset, tone_width=tone_width,
         onset_delay=onset_delay
-        )
+    )
 
     if exp_info.tone_tab.find('rot') >= 0:
         # circular shift the amplitudes 1 step backwards
         exp.amps = np.r_[exp.amps[1:], exp.amps[:1]]
-    
+
     return exp
+
 
 def build_expo(session, test, event_times):
     cfg = session_conf(session)
@@ -109,12 +113,12 @@ def build_expo(session, test, event_times):
     xml_prefix = exp_info.movshon_prefix[:-1]
     try:
         expo_num = exp_info.movshon_exp
-    except:
+    except BaseException:
         return None
 
     xml_path = glob(
-        osp.join(xml_path, xml_prefix)+'*#'+expo_num+'*.xml'
-        )
+        osp.join(xml_path, xml_prefix) + '*#' + expo_num + '*.xml'
+    )
     if not xml_path:
         return None
     xml_path = xml_path[0]
@@ -123,9 +127,10 @@ def build_expo(session, test, event_times):
     exp_tab.stim_props.eye = eye
     return exp_tab
 
+
 def build_simple(
         session, test, event_times, event_value=1.0, event_name='stim'
-        ):
+):
     # event_name needs to be a valid "attribute" name
     cfg = session_conf(session)
     exp_info = cfg.session
@@ -134,10 +139,11 @@ def build_simple(
     onset_delay = float(exp_info.get('onset_delay', 0))
 
     exp = StimulatedExperiment.from_repeating_sequences(
-        event_times, {event_name : [event_value]}, 
+        event_times, {event_name: [event_value]},
         condition_order=(event_name,), onset_delay=onset_delay
-        )
+    )
     return exp
+
 
 def build_auto(session, test, event_times, exp_type=None):
     cfg = session_conf(session)
@@ -148,10 +154,10 @@ def build_auto(session, test, event_times, exp_type=None):
         if exp_type is None:
             raise RuntimeError('Could not determine the experiment type')
         exp_info.exp_type = exp_type
-    
+
     extra_params = _params_table.get(exp_info.exp_type, ())
-    p_values = [ float(exp_info.get(p, 0)) for p in extra_params ]
-    extra_params = dict( zip(extra_params, p_values) )
+    p_values = [float(exp_info.get(p, 0)) for p in extra_params]
+    extra_params = dict(zip(extra_params, p_values))
 
     group = session.split('/')[0]
     # get table names and values
@@ -167,23 +173,24 @@ def build_auto(session, test, event_times, exp_type=None):
         except IOError:
             # why this?
             tabv = osp.split(tabv)[1]
-            tabv = np.array( list(map(float, tabv.split(','))) )
+            tabv = np.array(list(map(float, tabv.split(','))))
 
-        ev_tables.append( [tab.replace('_tab', ''), tabv] )
+        ev_tables.append([tab.replace('_tab', ''), tabv])
 
     condition_order = _condition_order_table.get(exp_info.exp_type, ())
-        
+
     exp = StimulatedExperiment.from_repeating_sequences(
         event_times, dict(ev_tables),
         condition_order=condition_order, **extra_params
-        )
+    )
     return exp
+
 
 def build_experiment(session, test, event_times, **kwargs):
 
     if not len(event_times):
         return None
-    
+
     cfg = session_conf(session)
     exp_info = cfg.session
     try:
@@ -211,7 +218,7 @@ def build_experiment(session, test, event_times, **kwargs):
         elif 'tone_tab' in tables and 'amp_tab' in tables:
             # if there is NO name but there are tables, then
             # default to "legacy" mode
-            
+
             return build_tonotopy(session, test, event_times)
         else:
             # if no type is named and there are valid tables,

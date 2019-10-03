@@ -7,22 +7,23 @@ from .base_exp import StimulatedExperiment
 
 __all__ = ['TonotopyExperiment']
 
+
 class TonotopyExperiment(StimulatedExperiment):
     """
     An experiment with multiple tone presentations that vary in
     pitch (labeled "tones") and amplitude (labeled "amps")
     """
 
-    ## These patterns were used in one set of exps..
+    # These patterns were used in one set of exps..
     fixed_tones_pattern = \
-      (2831, 8009, 5663, 8009, 2831, 1000, 1000, 16018, 1415, 4004, 
-       4004, 22651, 708, 1415, 500, 5663, 2000, 1000, 5663, 22651, 
-       16018, 2000, 500, 32036, 2831, 708, 500, 11326, 11326, 708, 
-       1415, 2000, 16018, 32036, 32036, 8009, 4004, 11326, 22651)
+        (2831, 8009, 5663, 8009, 2831, 1000, 1000, 16018, 1415, 4004,
+         4004, 22651, 708, 1415, 500, 5663, 2000, 1000, 5663, 22651,
+         16018, 2000, 500, 32036, 2831, 708, 500, 11326, 11326, 708,
+         1415, 2000, 16018, 32036, 32036, 8009, 4004, 11326, 22651)
 
-    fixed_amps_pattern =  (30, 50, 30, 30, 70, 70, 50, 70, 30, 30, 70, 30, 30, 
-                           50, 50, 70, 70, 30, 50, 50, 30, 30, 30, 50, 50, 50, 
-                           70, 30, 50, 70, 70, 50, 50, 30, 70, 70, 50, 70, 70)
+    fixed_amps_pattern = (30, 50, 30, 30, 70, 70, 50, 70, 30, 30, 70, 30, 30,
+                          50, 50, 70, 70, 30, 50, 50, 30, 30, 30, 50, 50, 50,
+                          70, 30, 50, 70, 70, 50, 50, 30, 70, 70, 50, 70, 70)
 
     def __init__(self, **kwargs):
         kwargs.setdefault('condition_order', ('tones', 'amps'))
@@ -34,10 +35,10 @@ class TonotopyExperiment(StimulatedExperiment):
 
         tone_khz = tone // 1000
         tone_dec = tone - tone_khz * 1000
-        tone_dec = int( float(tone_dec) / 100 + 0.5 )
+        tone_dec = int(float(tone_dec) / 100 + 0.5)
 
-        s = '%d.%d KHz'%(tone_khz, tone_dec)
-        s = s + ' (%d)'%amp
+        s = '%d.%d KHz' % (tone_khz, tone_dec)
+        s = s + ' (%d)' % amp
         if mpl_text:
             import matplotlib as mpl
             u_amps = np.unique(self.amps)
@@ -50,7 +51,7 @@ class TonotopyExperiment(StimulatedExperiment):
     @classmethod
     def from_repeating_sequences(
             cls, time_stamps, sequences, condition_order=(), **kwargs
-            ):
+    ):
 
         # do this for historical consistency?
         if not sequences:
@@ -60,8 +61,7 @@ class TonotopyExperiment(StimulatedExperiment):
         # also enforce default condition order here
         if not len(condition_order):
             condition_order = 'tones', 'amps'
-        
+
         return super(TonotopyExperiment, cls).from_repeating_sequences(
             time_stamps, sequences, condition_order=condition_order, **kwargs
-            )
-        
+        )

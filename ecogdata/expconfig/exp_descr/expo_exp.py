@@ -1,5 +1,5 @@
 """
-This module interprets experiments from the Expo presentation 
+This module interprets experiments from the Expo presentation
 software used in the Movshon lab. These experiments were described
 in xml files.
 """
@@ -11,20 +11,21 @@ import matplotlib as mpl
 
 import itertools
 try:
-  from lxml import etree
+    from lxml import etree
 except ImportError:
-  try:
-    # Python 2.5
-    import xml.etree.cElementTree as etree
-  except ImportError:
-      print("What's wrong with your distro??")
-      sys.exit(1)
+    try:
+        # Python 2.5
+        import xml.etree.cElementTree as etree
+    except ImportError:
+        print("What's wrong with your distro??")
+        sys.exit(1)
 
 from ecogdata.util import Bunch
 from .base_exp import StimulatedExperiment
-      
+
 __all__ = ['get_expo_experiment', 'RingExperiment', 'WedgeExperiment',
            'FlickerExperiment', 'SparsenoiseExperiment', 'ExpoExperiment']
+
 
 def itertag_wrap(xml_ish, tag):
     """lxml provides a filter based on element tag.
@@ -35,10 +36,11 @@ def itertag_wrap(xml_ish, tag):
         return context
 
     context = etree.iterparse(xml_ish)
-    fcontext = filter(lambda x: x[0].tag==tag, context)
+    fcontext = filter(lambda x: x[0].tag == tag, context)
     return fcontext
 
-class StimEvent(object):
+
+class StimEvent:
     """The mother stimulation event with tag 'Pass'. Every stimulation
     event carries the attributes BlockID, StartTime, and EndTime. The
     Pass ID is encoded implicitly as the order of all info sequences.
@@ -58,19 +60,19 @@ class StimEvent(object):
         the names of all the child info elements
         """
         pass_iter = itertag_wrap(xml, cls.tag)
-        ## with itertag_wrap(xml, cls.tag) as pass_iter:
+        # with itertag_wrap(xml, cls.tag) as pass_iter:
         all_names = list(cls.attr_keys)
         for child in cls.children:
             all_names.extend(list(child.data_lookup.keys()))
 
         # fill with empty sequences
-        named_seqs = dict(( (name, list()) for name in all_names ))
+        named_seqs = dict(((name, list()) for name in all_names))
 
         for _, elem in pass_iter:
             # get top-level stuff
             # XXX: also uniformly converting to float here
             for key in cls.attr_keys:
-                named_seqs[key].append( float(elem.attrib[key]) )
+                named_seqs[key].append(float(elem.attrib[key]))
             for child in cls.children:
                 c_data = child.strip_data(elem)
                 for cname, cval in c_data:
@@ -78,7 +80,8 @@ class StimEvent(object):
 
         return named_seqs
 
-class ChildInfo(object):
+
+class ChildInfo:
     """A stimulation event might have relevant info in the children. The
     child nodes have tag 'Event' and an 'RID' to distinguish the data.
     """
@@ -101,8 +104,8 @@ class ChildInfo(object):
         'cell_ht', 'cell_x', 'cell_y'}. Then the data_lookup would be
         specified as dict(cell_ht=2, cell_wd=3, cell_x=4, cell_y=5)
         """
-        self.rid = rid # a string
-        self.data_lookup = data_lookup # a dict
+        self.rid = rid  # a string
+        self.data_lookup = data_lookup  # a dict
 
     def strip_data(self, pass_node):
         """Find myself within the children of the stim event node
@@ -111,50 +114,56 @@ class ChildInfo(object):
         rid_code = self.rid.split('.')
         rid = rid_code.pop(0)
         rep = int(rid_code.pop()) if rid_code else 0
-        ev = [x for x in pass_node.getchildren() if x.attrib['RID']==rid]
-        if len(ev) <= rep-1:
+        ev = [x for x in pass_node.getchildren() if x.attrib['RID'] == rid]
+        if len(ev) <= rep - 1:
             raise RuntimeError(
-                'This pass has an unexpected multiplicity of children '\
-                'with this RID: (%s, %s)'%(pass_node.attrib['ID'], rid)
-                )
+                'This pass has an unexpected multiplicity of children '
+                'with this RID: (%s, %s)' % (pass_node.attrib['ID'], rid)
+            )
         if not ev:
             raise RuntimeError(
-                'This pass has no children '\
-                'with this RID: (%s, %s)'%(pass_node.attrib['ID'], rid)
-                )
+                'This pass has no children '
+                'with this RID: (%s, %s)' % (pass_node.attrib['ID'], rid)
+            )
         ev = ev[rep]
         all_data = ev.attrib['Data'].split(',')
         data = ()
         for name, pos in self.data_lookup.items():
             # XXX: always converting to float here -- watch
             # out if string values are important
-            data = data + ( (name, float(all_data[pos])), )
+            data = data + ((name, float(all_data[pos])), )
         return data
+
 
 class FlickerEvent(StimEvent):
     # no ornaments
     pass
 
+
 class SparsenoiseEvent(StimEvent):
     children = (
         ChildInfo('32', dict(cell_ht=2, cell_wd=3, cell_x=4, cell_y=5)),
         ChildInfo('33', dict(contrast=3))
-        )
+    )
+
 
 class RingEvent(StimEvent):
     children = (
         ChildInfo('32.0', dict(outer_rad=2)),
         ChildInfo('32.1', dict(inner_rad=2)),
-        )
+    )
+
 
 class WedgeEvent(StimEvent):
     children = (
         ChildInfo('32', dict(rotation=1, radius=2)),
-        )
+    )
+
 
 class TickEvent(StimEvent):
     tag = 'tick'
     attr_keys = ('start', 'end', 'flush')
+
 
 class ExpoExperiment(StimulatedExperiment):
 
@@ -167,7 +176,7 @@ class ExpoExperiment(StimulatedExperiment):
     def __init__(self, time_stamps=None, event_tables=dict(), **attrib):
         super(ExpoExperiment, self).__init__(
             time_stamps=time_stamps, event_tables=event_tables, **attrib
-            )
+        )
         self._filled = len(self.event_names) > 0
 
     def fill_stims(self, xml_file, ignore_skip=False):
@@ -178,7 +187,7 @@ class ExpoExperiment(StimulatedExperiment):
         ticks = TickEvent.walk_events(xml_file)
         for attrib in TickEvent.attr_keys:
             val = ticks.pop(attrib)
-            ticks['tick_'+attrib] = val
+            ticks['tick_' + attrib] = val
         data = self.event_type.walk_events(xml_file)
         data.update(ticks)
         keys = list(data.keys())
@@ -186,7 +195,7 @@ class ExpoExperiment(StimulatedExperiment):
             keep_idx = slice(None)
         else:
             block_id = np.array(data['BlockID'])
-            skipped_idx = [np.where(block_id == skip)[0] 
+            skipped_idx = [np.where(block_id == skip)[0]
                            for skip in self.skip_blocks]
             skipped_idx = np.concatenate(skipped_idx)
             keep_idx = np.setdiff1d(np.arange(len(block_id)), skipped_idx)
@@ -202,11 +211,12 @@ class ExpoExperiment(StimulatedExperiment):
             pix_size = float(units.attrib['PixelSize'])
             # tick duration is in micro-secs
             tick_len = float(units.attrib['TickDuration'])
-        ## print 'got data:', data.keys()
-        ## print [len(val) for val in data.values()]
+        # print 'got data:', data.keys()
+        # print [len(val) for val in data.values()]
         self.stim_props = Bunch(pix_size=pix_size, tick_len=tick_len)
         self._fill_tables(**data)
         self._filled = True
+
 
 class SparsenoiseExperiment(ExpoExperiment):
 
@@ -217,7 +227,7 @@ class SparsenoiseExperiment(ExpoExperiment):
     def stim_str(self, n, mpl_text=False):
         if not self._filled:
             return 'empty experiment'
-        con = (self.BlockID[n]-1) % 3
+        con = (self.BlockID[n] - 1) % 3
         cmap = mpl.cm.winter
         #cidx = np.linspace(0, cmap.N, 3)
         cidx = np.linspace(0, 1, 3)
@@ -229,11 +239,13 @@ class SparsenoiseExperiment(ExpoExperiment):
         else:
             contrast = 'bright'
 
-        x = self.cell_x[n]; y = self.cell_y[n]
-        s = '(%1.1f, %1.1f)'%(x,y)
+        x = self.cell_x[n]
+        y = self.cell_y[n]
+        s = '(%1.1f, %1.1f)' % (x, y)
         if mpl_text:
             return mpl.text.Text(text=s, color=colors[con])
         return s + ' ' + contrast
+
 
 class FlickerExperiment(ExpoExperiment):
 
@@ -242,7 +254,7 @@ class FlickerExperiment(ExpoExperiment):
     def stim_str(self, n, mpl_text=False):
         return mpl.text.Text(text='*') if mpl_text else '*'
 
-    
+
 class WedgeExperiment(ExpoExperiment):
 
     event_type = WedgeEvent
@@ -250,14 +262,15 @@ class WedgeExperiment(ExpoExperiment):
 
     def stim_str(self, n, mpl_text=False):
         rot = self.rotation[n]
-        s = '%1.2f deg'%self.rotation[n]
+        s = '%1.2f deg' % self.rotation[n]
         if mpl_text:
-            mn = self.rotation.min(); mx = self.rotation.max()
-            c = mpl.cm.jet( (rot - mn)/(mx-mn) )
+            mn = self.rotation.min()
+            mx = self.rotation.max()
+            c = mpl.cm.jet((rot - mn) / (mx - mn))
             return mpl.text.Text(text=s, color=c)
         return s
 
-    
+
 class RingExperiment(ExpoExperiment):
 
     event_type = RingEvent
@@ -267,15 +280,18 @@ class RingExperiment(ExpoExperiment):
         i_rad = self.inner_rad[n]
         o_rad = self.outer_rad[n]
         rad = (i_rad * o_rad)**0.5
-        s = '%1.2f dva'%rad
+        s = '%1.2f dva' % rad
         if mpl_text:
-            i_mn = self.inner_rad.min(); i_mx = self.inner_rad.max()
-            o_mn = self.outer_rad.min(); o_mx = self.outer_rad.max()
+            i_mn = self.inner_rad.min()
+            i_mx = self.inner_rad.max()
+            o_mn = self.outer_rad.min()
+            o_mx = self.outer_rad.max()
             mn = (i_mn * o_mn)**0.5
             mx = (i_mx * o_mx)**0.5
-            c = mpl.cm.jet( (rad - mn)/(mx-mn) )
+            c = mpl.cm.jet((rad - mn) / (mx - mn))
             return mpl.text.Text(text=s, color=c)
         return s
+
 
 def _fix_br_triggers(exp_tab):
     table_len = len(exp_tab.BlockID)
@@ -288,7 +304,8 @@ def _fix_br_triggers(exp_tab):
         raise RuntimeError('Broken experiment record, not continuing')
 
     return exp_tab
-    
+
+
 def get_expo_experiment(xml_file, time_stamps, filled=True):
     i1 = xml_file.find('[') + 1
     i2 = xml_file.find(']')
@@ -304,10 +321,9 @@ def get_expo_experiment(xml_file, time_stamps, filled=True):
     else:
         raise ValueError(
             'No translation for this program name: %s', prog_name
-            )
+        )
 
     if filled:
         ex.fill_stims(xml_file)
         ex = _fix_br_triggers(ex)
     return ex
-

@@ -5,6 +5,7 @@ import ecogdata.util as ut
 from ecogdata.expconfig.exp_descr import StimulatedExperiment
 import ecogdata.parallel.array_split as array_split
 
+
 def _auto_level(ttl, verbose=False):
     """Iteratively refine an estimate of the high-level cluster
     of points in a TTL signal.
@@ -13,10 +14,10 @@ def _auto_level(ttl, verbose=False):
     n = ttl.size
     mn = ttl.mean()
     # refine until the current subset is < 1% of the signal
-    #while float(ttl.size) / n > 1e-3:
+    # while float(ttl.size) / n > 1e-3:
     # refine until the current subset is less than 1000 pts (good heuristic??)
     while float(ttl.size) > 1000:
-        ttl = ttl[ ttl > mn ]
+        ttl = ttl[ttl > mn]
         if verbose:
             mn = ttl.mean()
             sz = len(ttl)
@@ -27,12 +28,13 @@ def _auto_level(ttl, verbose=False):
             # it's possible there are > 1000 values all clipped
             # to the same high level, in which case lower the
             # current level by a hair and break
-            if np.abs( mn - ttl.max() ) < 1e-8:
+            if np.abs(mn - ttl.max()) < 1e-8:
                 mn *= 0.99
                 break
         else:
             break
     return mn
+
 
 def process_trigger(trig_chan, thresh=0.5, uniform=True, clean=False):
     """Pull event timing from one or many logical-level channels.
@@ -60,7 +62,7 @@ def process_trigger(trig_chan, thresh=0.5, uniform=True, clean=False):
     if trig_chan.dtype.char != '?':
         thresh = thresh * _auto_level(trig_chan)
         trig_chan = trig_chan > thresh
-    digital_trigger = np.any( trig_chan, axis=0 ).astype('i')
+    digital_trigger = np.any(trig_chan, axis=0).astype('i')
     pos_edge = np.where(np.diff(digital_trigger) > 0)[0] + 1
 
     if uniform:
@@ -73,20 +75,21 @@ def process_trigger(trig_chan, thresh=0.5, uniform=True, clean=False):
         p5, p95 = np.percentile(isi_raw, [5, 95])
         min_credible_isi = p95 - (p95 - p5) / 0.9
         pos_edge_ = clean_dirty_trigger(pos_edge,
-                                        isi_guess = min_credible_isi)
+                                        isi_guess=min_credible_isi)
         sdiff = np.setdiff1d(pos_edge, pos_edge_)
         if len(sdiff):
             print('Warning.. spurious triggers auto-detected.')
-            rej = pos_edge.searchsorted(sdiff)-1
+            rej = pos_edge.searchsorted(sdiff) - 1
             print('Rejected ISIs were', isi_raw[rej])
         pos_edge = pos_edge_
     if clean:
         pos_edge = clean_dirty_trigger(pos_edge)
     return pos_edge, digital_trigger
 
+
 def clean_dirty_trigger(pos_edges, isi_guess=None):
     """Clean spurious event times (with suspect inter-stimulus intervals).
-    
+
     Parameters
     ----------
     pos_edges : array-like
@@ -112,19 +115,21 @@ def clean_dirty_trigger(pos_edges, isi_guess=None):
         if not edge_mask[i]:
             continue
 
-        # look ahead and kill any edges that are 
+        # look ahead and kill any edges that are
         # too close to the current edge
         pt = pos_edges[i]
-        kill_mask = (pos_edges > pt) & (pos_edges < pt + isi_guess/2)
+        kill_mask = (pos_edges > pt) & (pos_edges < pt + isi_guess / 2)
         edge_mask[kill_mask] = False
 
     return pos_edges[edge_mask]
 
 # define some trigger-locked aggregating utilities
+
+
 def trigs_and_conds(trig_code):
     if isinstance(trig_code, np.ndarray) or \
-      isinstance(trig_code, tuple) or \
-      isinstance(trig_code, list):
+            isinstance(trig_code, tuple) or \
+            isinstance(trig_code, list):
         trigs, conds = trig_code
     elif isinstance(trig_code, StimulatedExperiment):
         try:
@@ -134,12 +139,13 @@ def trigs_and_conds(trig_code):
         conds, _ = trig_code.enumerate_conditions()
     return trigs, conds
 
-@array_split.split_at(splice_at=(0,1))
+
+@array_split.split_at(splice_at=(0, 1))
 def ep_trigger_avg(
-        x, trig_code, pre=0, post=0, 
+        x, trig_code, pre=0, post=0,
         sum_limit=-1, iqr_thresh=-1,
         envelope=False
-        ):
+):
     """
     Average response to 1 or more experimental conditions
 
@@ -147,8 +153,8 @@ def ep_trigger_avg(
     ---------
     x: data (nchan, npts)
     trig_code : sequence-type (2, stim) or StimulatedExperiment
-        First row is the trigger indices, second row is a condition 
-        ID (integer). Condition ID -1 codes for a flagged trial to 
+        First row is the trigger indices, second row is a condition
+        ID (integer). Condition ID -1 codes for a flagged trial to
         be skipped. If a StimulatedExperiment, then triggers and
         conditions are available from this object.
     pre, post : ints
@@ -175,18 +181,18 @@ def ep_trigger_avg(
     x.shape = (1,) + x.shape if x.ndim == 1 else x.shape
     #pos_edge = trig_code[0]; conds = trig_code[1]
     pos_edge, conds = trigs_and_conds(trig_code)
-    epoch_len = int( np.round(np.median(np.diff(pos_edge))) )
+    epoch_len = int(np.round(np.median(np.diff(pos_edge))))
 
-    n_cond = len( np.unique(conds) )
+    n_cond = len(np.unique(conds))
     n_pt = x.shape[1]
 
     if not (post or pre):
         post = epoch_len
 
-    # this formula should provide consistent epoch lengths, 
+    # this formula should provide consistent epoch lengths,
     # no matter the offset
-    epoch_len = int( round(post + pre) )
-    pre = int( round(pre) )
+    epoch_len = int(round(post + pre))
+    pre = int(round(pre))
     post = epoch_len - pre
 
     # edit trigger list to exclude out-of-bounds epochs
@@ -197,8 +203,8 @@ def ep_trigger_avg(
         pos_edge = pos_edge[:-1]
         conds = conds[:-1]
 
-    avg = np.zeros( (x.shape[0], n_cond, epoch_len), x.dtype )
-    n_avg = np.zeros( (x.shape[0], n_cond), 'i' )
+    avg = np.zeros((x.shape[0], n_cond, epoch_len), x.dtype)
+    n_avg = np.zeros((x.shape[0], n_cond), 'i')
 
     for n, c in enumerate(np.unique(conds)):
         trials = np.where(conds == c)[0]
@@ -210,19 +216,19 @@ def ep_trigger_avg(
             # analyze outlier trials per channel
             out_mask = ut.fenced_out(
                 pwr, thresh=iqr_thresh, axis=1, low=False
-                )
-            epochs = epochs * out_mask[:,:,None]
-            n_avg[:,n] = np.sum(out_mask, axis=1)
+            )
+            epochs = epochs * out_mask[:, :, None]
+            n_avg[:, n] = np.sum(out_mask, axis=1)
         else:
-            n_avg[:,n] = len(trials)
+            n_avg[:, n] = len(trials)
 
         if envelope:
             epochs = signal.hilbert(
                 epochs, N=ut.nextpow2(epoch_len), axis=-1
-                )
+            )
             epochs = np.abs(epochs[..., :epoch_len])**2
-        
-        avg[:,c-1,:] = np.sum(epochs, axis=1) / n_avg[:,c-1][:,None]
+
+        avg[:, c - 1, :] = np.sum(epochs, axis=1) / n_avg[:, c - 1][:, None]
 
     x.shape = [x for x in x.shape if x > 1]
     if envelope:
@@ -248,7 +254,6 @@ def iter_epochs(x, pivots, selected=(), pre=0, post=0, fill=np.nan):
         default: 0 and stim-to-stim interval
 
     """
-
 
     x = np.atleast_2d(x) if x.ndim == 1 else x
     if isinstance(pivots, StimulatedExperiment):
@@ -302,14 +307,14 @@ def extract_epochs(x, pivots, selected=(), pre=0, post=0, fill=np.nan):
     x : data (n_chan, n_pt)
     pivots : array-like or StimulatedExperiment
         A sequence of literal pivot samples, or an experiment wrapper
-        containing the timestamps. 
+        containing the timestamps.
     selected : sequence
         Indices into trig_code for a subset of stims. If empty, return *ALL*
         epochs (*a potentially very large array*)
     pre, post : ints
         Number of pre- and post-stim samples in interval. post + pre > 0
         default: 0 and stim-to-stim interval
-      
+
     Returns
     -------
     epochs : array (n_chan, n_epoch, epoch_len)
@@ -318,13 +323,13 @@ def extract_epochs(x, pivots, selected=(), pre=0, post=0, fill=np.nan):
     x = np.atleast_2d(x) if x.ndim == 1 else x
     if isinstance(pivots, StimulatedExperiment):
         pivots, _ = trigs_and_conds(pivots)
-    epoch_len = int( np.median(np.diff(pivots)) )
+    epoch_len = int(np.median(np.diff(pivots)))
 
     if not (post or pre):
         post = epoch_len
-    
-    epoch_len = int( round(post + pre) )
-    pre = int( round(pre) )
+
+    epoch_len = int(round(post + pre))
+    pre = int(round(pre))
     post = epoch_len - pre
 
     if len(selected):
@@ -337,5 +342,3 @@ def extract_epochs(x, pivots, selected=(), pre=0, post=0, fill=np.nan):
     for n, e in enumerate(gen_epochs):
         epochs[:, n, :] = e
     return epochs
-
-
