@@ -1,33 +1,10 @@
-from nose.tools import assert_true, assert_equal, raises
 import os
+from nose.tools import assert_true, assert_equal, raises
 import numpy as np
-import h5py
-from tempfile import NamedTemporaryFile
 from ecogdata.datasource.memmap import MappedSource, MemoryBlowOutError
 from ecogdata.datasource.basic import PlainArraySource
 
-def _create_hdf5(n_rows=20, n_cols=1000, extra_dims=(), rand=False,
-                 transpose=False, aux_arrays=(), chunks=True, dtype='i'):
-
-    with NamedTemporaryFile(mode='ab', dir='.') as f:
-        f.file.close()
-        fw = h5py.File(f.name, 'w', libver='latest')
-        arrays = ('data',) + tuple(aux_arrays)
-        array_shape = (n_rows, n_cols) + extra_dims
-        if transpose:
-            disk_shape = array_shape[::-1]
-        else:
-            disk_shape = array_shape
-        for name in arrays:
-            y = fw.create_dataset(name, shape=disk_shape, dtype=dtype, chunks=chunks)
-            if rand:
-                arr = np.random.randint(0, 2 ** 13, size=array_shape).astype(dtype)
-                y[:] = arr.T if transpose else arr
-            else:
-                # test pattern
-                arr = np.arange(np.prod(array_shape), dtype=dtype).reshape(array_shape)
-                y[:] = arr.T if transpose else arr
-    return fw, f.file
+from .test_array_abstractions import _create_hdf5
 
 
 def test_construction():
@@ -57,7 +34,6 @@ def test_direct_mapped():
     assert_true(mapped_source.is_direct_map, 'direct map should be true')
     mapped_source = MappedSource.from_hdf_sources(f, 'data', transpose=True, electrode_channels=range(4))
     assert_true(not mapped_source.is_direct_map, 'direct map should be false')
-
 
 
 def test_scaling():
@@ -296,12 +272,11 @@ def test_iter_channelsT():
 
 
 def _clean_up_hdf_files(temp_files):
-    pass
-    # for f in temp_files:
-    #     name = f.filename
-    #     f.close()
-    #     if os.path.exists(name):
-    #         os.unlink(name)
+    for f in temp_files:
+        name = f.filename
+        f.close()
+        if os.path.exists(name):
+            os.unlink(name)
 
 
 def test_basic_mirror():
@@ -325,25 +300,16 @@ def test_basic_mirror():
 
 
 def test_mirror_modes():
-    try:
-        f, filename = _create_hdf5(n_rows=25, n_cols=500)
-        electrode_channels = [2, 4, 6, 8]
-        map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels)
-        temp_files = []
-        clone1 = map_source.mirror(writeable=True, mapped=True, channel_compatible=False)
-        temp_files.append(clone1.data_buffer._array.file)
-        assert_true(clone1.shape == (len(electrode_channels), 500), 'wrong # of samples')
-        clone2 = map_source.mirror(writeable=True, mapped=True, channel_compatible=True)
-        temp_files.append(clone2.data_buffer._array.file)
-        assert_true(clone2.data_buffer.shape == (25, 500), 'wrong # of channels for channel-compat')
-        f, filename = _create_hdf5(n_rows=25, n_cols=500, transpose=True)
-        map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels, transpose=True)
-        clone3 = map_source.mirror(mapped=True, channel_compatible=True)
-        temp_files.append(clone3.data_buffer._array.file)
-        assert_true(clone3.data_buffer.shape == (25, 500), 'mapped mirror did not reverse the source transpose')
-    except Exception as e:
-        raise e
-    finally:
-        _clean_up_hdf_files(temp_files)
+    f, filename = _create_hdf5(n_rows=25, n_cols=500)
+    electrode_channels = [2, 4, 6, 8]
+    map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels)
+    clone1 = map_source.mirror(writeable=True, mapped=True, channel_compatible=False)
+    assert_true(clone1.shape == (len(electrode_channels), 500), 'wrong # of samples')
+    clone2 = map_source.mirror(writeable=True, mapped=True, channel_compatible=True)
+    assert_true(clone2.data_buffer.shape == (25, 500), 'wrong # of channels for channel-compat')
+    f, filename = _create_hdf5(n_rows=25, n_cols=500, transpose=True)
+    map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels, transpose=True)
+    clone3 = map_source.mirror(mapped=True, channel_compatible=True)
+    assert_true(clone3.data_buffer.shape == (25, 500), 'mapped mirror did not reverse the source transpose')
 
 

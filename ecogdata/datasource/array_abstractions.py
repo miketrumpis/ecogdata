@@ -8,7 +8,8 @@ from ecogdata.parallel.array_split import shared_ndarray
 from ecogdata.expconfig import load_params
 
 
-__all__ = ['slice_to_range', 'range_to_slice', 'unpack_ellipsis', 'tile_slices', 'MappedBuffer', 'HDF5Buffer']
+__all__ = ['slice_to_range', 'range_to_slice', 'unpack_ellipsis', 'tile_slices',
+           'BufferBase', 'MappedBuffer', 'HDF5Buffer', 'BufferBinder', 'slice_data_buffer']
 
 
 def slice_to_range(slicer, r_max):
@@ -157,7 +158,132 @@ def tile_slices(slicers, shape, chunks):
     return list(product(*new_slicers)), list(product(*out_slicers))
 
 
-class MappedBuffer:
+def slice_data_buffer(buffer, slicer, transpose=False, output=None):
+    """
+    Slicing helper that can be run in a subprocess.
+    Parameters
+    ----------
+    buffer: BufferType
+        Read-access data buffer
+    slicer:
+        slice object
+    transpose: bool
+        read output should be transposed
+    output: ndarray
+        Output array
+
+    Returns
+    -------
+    data_slice: ndarray
+        Slice output
+
+    """
+    if output is None:
+        with buffer.transpose_reads(transpose):
+            # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
+            # the output is going to get transposed. Handling the transpose logic in the buffer avoids some
+            # unnecessary array copies
+            data_slice = buffer[slicer]
+    else:
+        # Interesting ... transpose needs to be stated BEFORE direct_reads (at least to prevent an error regarding
+        # the output shapes)
+        with buffer.transpose_reads(transpose), buffer.direct_read(slicer, output):
+            buffer[slicer]
+            data_slice = output
+    return data_slice
+
+
+class BufferBase:
+
+    # A Buffer exposes these attributes a la ndarray
+    dtype = None  # a dtype or typecode character
+    shape = ()  # dimension sizes
+    ndim = None  # number of dims (i.e. len(shape))
+
+    # Also these attributes related to the mapped data
+    map_dtype = None  # a dtype or typecode character
+    units_scale = None  # a scaling value or an (offset, scale) pair
+    writeable = False  # is the map read-only or read-write?
+    file_array = None   # the underlying mapped array object
+    filename = None  # File name of mapped data
+    chunks = 20000  # Optimal "chunking" block size (useful for HDF5 maps). This default is mutable for other types
+
+    # Do a no-argument constructor to initialize some object-specific stuff
+    def __init__(self):
+        # This is a callable -- when called, a content manager is created and the state is toggled in-context
+        self._transpose_state = ToggleState(init_state=False)
+        # A private output array that can be set using a context manager, allowing array reads in that context to be
+        # placed in this array
+        self._read_output = None
+
+    @property
+    def transpose_reads(self):
+        """
+        This is a callable ToggleState object that can create a context in which this buffer will return __getitem__
+        slices in transpose.
+        """
+        return self._transpose_state
+
+    @contextmanager
+    def direct_read(self, slicer, output_array):
+        """
+        Set up a context where the slicer read on this buffer will be placed into a pre-defined array.
+
+        Parameters
+        ----------
+        slicer: slice
+            The read slice.
+        output_array: ndarray
+            Stuff output into this array
+
+        """
+        expected_shape = self.get_output_array(slicer, only_shape=True)
+        if output_array.shape != expected_shape:
+            s = output_array.shape
+            raise ValueError('Wrong shape for output_array ({}), expected {}'.format(s, expected_shape))
+        self._read_output = output_array
+        try:
+            yield
+        finally:
+            self._read_output = None
+
+    def get_output_array(self, slicer, only_shape=False):
+        """
+        Allocate an array for read outs (or just the output shape).
+
+        Parameters
+        ----------
+        slicer: slice
+            Read slice
+        only_shape: bool
+            If True, just return the output shape
+
+        Returns
+        -------
+        output_array: ndarray
+            Allocated array for output (unless only_shape is given).
+
+        """
+        # Currently this is used to
+        # 1) check a slice size
+        # 2) create an output array for slice caching
+        # **NOTE** that the output needs to respect `transpose_state`
+        slicer = _abs_slicer(slicer, self.shape)
+        out_shape = select(self.shape, slicer, 0).mshape
+        # if the output will be transposed, then pre-create the array in the right order
+        if self._transpose_state:
+            out_shape = out_shape[::-1]
+        if only_shape:
+            return out_shape
+        typecode = self.dtype.char
+        if self._read_output is None:
+            return shared_ndarray(out_shape, typecode)
+        else:
+            return self._read_output
+
+
+
+class MappedBuffer(BufferBase):
     """
     Abstracts indexing from memmap file, with reads being converted to shared memory and possibly transformed to
     unit-ful values.
@@ -173,6 +299,7 @@ class MappedBuffer:
         units_scale: float or 2-tuple
             Either the scaling value or (offset, scaling) values such that signal = (memmap + offset) * scaling
         """
+        super(MappedBuffer, self).__init__()
         self._array = array
         # Anything other than 'r' indicates some kind of write access
         if hasattr(array, 'mode'):
@@ -206,11 +333,6 @@ class MappedBuffer:
         self.map_dtype = array.dtype
         self.shape = array.shape
         self._raise_bad_write = raise_bad_write
-        # This is a callable -- when called, a content manager is created and the state is toggled in-context
-        self._transpose_state = ToggleState(init_state=False)
-        # A private output array that can be set using a context manager, allowing array reads in that context to be
-        # placed in this array
-        self._read_output = None
 
     def __len__(self):
         return len(self._array)
@@ -222,14 +344,6 @@ class MappedBuffer:
     @property
     def ndim(self):
         return self._array.ndim
-
-    @property
-    def transpose_reads(self):
-        """
-        This is a callable ToggleState object that can create a context in which this buffer will return __getitem__
-        slices in transpose.
-        """
-        return self._transpose_state
 
     @property
     def file_array(self):
@@ -247,30 +361,6 @@ class MappedBuffer:
         x *= self.units_scale
         return x
 
-    @contextmanager
-    def direct_read(self, output_array):
-        self._read_output = output_array
-        try:
-            yield
-        finally:
-            self._read_output = None
-
-    def get_output_array(self, slicer, only_shape=False):
-        slicer = _abs_slicer(slicer, self.shape)
-        out_shape = select(self.shape, slicer, 0).mshape
-        # if the output will be transposed, then pre-create the array in the right order
-        if self._transpose_state:
-            out_shape = out_shape[::-1]
-        if only_shape:
-            return out_shape
-        typecode = self.dtype.char
-        if self._read_output is None:
-            return shared_ndarray(out_shape, typecode)
-        else:
-            if self._read_output.shape != out_shape:
-                raise ValueError('Direct read context was given an array with the wrong shape')
-            return self._read_output
-
     def __getitem__(self, sl):
         out_arr = self.get_output_array(sl)
         # not sure what the most efficient way to slice is?
@@ -287,6 +377,8 @@ class MappedBuffer:
             self._array.flush()
         elif self._raise_bad_write:
             raise RuntimeError('Tried to write to a not-writeable MappedBuffer')
+        else:
+            return
 
 
 class HDF5Buffer(MappedBuffer):
@@ -302,7 +394,6 @@ class HDF5Buffer(MappedBuffer):
 
     def __getitem__(self, sl):
         # this function computes the output shape -- use ID=0 to explicitly *not* work for funky RegionReference slicing
-
         out_arr = self.get_output_array(sl)
         i_slices, o_slices = tile_slices(sl, self.shape, self.chunks)
         # print('Slicing buffer as {}'.format(i_slices))
@@ -329,6 +420,7 @@ class HDF5Buffer(MappedBuffer):
     def __setitem__(self, sl, data):
         if not self.writeable:
             super(HDF5Buffer, self).__setitem__(sl, data)
+            return
         # this should work for writing too?
         i_slices, o_slices = tile_slices(sl, self.shape, self.chunks)
         # if broadcasting, then pull only the first data_dim slices from the output slicer?
@@ -344,10 +436,11 @@ class HDF5Buffer(MappedBuffer):
         self._array.flush()
 
 
-class BufferBinder:
+class BufferBinder(BufferBase):
     """We've got binders full of buffers!"""
 
     def __init__(self, buffers: Sequence[MappedBuffer], axis=-1):
+        super(BufferBinder, self).__init__()
         if not np.iterable(buffers):
             buffers = (buffers,)
         # raise exception on any heterogeneity
@@ -389,8 +482,6 @@ class BufferBinder:
         self.units_scale = buffers[0].units_scale
 
         self._buffers = buffers
-        self._transpose_state = ToggleState(init_state=False)
-        self._read_output = None
 
     @property
     def filename(self):
@@ -414,13 +505,18 @@ class BufferBinder:
         dims.insert(self._concat_axis, self._total_length)
         return tuple(dims)
 
-    @property
-    def transpose_reads(self):
-        """
-        This is a callable ToggleState object that can create a context in which this buffer will return __getitem__
-        slices in transpose.
-        """
-        return self._transpose_state
+    @contextmanager
+    def transpose_reads(self, status=None):
+        # slight modification -- need to make a context that puts all buffers in transpose state
+        try:
+            with self._transpose_state(status), ExitStack() as stack:
+                for b in self._buffers:
+                    stack.enter_context(b.transpose_reads(status))
+                # ToggleState yields None, so also yield None here
+                yield
+        finally:
+            for b in self._buffers:
+                assert b._transpose_state != status
 
     def target_sources(self, slicer):
         # This will parse the slicer into a list of (source, sub-slice) pairs.
@@ -485,57 +581,39 @@ class BufferBinder:
         # This is going to need to assign partitions of the output_array to one or more buffers,
         # and then tell the buffers to clear the _read_output in the "exit/finally" clause
         buffer_slices = self.target_sources(slicer)
-        # slicer is always in the correct permutation, so using concat_axis will return the correct split sizes
-        output_sizes = [b.get_output_array(s, only_shape=True)[self._concat_axis] for b, s in buffer_slices]
-        break_points = np.cumsum(output_sizes)[:-1]
-        # BUT the output array needs to be split on a different axis depending on transpose_reads
-        if self.transpose_reads:
+        # All buffers are in the same transpose status as the binder, so their output shapes will
+        # split across the transposed concat axis.
+        if self._transpose_state:
             axis = self.ndim - self._concat_axis - 1
         else:
             axis = self._concat_axis
+        output_sizes = [b.get_output_array(s, only_shape=True)[axis] for b, s in buffer_slices]
+        break_points = np.cumsum(output_sizes)[:-1]
         splits = np.split(output_array, break_points, axis=axis)
         try:
             self._read_output = output_array
             with ExitStack() as stack:
                 for b, arr in zip(buffer_slices, splits):
-                    stack.enter_context(b[0].direct_read(arr))
+                    buf, sl = b
+                    stack.enter_context(buf.direct_read(sl, arr))
                 yield
         finally:
             self._read_output = None
             pass
 
-    def get_output_array(self, slicer, only_shape=False):
-        # Currently this is used to
-        # 1) check a slice size (easy)
-        # 2) create an output array for slice caching (tricky)
-        # When case (2) happens, shared memory is returned to the consumer of a buffer.
-        # Then the consumer asks the buffer to direct-read into that shared memory ("with direct_read").
-        # As shared memory, the caching can be done in a subprocess.
-        # For a BufferBinder, I think the usage can be exactly the same, only with the binder
-        # mapping out reads as appropriate.
-        # **NOTE** that the output needs to respect `transpose_state`
-        slicer = _abs_slicer(slicer, self.shape)
-        out_shape = select(self.shape, slicer, 0).mshape
-        # if the output will be transposed, then pre-create the array in the right order
-        if self._transpose_state:
-            out_shape = out_shape[::-1]
-        if only_shape:
-            return out_shape
-        typecode = self.dtype.char
-        return shared_ndarray(out_shape, typecode)
-
     def __getitem__(self, slicer):
         buffer_slices = self.target_sources(slicer)
         output = []
         for b, s in buffer_slices:
-            with b.transpose_reads(self.transpose_reads.state):
-                output.append(b[s])
+            # Do not create a transpose context here. The binder-buffers transpose contexts
+            # are now synced with an ExitStack.
+            output.append(b[s])
         if self._read_output is not None:
             return self._read_output
         elif len(output) == 1:
             return output[0]
         else:
-            if self.transpose_reads:
+            if self._transpose_state:
                 # use output ndim because it's possible the slicing ate some dimensions?
                 ndim = output[0].ndim
                 axis = ndim - self._concat_axis - 1

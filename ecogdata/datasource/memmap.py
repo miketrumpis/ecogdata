@@ -19,7 +19,7 @@ from ecogdata.parallel.split_methods import lfilter
 from ecogdata.filt.time import filter_array, notch_all
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
-from .array_abstractions import HDF5Buffer, BufferBinder, slice_to_range
+from .array_abstractions import HDF5Buffer, BufferBinder, slice_to_range, slice_data_buffer
 
 
 __all__ = ['TempFilePool', 'MappedSource', 'MemoryBlowOutError', 'downsample_and_load', 'bfilter']
@@ -53,21 +53,6 @@ def _remove_pool():
 
 
 atexit.register(_remove_pool)
-
-
-def slice_data_buffer(buffer, slicer, transpose=False, output=None):
-    """Slicing helper that can be run in a subprocess"""
-    if output is None:
-        with buffer.transpose_reads(transpose):
-            # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
-            # the output is going to get transposed. Handling the transpose logic in the buffer avoids some
-            # unnecessary array copies
-            data_slice = buffer[slicer]
-    else:
-        with buffer.direct_read(output), buffer.transpose_reads(transpose):
-            buffer[slicer]
-            data_slice = output
-    return data_slice
 
 
 class MemoryBlowOutError(Exception):
@@ -185,7 +170,7 @@ class MappedSource(ElectrodeDataSource):
             Either the scaling value or (offset, scaling) values such that signal = (memmap + offset) * scaling
         transpose: bool
             Is the mapped array stored in transpose (Time x Channels)?
-        kwargs: dict
+        kwargs:
             Further arguments detailing channel subsets, etc., for MappedSource
 
         Returns
