@@ -488,6 +488,10 @@ class BufferBinder(BufferBase):
         return [b.filename for b in self._buffers]
 
     @property
+    def file_array(self):
+        return [b.file_array for b in self._buffers]
+
+    @property
     def chunks(self):
         return [b.chunks for b in self._buffers]
 

@@ -1,25 +1,81 @@
 import os
 from nose.tools import assert_true, assert_equal, raises
 import numpy as np
+from ecogdata.datasource.array_abstractions import HDF5Buffer, BufferBinder
 from ecogdata.datasource.memmap import MappedSource, MemoryBlowOutError
 from ecogdata.datasource.basic import PlainArraySource
 
-from .test_array_abstractions import _create_hdf5
+from .test_array_abstractions import _create_hdf5, _create_buffer, _create_binder
 
 
-def test_construction():
+def test_basic_construction():
     aux_arrays = ('test1', 'test2')
-    f, filename = _create_hdf5(aux_arrays=aux_arrays)
+    buffer, data = _create_buffer(aux_arrays=aux_arrays)
+    # hacky way to get h5py.File object...
+    hdf = buffer.file_array.file
+    aligned = dict([(k, HDF5Buffer(hdf[k])) for k in aux_arrays])
+    map_source = MappedSource(buffer, aligned_arrays=aligned)
+    shape = data.shape
+    assert_equal(map_source.shape, shape, 'Shape wrong')
+    assert_equal(map_source.binary_channel_mask.sum(), shape[0], 'Wrong number of active channels')
+    for field in aux_arrays:
+        assert_true(hasattr(map_source, field), 'Aux field {} not preserved'.format(field))
+        assert_true(getattr(map_source, field).shape[1] == shape[1], 'aligned field {} wrong length'.format(field))
+    # repeat for transpose
+    map_source = MappedSource(buffer, aligned_arrays=aligned, transpose=True)
+    assert_equal(map_source.shape, shape[::-1], 'Shape wrong in transpose')
+    assert_equal(map_source.binary_channel_mask.sum(), shape[1], 'Wrong number of active channels in transpose')
+
+
+def test_basic_construction_binder():
+    buffer, data = _create_binder(axis=1)
+    map_source = MappedSource(buffer)
+    shape = data.shape
+    assert_equal(map_source.shape, shape, 'Shape wrong')
+    assert_equal(map_source.binary_channel_mask.sum(), shape[0], 'Wrong number of active channels')
+    # repeat for transpose
+    map_source = MappedSource(buffer, transpose=True)
+    assert_equal(map_source.shape, shape[::-1], 'Shape wrong in transpose')
+    assert_equal(map_source.binary_channel_mask.sum(), shape[1], 'Wrong number of active channels in transpose')
+
+
+def test_construction_from_single_source():
+    aux_arrays = ('test1', 'test2')
+    f = _create_hdf5(aux_arrays=aux_arrays)[0]
     shape = f['data'].shape
     map_source = MappedSource.from_hdf_sources(f, 'data', aligned_arrays=aux_arrays)
     assert_equal(map_source.shape, shape, 'Shape wrong')
     assert_equal(map_source.binary_channel_mask.sum(), shape[0], 'Wrong number of active channels')
     for field in aux_arrays:
         assert_true(hasattr(map_source, field), 'Aux field {} not preserved'.format(field))
+        assert_true(getattr(map_source, field).shape[1] == shape[1], 'aligned field {} wrong length'.format(field))
     # repeat for transpose
     map_source = MappedSource.from_hdf_sources(f, 'data', aligned_arrays=aux_arrays, transpose=True)
     assert_equal(map_source.shape, shape[::-1], 'Shape wrong in transpose')
     assert_equal(map_source.binary_channel_mask.sum(), shape[1], 'Wrong number of active channels in transpose')
+
+
+def test_construction_from_sources():
+    aux_arrays = ('test1', 'test2')
+    files = [_create_hdf5(aux_arrays=aux_arrays)[0] for i in range(3)]
+    shape = files[0]['data'].shape
+    shape = (shape[0], 3 * shape[1])
+    map_source = MappedSource.from_hdf_sources(files, 'data', aligned_arrays=aux_arrays)
+    assert_equal(map_source.shape, shape, 'Shape wrong')
+    assert_equal(map_source.binary_channel_mask.sum(), shape[0], 'Wrong number of active channels')
+    for field in aux_arrays:
+        assert_true(hasattr(map_source, field), 'Aux field {} not preserved'.format(field))
+        assert_true(getattr(map_source, field).shape[1] == shape[1], 'aligned field {} wrong length'.format(field))
+    # repeat for transpose: now sources are stacked on axis=0, but the resulting shape is transposed per vector
+    # timeseries convention (channels X samples)
+    shape = files[0]['data'].shape
+    shape = (shape[0] * 3, shape[1])
+    map_source = MappedSource.from_hdf_sources(files, 'data', aligned_arrays=aux_arrays, transpose=True)
+    assert_equal(map_source.shape, shape[::-1], 'Shape wrong in transpose')
+    assert_equal(map_source.binary_channel_mask.sum(), shape[1], 'Wrong number of active channels in transpose')
+    for field in aux_arrays:
+        assert_true(hasattr(map_source, field), 'Aux field {} not preserved'.format(field))
+        assert_true(getattr(map_source, field).shape[0] == shape[0], 'aligned field {} wrong length'.format(field))
 
 
 def test_direct_mapped():
@@ -152,7 +208,7 @@ def test_big_slicing_exception():
     globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
     map_source = MappedSource.from_hdf_sources(f, 'data')
     try:
-        big_read = map_source[:, :]
+        map_source[:, :]
     except Exception as e:
         raise e
     finally:
@@ -206,12 +262,46 @@ def test_write():
     assert_true(np.array_equal(map_source[:2, :], rand_pattern), 'write failed (map subset and mask)')
 
 
+def test_write_to_binder():
+    files = [_create_hdf5()[0] for i in range(3)]
+    electrode_channels = list(range(10))
+    binary_mask = np.ones(10, '?')
+    binary_mask[:5] = False
+    # so channels 5, 6, 7, 8, 9 should be active
+    map_source = MappedSource.from_hdf_sources(files, 'data', electrode_channels=electrode_channels)
+    # make a write that spans buffers
+    single_length = files[0]['data'].shape[1]
+    rand_pattern = np.random.randint(0, 100, size=(2, 205))
+    sl = np.s_[:2, single_length - 100: single_length + 105]
+    map_source[sl] = rand_pattern
+    # use full-slice syntax to get data
+    assert_true(np.array_equal(map_source[sl], rand_pattern), 'write failed to binder (map subset)')
+    map_source.set_channel_mask(binary_mask)
+    # write again
+    map_source[sl] = rand_pattern
+    assert_true(np.array_equal(map_source[sl], rand_pattern), 'write failed to binder (map subset and mask)')
+
+
 def test_iter():
     f, filename = _create_hdf5()
     electrode_channels = [2, 4, 6, 8]
     data = f['data'][:]
     block_size = data.shape[1] // 2 + 100
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels)
+    blocks = list(map_source.iter_blocks(block_size))
+    assert_true((data[electrode_channels][:, :block_size] == blocks[0]).all(), 'first block wrong')
+    assert_true((data[electrode_channels][:, block_size:] == blocks[1]).all(), 'second block wrong')
+    blocks = list(map_source.iter_blocks(block_size, reverse=True))
+    assert_true((data[electrode_channels][:, block_size:][:, ::-1] == blocks[0]).all(), 'first rev block wrong')
+    assert_true((data[electrode_channels][:, :block_size][:, ::-1] == blocks[1]).all(), 'second rev block wrong')
+
+
+def test_iter_binder():
+    files = [_create_hdf5(n_cols=100)[0] for i in range(3)]
+    electrode_channels = [2, 4, 6, 8]
+    data = np.concatenate([f['data'][:] for f in files], axis=1)
+    block_size = data.shape[1] // 2 + 20
+    map_source = MappedSource.from_hdf_sources(files, 'data', electrode_channels=electrode_channels)
     blocks = list(map_source.iter_blocks(block_size))
     assert_true((data[electrode_channels][:, :block_size] == blocks[0]).all(), 'first block wrong')
     assert_true((data[electrode_channels][:, block_size:] == blocks[1]).all(), 'second block wrong')
@@ -238,12 +328,41 @@ def test_iter_overlap():
     assert_true((data[:, -10:] == blocks[0][:, ::-1]).all(), 'last block wrong')
 
 
+def test_iter_overlap_binder():
+    files = [_create_hdf5(n_cols=100)[0] for i in range(3)]
+    data = np.concatenate([f['data'][:] for f in files], axis=1)
+    block_size = 20
+    overlap = 10
+    map_source = MappedSource.from_hdf_sources(files, 'data')
+    blocks = list(map_source.iter_blocks(block_size, overlap=overlap))
+    assert_true((data[:, :block_size] == blocks[0]).all(), 'first block wrong')
+    assert_true((data[:, (block_size - overlap):(2 * block_size - overlap)] == blocks[1]).all(), 'second block wrong')
+    # last block is a partial, starting at index 90
+    assert_true((data[:, -10:] == blocks[-1]).all(), 'last block wrong')
+    blocks = list(map_source.iter_blocks(block_size, reverse=True, overlap=overlap))
+    assert_true((data[:, :block_size] == blocks[-1][:, ::-1]).all(), 'first block wrong')
+    assert_true((data[:, (block_size - overlap):(2 * block_size - overlap)] == blocks[-2][:, ::-1]).all(),
+                'second block wrong')
+    assert_true((data[:, -10:] == blocks[0][:, ::-1]).all(), 'last block wrong')
+
+
 def test_iterT():
     f, filename = _create_hdf5(transpose=True)
     electrode_channels = [2, 4, 6, 8]
     data = f['data'][:].T
     block_size = data.shape[1] // 2 + 100
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels, transpose=True)
+    blocks = list(map_source.iter_blocks(block_size))
+    assert_true((data[electrode_channels][:, :block_size] == blocks[0]).all(), 'first block wrong in transpose')
+    assert_true((data[electrode_channels][:, block_size:] == blocks[1]).all(), 'second block wrong in transpose')
+
+
+def test_iterT_binder():
+    files = [_create_hdf5(transpose=True, n_cols=100)[0] for i in range(3)]
+    data = np.concatenate([f['data'][:] for f in files], axis=0).T
+    electrode_channels = [2, 4, 6, 8]
+    block_size = data.shape[1] // 2 + 20
+    map_source = MappedSource.from_hdf_sources(files, 'data', electrode_channels=electrode_channels, transpose=True)
     blocks = list(map_source.iter_blocks(block_size))
     assert_true((data[electrode_channels][:, :block_size] == blocks[0]).all(), 'first block wrong in transpose')
     assert_true((data[electrode_channels][:, block_size:] == blocks[1]).all(), 'second block wrong in transpose')

@@ -142,6 +142,8 @@ class MappedSource(ElectrodeDataSource):
 
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
+        if aligned_arrays is None:
+            aligned_arrays = dict()
         for key in aligned_arrays:
             setattr(self, key, aligned_arrays[key])
         self.aligned_arrays = tuple(aligned_arrays.keys())
