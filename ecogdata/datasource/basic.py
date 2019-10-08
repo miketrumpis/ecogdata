@@ -290,6 +290,10 @@ class ElectrodeDataSource:
         # Needs overload
         pass
 
+    def append(self, other_source: 'ElectrodeDataSource') -> 'ElectrodeDataSource':
+        # Needs overload
+        pass
+
 
 class PlainArraySource(ElectrodeDataSource):
 
@@ -320,7 +324,20 @@ class PlainArraySource(ElectrodeDataSource):
         self.dtype = data_matrix.dtype
         for name in aligned_arrays:
             setattr(self, name, (shared_copy(aligned_arrays[name]) if use_shared_mem else aligned_arrays[name]))
-        self.aligned_arrays = list(aligned_arrays.keys())
+        self.aligned_arrays = tuple(aligned_arrays.keys())
+
+    def append(self, other_source: 'PlainArraySource') -> 'PlainArraySource':
+        if not isinstance(other_source, PlainArraySource):
+            raise ValueError('Cannot append source type {} to this PlainArraySource'.format(type(other_source)))
+        if set(self.aligned_arrays) != set(other_source.aligned_arrays):
+            raise ValueError('Mismatch in aligned arrays')
+        # TODO: deal with shared memory
+        new_array = np.concatenate([self.data_buffer, other_source.data_buffer], axis=1)
+        new_aligned = dict()
+        for k in self.aligned_arrays:
+            new_aligned[k] = np.concatenate([getattr(self, k), getattr(other_source, k)], axis=1)
+        return PlainArraySource(new_array, **new_aligned)
+
 
     def set_channel_mask(self, channel_mask):
         """Apply the binary channel mask to the current data matrix"""

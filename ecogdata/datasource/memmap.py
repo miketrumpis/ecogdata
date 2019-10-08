@@ -218,16 +218,8 @@ class MappedSource(ElectrodeDataSource):
         return MappedSource(data_buffer, electrode_field=electrode_field, transpose=transpose,
                             aligned_arrays=array_names, **kwargs)
 
-    # def __del__(self):
-    #     if self.__close_source:
-    #         self._source_file.close()
-
     def __len__(self):
         return self.shape[0]
-
-    # def close_source(self):
-    #     """Close off the source file"""
-    #     self._source_file.close()
 
     @property
     def shape(self):
@@ -282,6 +274,37 @@ class MappedSource(ElectrodeDataSource):
         while block_size < min_block_size:
             block_size += chunk_size
         return block_size
+
+    def append(self, other_source: 'MappedSource') -> 'MappedSource':
+        if not isinstance(other_source, MappedSource):
+            raise ValueError('Cannot append source type {} to this MappedSource'.format(type(other_source)))
+        if set(self.aligned_arrays) != set(other_source.aligned_arrays):
+            raise ValueError('Mismatch in aligned arrays')
+        if self._transpose is not other_source._transpose:
+            raise ValueError('Mismatch in transposed sources')
+        # data buffer and aligned arrays can be a plain buffer or a binder, and transpose can be T/F
+        keys = ['data_buffer'] + list(self.aligned_arrays)
+        new_sources = OrderedDict()
+        # For all sources (data_buffer plus others):
+        # 1) promote this buffer to a binder if needed
+        # 2) tell binder to extend to other source
+        # This will raise error for various inconsistencies:
+        # * dimension mismatch, concat axis mismatch, read/write mode mismatch
+        # * missing aligned array keys
+        # TODO: check consistency for electrode channels, ...
+        for k in keys:
+            this_buf = getattr(self, k)
+            if isinstance(this_buf, HDF5Buffer):
+                this_buf = BufferBinder([this_buf], axis=0 if self._transpose else 1)
+            new_buf = this_buf + getattr(other_source, k)
+            new_sources[k] = new_buf
+        data_buffer = new_sources.pop('data_buffer')
+        binary_mask = self.binary_channel_mask & other_source.binary_channel_mask
+        return MappedSource(data_buffer, electrode_field=self._electrode_field,
+                            electrode_channels=self.__electrode_channels, channel_mask=binary_mask,
+                            aligned_arrays=new_sources, transpose=self._transpose,
+                            raise_on_big_slice=self._raise_on_big_slice)
+
 
     def set_channel_mask(self, channel_mask):
         """

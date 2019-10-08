@@ -483,6 +483,18 @@ class BufferBinder(BufferBase):
 
         self._buffers = buffers
 
+    def __add__(self, other):
+        buffers = self._buffers[:]
+        if isinstance(other, MappedBuffer):
+            buffers.append(other)
+        elif isinstance(other, BufferBinder):
+            if other._concat_axis != self._concat_axis:
+                raise ValueError('Can only join BufferBinders with equal concatenation axis')
+            buffers.extend(other._buffers)
+        else:
+            raise ValueError('Cannot extend buffer with type {}'.format(type(other)))
+        return BufferBinder(buffers, axis=self._concat_axis)
+
     @property
     def filename(self):
         return [b.filename for b in self._buffers]

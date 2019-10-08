@@ -444,3 +444,13 @@ def test_subprocess_cachingT():
     p.join()
     # compare output with data array
     assert_true(np.all(output == data[sl].T), 'Subprocess slicing failed across buffers (transpose)')
+
+def test_buffer_extension():
+    binder1 = _create_binder()[0]
+    binder2 = _create_binder()[0]
+    shp1 = binder1.shape
+    shp2 = binder2.shape
+    assert_true((binder1 + binder2).shape == (shp1[0] + shp2[0], shp1[1]), 'extended buffer shape wrong')
+    buffer = _create_buffer()[0]
+    shp2 = buffer.shape
+    assert_true((binder1 + buffer).shape == (shp1[0] + shp2[0], shp1[1]), 'extended buffer shape wrong')
