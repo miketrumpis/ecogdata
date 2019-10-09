@@ -539,19 +539,24 @@ class BufferBinder(BufferBase):
         # Reminder to self: the requested slices *always* have the correct dimension order,
         # regardless of transpose status
 
+        running_length = np.cumsum(self._buffer_lengths)
         slicer = unpack_ellipsis(slicer, self.ndim)
         if len(slicer) < self.ndim:
             slicer = slicer + (slice(None),) * (self.ndim - len(slicer))
         slicer = list(slicer)
         axis = self._concat_axis
         skip_slice = slicer[axis]
+        # handle the chance that this is just a singleton slice
+        if isinstance(skip_slice, int):
+            buffer = running_length.searchsorted(skip_slice, side='right') - 1
+            slicer[axis] = skip_slice - running_length[buffer]
+            return [(self._buffers[buffer], slicer)]
         step = 1 if skip_slice.step is None else skip_slice.step
         rev_slice = step < 0
         skip_slice = _abs_slicer(skip_slice, self.shape[axis:axis + 1])[0]
         start = 0 if skip_slice.start is None else skip_slice.start
         stop = self._total_length if skip_slice.stop is None else skip_slice.stop
         step = skip_slice.step
-        running_length = np.cumsum(self._buffer_lengths)
         for n in range(len(self._buffers)):
             if start < running_length[n]:
                 start_buffer = n
@@ -592,6 +597,18 @@ class BufferBinder(BufferBase):
         else:
             return sources_and_slices
 
+    def _correct_concat_axis(self, slicer):
+        # logic to apply a correction to the concatenating/splitting axis for slices that eat dimensions
+        slicer = unpack_ellipsis(slicer, self.ndim)
+        if len(slicer) < self.ndim:
+            slicer = slicer + (slice(None),) * (self.ndim - len(slicer))
+        correction = 0
+        for n, sl in enumerate(slicer):
+            # need to reduce the concat axis for every dimension-eating slice that occurs before it
+            if n < self._concat_axis and isinstance(sl, int):
+                correction -= 1
+        return self._concat_axis + correction
+
     @contextmanager
     def direct_read(self, slicer, output_array):
         # This is going to need to assign partitions of the output_array to one or more buffers,
@@ -599,13 +616,46 @@ class BufferBinder(BufferBase):
         buffer_slices = self.target_sources(slicer)
         # All buffers are in the same transpose status as the binder, so their output shapes will
         # split across the transposed concat axis.
-        if self._transpose_state:
-            axis = self.ndim - self._concat_axis - 1
+        output_sizes = [b.get_output_array(s, only_shape=True) for b, s in buffer_slices]
+        output_dim = len(output_sizes[0])
+
+        # transpose manipulations only matter if the read slice addresses more than 1 axis
+        # and the read slice crosses buffers
+        #
+        # Example... we have a binder with shapes [(10, 4, 50), (10, 4, 30)] and concat axis 2
+        # and the slice is [:, 0, :10] --> output shape (10, 10) (or trans) but all from the same buffer.
+        # So the "split" axis here is computed as 2 - 2 - 1 = -1 if transposed, else 2.
+        # Both values are wrong, but the direct read array should not be split anyway.
+        #
+        # Example 2.. same binder and the slice is [:, 0, 40:60] --> output shape (10, 20) (or trans) across buffers.
+        # Corrected concat axis is 2 - 1 = 1
+        # Transpose Split axis 2 - 1 - 1 = 0 (should be 0)
+        # Regular split axis is 1 (should be 1)
+        #
+        # Example 3.. shapes [(10, 4, 50), (10, 4, 30)] and concat axis 0
+        # Slice [5:15, 0, :20] -> shape (10, 20) (or trans) across two buffers.
+        # Corrected concat axis is 0
+        # Transpose split axis is 2 - 0 - 1 = 1 (should be 1) (shape (20, 10) -> (20, 5) + (20, 5)).
+        # Regular split axis is 0 (should be 0) (shape (10, 20) -> (5, 20) + (5, 20))
+        #
+        # Example 4.. shapes [(10, 4, 50), (10, 4, 30)] and concat axis 1
+        # Slice [0, 2:5, :10] -> shape (3, 10) (or trans) across two buffers.
+        # Corrected concat axis is 0
+        # Transpose split axis is 2 - 0 - 1 = 1 (should be 1) (shape (10, 2) + (10, 1))
+        # Regular split axis is 0 (should be 0) (shape (2, 10) + (1, 10))
+
+        if len(buffer_slices) > 1:
+            if output_dim > 1:
+                axis = self._correct_concat_axis(slicer)
+                if self._transpose_state:
+                    axis = output_dim - axis - 1
+            else:
+                axis = 0
+            output_sizes = [o[axis] for o in output_sizes]
+            break_points = np.cumsum(output_sizes)[:-1]
+            splits = np.split(output_array, break_points, axis=axis)
         else:
-            axis = self._concat_axis
-        output_sizes = [b.get_output_array(s, only_shape=True)[axis] for b, s in buffer_slices]
-        break_points = np.cumsum(output_sizes)[:-1]
-        splits = np.split(output_array, break_points, axis=axis)
+            splits = [output_array]
         try:
             self._read_output = output_array
             with ExitStack() as stack:
@@ -629,19 +679,20 @@ class BufferBinder(BufferBase):
         elif len(output) == 1:
             return output[0]
         else:
-            if self._transpose_state:
-                # use output ndim because it's possible the slicing ate some dimensions?
-                ndim = output[0].ndim
-                axis = ndim - self._concat_axis - 1
+            output_dim = output[0].ndim
+            if output_dim > 1:
+                axis = self._correct_concat_axis(slicer)
+                if self._transpose_state:
+                    axis = output_dim - axis - 1
             else:
-                axis = self._concat_axis
+                axis = 0
             return np.concatenate(output, axis)
 
     def __setitem__(self, slicer, array):
         buffer_slices = self.target_sources(slicer)
-        axis = self._concat_axis
         # TODO: need to handle broadcasting here
         array = np.asanyarray(array)
+        axis = self._concat_axis
         # # If the array can broadcast to every buffer, then don't use array splitting..
         # # This would be true if the number of dims after the concatenate axis is >= array.ndim
         # if array.ndim < (self.ndim - axis):
@@ -652,7 +703,12 @@ class BufferBinder(BufferBase):
         new_dims = (1,) * (self.ndim - array.ndim) + array.shape
         full_array = array.reshape(*new_dims)
         if full_array.shape[axis] > 1:
-            output_sizes = [b.get_output_array(s, only_shape=True)[axis] for b, s in buffer_slices]
+            output_sizes = [b.get_output_array(s, only_shape=True) for b, s in buffer_slices]
+            if len(output_sizes[0]) == 1:
+                # if the slicing only accesses a single dimension, then the
+                # shape and split axis has to be zero
+                axis = 0
+            output_sizes = [o[axis] for o in output_sizes]
             break_points = np.cumsum(output_sizes)[:-1]
             splits = np.split(array, break_points, axis=axis)
         else:

@@ -114,9 +114,9 @@ class MappedSource(ElectrodeDataSource):
         # electrode_channels is a list of of data channel indices where electrode data are (immutable)
         if electrode_channels is None:
             n_channels = self.data_buffer.shape[1] if transpose else self.data_buffer.shape[0]
-            self.__electrode_channels = list(range(n_channels))
+            self._electrode_channels = list(range(n_channels))
         else:
-            self.__electrode_channels = electrode_channels
+            self._electrode_channels = electrode_channels
 
         # # As the "data" object, set up a array slicing cache with possible units conversion
         # # This data cache will need special logic to expose only (active) electrode channels, depending on the
@@ -129,7 +129,7 @@ class MappedSource(ElectrodeDataSource):
         self.dtype = self.data_buffer.dtype
 
         # channel_mask is the list of data indices for the active electrode set (mutable)
-        self._active_channels = self.__electrode_channels
+        self._active_channels = self._electrode_channels
         self.set_channel_mask(channel_mask)
 
         # this is toggle than when called creates a context manager with the supplied state (ToggleState)
@@ -247,18 +247,18 @@ class MappedSource(ElectrodeDataSource):
         if not all_active:
             return False
         num_disk_channels = self.data_buffer.shape[1] if self._transpose else self.data_buffer.shape[0]
-        mapped_channels = np.array(self.__electrode_channels)
+        mapped_channels = np.array(self._electrode_channels)
         all_mapped = np.array_equal(mapped_channels, np.arange(num_disk_channels))
         return all_mapped
 
     @property
     def binary_channel_mask(self):
         if not hasattr(self, '_bmask'):
-            self._bmask = np.ones(len(self.__electrode_channels), '?')
+            self._bmask = np.ones(len(self._electrode_channels), '?')
         if self._bmask.sum() == len(self._active_channels):
             return self._bmask
         active_channels = set(self._active_channels)
-        for n, c in enumerate(self.__electrode_channels):
+        for n, c in enumerate(self._electrode_channels):
             self._bmask[n] = c in active_channels
         return self._bmask
 
@@ -275,7 +275,7 @@ class MappedSource(ElectrodeDataSource):
             block_size += chunk_size
         return block_size
 
-    def append(self, other_source: 'MappedSource') -> 'MappedSource':
+    def join(self, other_source: 'MappedSource') -> 'MappedSource':
         if not isinstance(other_source, MappedSource):
             raise ValueError('Cannot append source type {} to this MappedSource'.format(type(other_source)))
         if set(self.aligned_arrays) != set(other_source.aligned_arrays):
@@ -291,7 +291,10 @@ class MappedSource(ElectrodeDataSource):
         # This will raise error for various inconsistencies:
         # * dimension mismatch, concat axis mismatch, read/write mode mismatch
         # * missing aligned array keys
-        # TODO: check consistency for electrode channels, ...
+        # TODO: check consistency for electrode channels.. if the mapped channels are not consistent, it would be
+        #  possible to join them after mirroring each source to direct maps with copy='all'
+        if self._electrode_channels != other_source._electrode_channels:
+            raise ValueError('Joining sources with different channel maps is not yet supported.')
         for k in keys:
             this_buf = getattr(self, k)
             if isinstance(this_buf, HDF5Buffer):
@@ -301,7 +304,7 @@ class MappedSource(ElectrodeDataSource):
         data_buffer = new_sources.pop('data_buffer')
         binary_mask = self.binary_channel_mask & other_source.binary_channel_mask
         return MappedSource(data_buffer, electrode_field=self._electrode_field,
-                            electrode_channels=self.__electrode_channels, channel_mask=binary_mask,
+                            electrode_channels=self._electrode_channels, channel_mask=binary_mask,
                             aligned_arrays=new_sources, transpose=self._transpose,
                             raise_on_big_slice=self._raise_on_big_slice)
 
@@ -322,15 +325,15 @@ class MappedSource(ElectrodeDataSource):
         # data2 = data1(mask2)  len(mask2) == num_mask1_electrodes
         #
         # So mask resets will have to be stated in terms of the full electrode set
-        n_electrodes = len(self.__electrode_channels)
+        n_electrodes = len(self._electrode_channels)
         if channel_mask is None or not len(channel_mask):
             # (re)set to the full set of electrode channels
-            self._active_channels = self.__electrode_channels
+            self._active_channels = self._electrode_channels
         elif len(channel_mask) != n_electrodes:
             raise ValueError('channel_mask must be length {}'.format(n_electrodes))
         else:
             self._active_channels = list()
-            for n, c in enumerate(self.__electrode_channels):
+            for n, c in enumerate(self._electrode_channels):
                 if channel_mask[n]:
                     self._active_channels.append(c)
 
@@ -428,6 +431,7 @@ class MappedSource(ElectrodeDataSource):
                 raise e
 
     def iter_channels(self, chans_per_block=None, use_max_memory=True, return_slice=False):
+        # TODO: argument that supplies a channel order permutation
         # Just change the signature to use maximum memory by default
         return super(MappedSource, self).iter_channels(chans_per_block=chans_per_block,
                                                        use_max_memory=use_max_memory, return_slice=return_slice)
@@ -449,7 +453,8 @@ class MappedSource(ElectrodeDataSource):
         return self
 
     def mirror(self, new_rate_ratio=None, writeable=True, mapped=True, channel_compatible=False, filename='',
-               copy='', **map_args):
+               copy='', new_sources=dict(), **map_args):
+        # TODO: channel order permutation in mirrored source
         """
         Create an empty ElectrodeDataSource based on the current source, possibly with a new sampling rate and new
         access permissions.
@@ -472,6 +477,9 @@ class MappedSource(ElectrodeDataSource):
             Code whether to copy any arrays, which is only valid when new_rate_ratio is None or 1. 'aligned' copies
             aligned arrays. 'electrode' copies electrode data: only valid if channel_compatible is False.
             'all' copies all arrays. By default, nothing is copied.
+        new_sources: dict
+            If mapped=False, then pre-allocated arrays can be provided for each source (i.e. 'data_buffer' and any
+            aligned arrays).
         map_args: dict
             Any other MappedSource arguments
 
@@ -514,7 +522,7 @@ class MappedSource(ElectrodeDataSource):
 
         if mapped:
             if channel_compatible:
-                electrode_channels = self.__electrode_channels
+                electrode_channels = self._electrode_channels
                 C = self.data_buffer.shape[1] if self._transpose else self.data_buffer.shape[0]
                 channel_mask = self.binary_channel_mask
             else:
@@ -562,7 +570,10 @@ class MappedSource(ElectrodeDataSource):
         else:
             self._check_slice_size(np.s_[:, :T])
             C = self.shape[0]
-            new_source = shared_ndarray((C, T), fp_dtype.char)
+            if 'data_buffer' in new_sources:
+                new_source = new_sources['data_buffer']
+            else:
+                new_source = shared_ndarray((C, T), fp_dtype.char)
             if copy_electrodes:
                 for block, sl in self.iter_blocks(return_slice=True):
                     new_source[sl] = block
@@ -575,7 +586,10 @@ class MappedSource(ElectrodeDataSource):
                     dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
                 else:
                     dims = (T,)
-                aligned_arrays[name] = shared_ndarray(dims, fp_dtype.char)
+                if name in new_sources:
+                    aligned_arrays[name] = new_sources[name]
+                else:
+                    aligned_arrays[name] = shared_ndarray(dims, fp_dtype.char)
                 if copy_aligned:
                     aligned = getattr(self, name)[:]
                     aligned_arrays[name][:] = aligned.T if self._transpose else aligned

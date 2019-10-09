@@ -78,30 +78,30 @@ def test_construction_from_sources():
         assert_true(getattr(map_source, field).shape[0] == shape[0], 'aligned field {} wrong length'.format(field))
 
 
-def test_appending():
+def test_joining():
     aux_arrays = ('test1', 'test2')
     files = [_create_hdf5(aux_arrays=aux_arrays)[0] for i in range(3)]
     map_source1 = MappedSource.from_hdf_sources(files, 'data', aligned_arrays=aux_arrays)
     next_file = _create_hdf5(aux_arrays=aux_arrays)[0]
     map_source2 = MappedSource.from_hdf_sources(next_file, 'data', aligned_arrays=aux_arrays)
-    full_map = map_source1.append(map_source2)
+    full_map = map_source1.join(map_source2)
     assert_true(full_map.shape == (len(map_source1), map_source1.shape[1] + map_source2.shape[1]),
                 'binder to buffer appending failed')
-    full_map = map_source2.append(map_source1)
+    full_map = map_source2.join(map_source1)
     assert_true(full_map.shape == (len(map_source1), map_source1.shape[1] + map_source2.shape[1]),
                 'buffer to binder appending failed')
 
 
-def test_appendingT():
+def test_joiningT():
     aux_arrays = ('test1', 'test2')
     files = [_create_hdf5(aux_arrays=aux_arrays)[0] for i in range(3)]
     map_source1 = MappedSource.from_hdf_sources(files, 'data', aligned_arrays=aux_arrays, transpose=True)
     next_file = _create_hdf5(aux_arrays=aux_arrays)[0]
     map_source2 = MappedSource.from_hdf_sources(next_file, 'data', aligned_arrays=aux_arrays, transpose=True)
-    full_map = map_source1.append(map_source2)
+    full_map = map_source1.join(map_source2)
     assert_true(full_map.shape == (len(map_source1), map_source1.shape[1] + map_source2.shape[1]),
                 'binder to buffer appending failed')
-    full_map = map_source2.append(map_source1)
+    full_map = map_source2.join(map_source1)
     assert_true(full_map.shape == (len(map_source1), map_source1.shape[1] + map_source2.shape[1]),
                 'buffer to binder appending failed')
 
