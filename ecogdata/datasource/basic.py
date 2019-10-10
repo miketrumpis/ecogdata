@@ -73,11 +73,15 @@ class DataSourceBlockIter(BlockSignalBase):
         # this really should not happen
         # if start < 0 or start >= self.T:
         #     raise StopIteration
-        end = min(self.T + self.start_offset, start + self.L)
-        if self._reverse:
-            sl = (slice(None), slice(end - 1, start - 1, -1))
+        end = min(self.T - self.start_offset, start + self.L)
+        if self.L == 1:
+            # assume that a dimension-eating slice is wanted if block size is 1
+            sl = (slice(None), start)
         else:
-            sl = (slice(None), slice(start, end))
+            if self._reverse:
+                sl = (slice(None), slice(end - 1, start - 1, -1))
+            else:
+                sl = (slice(None), slice(start, end))
         if self.axis == 0:
             sl = sl[::-1]
         return sl
