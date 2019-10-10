@@ -1,5 +1,7 @@
 import os
 from shutil import rmtree
+import random
+import string
 import atexit
 from tempfile import NamedTemporaryFile
 from ecogdata.parallel.mproc import Process
@@ -8,7 +10,6 @@ import h5py
 from scipy.signal import lfilter_zi
 from numpy.linalg import LinAlgError
 from tqdm import tqdm
-
 
 from ecogdata.expconfig import load_params
 from ecogdata.util import ToggleState
@@ -23,9 +24,13 @@ from .array_abstractions import HDF5Buffer, slice_to_range
 __all__ = ['TempFilePool', 'MappedSource', 'MemoryBlowOutError', 'downsample_and_load', 'bfilter']
 
 
+# Make one unique temp path per process
+_rand_temp_path = 'MAPPED_TEMPFILES_' + ''.join([random.choice(string.ascii_letters) for _ in range(8)])
+
+
 class TempFilePool:
 
-    pool_dir = 'MAPPED_TEMPFILES'
+    pool_dir = os.path.join(os.path.abspath(os.path.curdir), _rand_temp_path)
 
     def __init__(self, *args, **kwargs):
         kwargs['dir'] = TempFilePool.pool_dir
