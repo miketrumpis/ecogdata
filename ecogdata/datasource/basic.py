@@ -1,3 +1,4 @@
+from warnings import warn
 import numpy as np
 import h5py
 from tqdm import tqdm
@@ -287,6 +288,91 @@ class ElectrodeDataSource:
                 # strided reads from HDF5 are horribly slow!
                 a_dst[:, :] = a_src[:, ::new_rate_ratio]
 
+    # Implement a few common ndarray methods (with easy logic!)...
+    # sum, mean, std, and var can be processed in stereotyped logic
+    def _setup_reduce_method(self, axis, dtype, out):
+        while axis < 0:
+            axis += self.ndim
+        if axis in (None, 1):
+            # reduction is either total or over time
+            itr = self.iter_blocks()
+        else:
+            # reduction is over channels
+            itr = self.iter_channels()
+        if out is None:
+            if dtype is None:
+                # If self.data_buffer.dtype is an integer type, then summation happens with long or ulong.
+                # But mean (and var and std) happens with float64
+                if self.data_buffer.dtype in np.sctypes['int']:
+                    dtype = np.dtype('l')
+                elif self.data_buffer.dtype in np.sctypes['uint']:
+                    dtype = np.dtype('L')
+                else:
+                    dtype = self.data_buffer.dtype
+            if axis is None:
+                outsize = ()
+            else:
+                outsize = (self.shape[self.ndim - 1 - axis],)
+            out = np.zeros(outsize, dtype=dtype)
+        else:
+            # If out is given, then that governs the dtype
+            dtype = out.dtype
+            if out.ndim == self.ndim:
+                # the intermediate reduction ops will actually eat a dimension,
+                # but out will be reshaped later (presuming keepdims is True)
+                out = out.squeeze()
+        return itr, dtype, out
+
+    def _end_reduce_method(self, out, axis, keepdims):
+        # Replace any dimensions that got eaten if keepdims is True
+        # Note that bool(np._NoValue) is True!! so have to evaluate T/F long-hand
+        if keepdims is True:
+            if axis is None:
+                dims = (1, 1)
+            else:
+                dims = [len(out)]
+                dims.insert(axis, 1)
+            out = out.reshape(*dims)
+        return out
+
+    def sum(self, axis=None, dtype=None, out=None, keepdims=np._NoValue, **kwargs):
+        if len(kwargs):
+            warn('These arguments are not supported: {}'.format([k for k in kwargs]), UserWarning)
+        itr, dtype, out = self._setup_reduce_method(axis, dtype, out)
+        for block in itr:
+            out += block.sum(axis=axis).astype(dtype, copy=False)
+        return self._end_reduce_method(out, axis, keepdims)
+
+    def mean(self, axis=None, dtype=None, out=None, keepdims=np._NoValue):
+        if dtype is None and self.data_buffer.dtype in np.sctypes['int'] + np.sctypes['uint']:
+            dtype = np.dtype('d')
+        sigma = self.sum(axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+        if axis is None:
+            n = self.shape[0] * self.shape[1]
+        else:
+            n = self.shape[axis]
+        sigma /= n
+        return sigma
+
+    def var(self, axis=None, dtype=None, out=None, ddof=0, keepdims=np._NoValue):
+        if dtype is None and self.data_buffer.dtype in np.sctypes['int'] + np.sctypes['uint']:
+            dtype = np.dtype('d')
+        itr, dtype, out = self._setup_reduce_method(axis, dtype, out)
+        for block in itr:
+            block **= 2
+            out += block
+        if axis is None:
+            n = self.shape[0] * self.shape[1] - ddof
+        else:
+            n = self.shape[axis] - ddof
+        out /= n
+        return self._end_reduce_method(out, axis, keepdims)
+
+    def std(self, axis=None, dtype=None, out=None, ddof=0, keepdims=np._NoValue):
+        v = self.var(axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
+        np.sqrt(v, v)
+        return v
+
     def filter_array(self, **kwargs):
         # Needs overload
         pass
@@ -418,4 +504,16 @@ class PlainArraySource(ElectrodeDataSource):
         aligned_arrays = dict([(a, getattr(self, a)) for a in self.aligned_arrays])
         return PlainArraySource(f_arr, **aligned_arrays)
 
+    # Simplify these (don't use iteration)
+    def sum(self, **kwargs):
+        return self.data_buffer.sum(**kwargs)
+
+    def mean(self, **kwargs):
+        return self.data_buffer.mean(**kwargs)
+
+    def var(self, **kwargs):
+        return self.data_buffer.var(**kwargs)
+
+    def std(self, **kwargs):
+        return self.data_buffer.std(**kwargs)
 
