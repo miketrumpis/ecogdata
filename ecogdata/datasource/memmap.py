@@ -101,16 +101,13 @@ class MappedSource(ElectrodeDataSource):
 
         """
 
-        # if isinstance(source_file, str):
-        #     source_file = h5py.File(source_file, 'r')
-        #     self.__close_source = True
-        # else:
-        #     self.__close_source = False
-        # self._source_file = source_file
         self._electrode_field = electrode_field
+        # TODO: unclear what value this has?
         self.channel_mask = channel_mask
+        # The data buffer object is an array slicing cache with possible units conversion.
+        # This class uses mapping logic to expose only (active) electrode channels, depending on the
+        # electrode_channels list and the current channel mask
         self.data_buffer = data_buffer
-        # self._electrode_array = self._source_file[self._electrode_field]
         # electrode_channels is a list of of data channel indices where electrode data are (immutable)
         if electrode_channels is None:
             n_channels = self.data_buffer.shape[1] if transpose else self.data_buffer.shape[0]
@@ -118,13 +115,6 @@ class MappedSource(ElectrodeDataSource):
         else:
             self._electrode_channels = electrode_channels
 
-        # # As the "data" object, set up a array slicing cache with possible units conversion
-        # # This data cache will need special logic to expose only (active) electrode channels, depending on the
-        # # electrode_channels list and the current channel mask
-        # self._units_scale = units_scale
-        # self.data_buffer = HDF5Buffer(self._electrode_array, units_scale=units_scale)
-        # if self.data_buffer.writeable and not source_file.swmr_mode:
-        #     source_file.swmr_mode = True
         self._transpose = transpose
         self.dtype = self.data_buffer.dtype
 
@@ -184,13 +174,21 @@ class MappedSource(ElectrodeDataSource):
         if isinstance(source_files, h5py.File):
             source_files = (source_files,)
 
-        # As the "data" object, set up a array slicing cache with possible units conversion
-        # This data cache will need special logic to expose only (active) electrode channels, depending on the
-        # electrode_channels list and the current channel mask. That logic is the job of MappedSource
+        # Set up underlying data buffer(s). Use a BufferBinder if there are multiple sources
         main_buffers = [HDF5Buffer(hdf[electrode_field], units_scale=units_scale) for hdf in source_files]
         for b, hdf in zip(main_buffers, source_files):
             if b.writeable and not hdf.swmr_mode:
-                hdf.swmr_mode = True
+                try:
+                    hdf.swmr_mode = True
+                except ValueError as e:
+                    if str(e).startswith('Unable to convert file format'):
+                        print('Single-writer multiple-reader mode was not supported for this data file. ' 
+                              'Block iteration on this MappedSource may be crashy.')
+                        print('Original error:', str(e))
+                    else:
+                        # unknown error -- reraise it
+                        raise e
+
         concat_axis = 0 if transpose else 1
         if len(main_buffers) > 1:
             data_buffer = BufferBinder(main_buffers, axis=concat_axis)
