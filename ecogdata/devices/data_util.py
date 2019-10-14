@@ -124,7 +124,7 @@ def load_experiment_auto(session, test, **load_kwargs):
     """
 
     if np.iterable(test) and not isinstance(test, str):
-        return append_datasets(session, test, **load_kwargs)
+        return load_datasets(session, test, load_kwargs=load_kwargs)
 
     cfg = session_conf(session, params_table=params_table)
     test_info = cfg.session
@@ -276,7 +276,7 @@ def load_experiment_manual(exp_path, test, headstage, electrode, *load_args, **l
     return dset
 
 
-def append_datasets(session, tests, **load_kwargs):
+def load_datasets(session, tests, load_kwargs=dict(), **join_kwargs):
     """
     Append multiple data sets end-to-end to form a single set.
     If StimulatedExperiments are associated with these sets,
@@ -285,15 +285,19 @@ def append_datasets(session, tests, **load_kwargs):
 
     Parameters
     ----------
-
-    session: name of session in group/session format
-    tests: sequence of recording names
-    load_kwargs: any further loading options
+    session: str
+        name of session in group/session format
+    tests: sequence
+        sequence of recording names
+    load_kwargs: dict
+        any further loading options
+    join_kwargs: dict
+        arguments for join_datasets
 
     Returns
     -------
-
-    joined data set
+    dataset: Bunch
+        joined data set
     
     """
 
@@ -309,7 +313,7 @@ def append_datasets(session, tests, **load_kwargs):
             pass
     
     all_sets = [load_experiment_auto(session, test, **load_kwargs) for test in tests]
-    return join_datasets(all_sets)
+    return join_datasets(all_sets, **join_kwargs)
 
 
 def join_datasets(all_sets, popdata=True, shared_mem=True, source_type=''):
