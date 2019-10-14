@@ -1,6 +1,7 @@
 import numpy as np
 import gc
 import inspect
+from warnings import warn
 
 from ecogdata.util import mat_to_flat
 from ecogdata.channel_map import ChannelMap, map_intersection
@@ -12,7 +13,7 @@ from .load.util import convert_tdms
 
 from ecogdata.parallel.array_split import shared_ndarray
 from ecogdata.expconfig.config_decode import Parameter, TypedParam, BoolOrNum, NSequence, NoneOrStr, uniform_bunch_case
-from ecogdata.datasource import ElectrodeDataSource
+from ecogdata.datasource import ElectrodeDataSource, MappedSource, PlainArraySource
 
 
 _loading = dict(
@@ -123,7 +124,7 @@ def load_experiment_auto(session, test, **load_kwargs):
     """
 
     if np.iterable(test) and not isinstance(test, str):
-        return append_datasets(session, test, **load_kwargs)
+        return load_datasets(session, test, load_kwargs=load_kwargs)
 
     cfg = session_conf(session, params_table=params_table)
     test_info = cfg.session
@@ -275,7 +276,7 @@ def load_experiment_manual(exp_path, test, headstage, electrode, *load_args, **l
     return dset
 
 
-def append_datasets(session, tests, **load_kwargs):
+def load_datasets(session, tests, load_kwargs=dict(), **join_kwargs):
     """
     Append multiple data sets end-to-end to form a single set.
     If StimulatedExperiments are associated with these sets,
@@ -284,15 +285,19 @@ def append_datasets(session, tests, **load_kwargs):
 
     Parameters
     ----------
-
-    session: name of session in group/session format
-    tests: sequence of recording names
-    load_kwargs: any further loading options
+    session: str
+        name of session in group/session format
+    tests: sequence
+        sequence of recording names
+    load_kwargs: dict
+        any further loading options
+    join_kwargs: dict
+        arguments for join_datasets
 
     Returns
     -------
-
-    joined data set
+    dataset: Bunch
+        joined data set
     
     """
 
@@ -308,101 +313,157 @@ def append_datasets(session, tests, **load_kwargs):
             pass
     
     all_sets = [load_experiment_auto(session, test, **load_kwargs) for test in tests]
-    return join_datasets(all_sets)
+    return join_datasets(all_sets, **join_kwargs)
 
 
-def join_datasets(all_sets, popdata=True, rasterize=True, shared_mem=True):
+def join_datasets(all_sets, popdata=True, shared_mem=True, source_type=''):
     """Append multiple pre-loaded datasets end-to-end to form a single set.
     If StimulatedExperiments are associated with these sets,
     then also join those experiments to reflect the union of all
     conditions presented. If channel maps differ between datasets, only
-    the intersection of all channels is retained in the joined set.
+    the intersection of all channels is retained in the joined set. Note for
+    joining mapped datasources, the underlying data layout (i.e. channel order) of
+    each dataset needs to match. However, channel order permutation is supported
+    with source_type='loaded'. Original dataset Bunches may be modified in
+    this method.
 
     Parameters
     ----------
-
-    all_sets: sequence of dataset Bunches
-    pop_data: {True/False} pop each datasets data array (may reduce
-               memory consumption)
-    rasterize: {True/False} re-index arrays to be in array raster order
-    shaerd_mem: {True/False} combine data into a shared memory array
+    all_sets: Sequence
+        Sequene of dataset Bunches
+    popdata: bool
+        Pop each datasets data array from original Bunch (may reduce memory consumption)
+    shared_mem: bool
+        Combine data into a shared memory array (if not mapped)
+    source_type: str {'mapped', 'loaded'}
+        Force the joined datasource to be a MappedSource ('mapped') or a PlainArraySource ('loaded').
+        If empty (''), then the source type will match that of the original sources, or will be a MappedSource
+        in the case of a mixture.
 
     Returns
     -------
-
-    joined data set
+    dataset: Bunch
+        Joined data set
     
     """
     if len(all_sets) == 1:
         return all_sets[0]
-    all_len = [dset.data.shape[-1] for dset in all_sets]
+    bandpasses = set([dset.bandpass for dset in all_sets])
+    if len(bandpasses) > 1:
+        warn('Warning: data sets processed under different bandpasses', RuntimeWarning)
+    all_len = [d.data.shape[-1] for d in all_sets]
     d_len = np.sum(all_len)
     full_map = map_intersection([d.chan_map for d in all_sets])
     nchan = full_map.sum()
-    full_exp = join_experiments([dset.exp for dset in all_sets], np.cumsum(all_len))
-    ii, jj = full_map.nonzero()
-
-    if shared_mem:
-        full_data = shared_ndarray((nchan, d_len))
+    experiments = []
+    offsets = []
+    off = 0
+    for dataset in all_sets:
+        if dataset.exp is None:
+            off += dataset.data.shape[1]
+            continue
+        offsets.append(off)
+        experiments.append(dataset.exp)
+    if len(experiments):
+        full_exp = join_experiments(experiments, offsets)
     else:
-        full_data = np.empty((nchan, d_len))
-    offsets = np.r_[0, np.cumsum(all_len)]
-    for n in range(len(all_sets)):
-        data = all_sets[n].pop('data') if popdata else all_sets[n].data
-        # need to find the set of channels in this set that is
-        # consistent with the entire data set. Might as well
-        # put them in "order" here
-        cmap = all_sets[n].chan_map
-        # this should be the raster order of the full_map
-        # NO -- this is wrong, it should be
-        # ii, jj = full_map.nonzero()
-        # [ cmap.lookup(i,j) for i,j in zip( ii, jj ) ]
-        if rasterize:
-            #idx = [cmap.index(i) for i in cmap.subset(full_map)]
-            idx = [cmap.lookup(i,j) for i,j in zip( ii, jj )]
+        full_exp = None
+
+    input_type = set([type(d.data) for d in all_sets])
+    if len(input_type) > 1:
+        if source_type.lower() == 'mapped' or not len(source_type):
+            mapped = True
         else:
-            idx = [i for i in range(len(data)) if full_map[cmap.rlookup(i)]]
-        full_data[:, offsets[n]:offsets[n+1]] = data[idx]
-        del data
-        gc.collect()
-
-    
-    bandpasses = set([dset.bandpass for dset in all_sets])
-    assert len(bandpasses) == 1, 'Warning: data sets processed under different bandpasses'
-
-    full_set = Bunch()
-
-    non_data_series = ('bnc', 'ground_chans', 'trig', 'pos_edge')
-    for timeseries in non_data_series:
-        if timeseries in all_sets[0]:
-            full_set[timeseries] = np.concatenate(
-                [dset.get(timeseries) for dset in all_sets], axis=-1
-                )
-    
-    full_set.data = full_data
-    full_set.exp = full_exp
-    if rasterize:
-        pitch = all_sets[0].chan_map.pitch
-        full_set.chan_map = ChannelMap(
-            mat_to_flat(
-                full_map.shape, ii, jj, col_major=False
-                ),
-            full_map.shape, pitch=pitch, col_major=False
-            )
+            mapped = False
     else:
-        full_set.chan_map = all_sets[0].chan_map.subset(full_map)
+        if source_type.lower() == 'loaded':
+            mapped = False
+        else:
+            input_type = input_type.pop()
+            mapped = input_type is MappedSource
+
+    if mapped:
+        # if source is to be mapped, then loop through sources and
+        # * convert to map (if needed)
+        # * apply intersecting channel map mask
+        # * join sources (just quick list manipulations)
+        for n in range(len(all_sets)):
+            dataset = all_sets[n]
+            # TODO: there is a problem if loaded dataset was pre-masked -- the mapped source after to_map() will be a
+            #  direct map, and probably won't have a buffer that matches other mapped sources...
+            #  might have to mirror all sources to direct maps, which would be slow and storage intensive
+            if isinstance(dataset.data, PlainArraySource):
+                dataset.data = dataset.data.to_map()
+            idx = [i for i in range(len(dataset.data)) if full_map[dataset.chan_map.rlookup(i)]]
+            mask = np.zeros(len(dataset.data.binary_channel_mask), '?')
+            mask[idx] = True
+            dataset.data.set_channel_mask(mask)
+        joined_data = all_sets[0].data.join(all_sets[1].data)
+        for dataset in all_sets[2:]:
+            joined_data = joined_data.join(dataset.data)
+        joined_set = Bunch(data=joined_data)
+    else:
+        # if source is to be loaded, then pre-allocate the array and loop through sources:
+        # * apply intersecting channel map
+        # * place channels into memory
+        new_data = dict()
+        if shared_mem:
+            array_create = shared_ndarray
+        else:
+            array_create = np.empty
+        new_data['data_buffer'] = array_create((nchan, d_len))
+        for name in all_sets[0].data.aligned_arrays:
+            chans = len(getattr(all_sets[0], name))
+            new_data[name] = array_create((chans, d_len))
+        offsets = np.r_[0, np.cumsum(all_len)]
+        for n in range(len(all_sets)):
+            data = all_sets[n].pop('data') if popdata else all_sets[n].data
+            channel_map = all_sets[n].chan_map
+            idx = [i for i in range(len(data)) if full_map[channel_map.rlookup(i)]]
+            data_slice = np.s_[:, offsets[n]:offsets[n + 1]]
+            if isinstance(data, MappedSource):
+                mask = np.zeros(len(data.binary_channel_mask), '?')
+                mask[idx] =  True
+                data.set_channel_mask(mask)
+                # mirror this mapped set directly into the pre-allocated array
+                sources = dict()
+                for name in new_data:
+                    sources[name] = new_data[name][data_slice]
+                data = data.mirror(mapped=False, copy='all', new_sources=sources)
+            else:
+                new_data['data_buffer'][data_slice] = np.take(data, idx, axis=0)
+                for name in data.aligned_arrays:
+                    new_data[name][data_slice] = getattr(data, name)
+        joined_data = new_data.pop('data_buffer')
+        joined_set = Bunch()
+        joined_set.data = PlainArraySource(joined_data, shared_mem=True, **new_data)
+        del new_data
+        del data
+
+    # Now fix up the dataset
+    # 1) promote aligned arrays to top-level
+    for name in joined_set.data.aligned_arrays:
+        joined_set[name] = getattr(joined_set.data, name)
+    # 2) join names
     session = all_sets[0].name.split('.')[0]
     tests = [s.name.split('.')[1] for s in all_sets]
-    full_set.name = session + '.' + ','.join(tests)
+    joined_set.name = session + '.' + ','.join(tests)
+    # 3) touch up trigger events
+    joined_set.exp = full_exp
+    if full_exp is not None:
+        joined_set.pos_edge = full_exp.time_stamps
+    # 4) append intersecting ChannelMap
+    joined_set.chan_map = all_sets[0].chan_map.subset(full_map)
+    # last) copy other keys
+    dataset = all_sets[0]
+    for key in dataset:
+        if key in joined_set:
+            continue
+        joined_set[key] = dataset[key]
 
-    # get remaining keys after 
-    # {'data', 'bnc', 'exp', 'ground_chans', 'name'}
-    keys = set(all_sets[0].keys())
-    keys.difference_update(('data', 'exp', 'name', 'chan_map') + non_data_series)
-    for k in keys:
-        print(k)
-        full_set[k] = all_sets[0].get(k)
-
+    # Attempt to garbage collect any crud
     del all_sets
-    gc.collect()
-    return full_set
+    while gc.collect():
+        pass
+
+    return joined_set

@@ -6,7 +6,7 @@ __all__ = ['Parameter', 'TypedParam', 'BoolOrNum', 'NSequence', 'NoneOrStr', 'Pa
            'uniform_bunch_case']
 
 
-class Parameter(object):
+class Parameter:
     "A pass-thru parameter whose value is the command (a string)"
 
     def __init__(self, command):
@@ -96,4 +96,3 @@ def uniform_bunch_case(b):
         else:
             b_lower[k] = v
     return b_lower
-

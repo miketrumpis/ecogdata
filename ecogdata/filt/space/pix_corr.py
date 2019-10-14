@@ -114,7 +114,7 @@ def pixel_corrections(
     return arr.squeeze()
 
 
-class Scaler(object):
+class Scaler:
     def __init__(self, realval):
         self.min = realval.min()
         self.max = realval.max()

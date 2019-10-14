@@ -3,6 +3,8 @@ from shutil import rmtree
 import random
 import string
 import atexit
+from typing import Union, Sequence
+from collections import OrderedDict
 from tempfile import NamedTemporaryFile
 from ecogdata.parallel.mproc import Process
 import numpy as np
@@ -18,7 +20,7 @@ from ecogdata.parallel.split_methods import lfilter
 from ecogdata.filt.time import filter_array, notch_all
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
-from .array_abstractions import HDF5Buffer, slice_to_range
+from .array_abstractions import HDF5Buffer, BufferBinder, slice_to_range, slice_data_buffer
 
 
 __all__ = ['TempFilePool', 'MappedSource', 'MemoryBlowOutError', 'downsample_and_load', 'bfilter']
@@ -58,21 +60,6 @@ def _remove_pool():
 atexit.register(_remove_pool)
 
 
-def slice_data_buffer(buffer, slicer, transpose=False, output=None):
-    """Slicing helper that can be run in a subprocess"""
-    if output is None:
-        with buffer.transpose_reads(transpose):
-            # What this context should mean is that the buffer is going to get sliced in the prescribed way and then
-            # the output is going to get transposed. Handling the transpose logic in the buffer avoids some
-            # unnecessary array copies
-            data_slice = buffer[slicer]
-    else:
-        with buffer.direct_read(output), buffer.transpose_reads(transpose):
-            buffer[slicer]
-            data_slice = output
-    return data_slice
-
-
 class MemoryBlowOutError(Exception):
     """Raise this if a memory-mapped slice will be ginormous."""
     pass
@@ -83,20 +70,20 @@ class MappedSource(ElectrodeDataSource):
     #  1. need to allow multiple source_files so that different recordings can be joined.
     #  2. a mapped source should have a start/stop index that only exposes data inside a range
 
-    def __init__(self, source_file, electrode_field, electrode_channels=None, channel_mask=None,
-                 aligned_arrays=(), units_scale=None, transpose=False, raise_on_big_slice=True):
+    def __init__(self, data_buffer: Union[HDF5Buffer, BufferBinder], electrode_field='data', electrode_channels=None,
+                 channel_mask=None, aligned_arrays=None, transpose=False, raise_on_big_slice=True):
         """
         Provides a memory-mapped data source. This object should rarely be constructed by-hand, but it should not be
         overwhelmingly difficult to do so.
 
         Parameters
         ----------
-        source_file: h5py.File or str
-            An opened HDF5 file: the file access mode will be respected. If a file name (str) is given, then the file
-            will be opened read-only.
-        electrode_field: str
-            The electrode recording channels are in source_file[electrode_field]. Mapped array may be Channel x Time
+        data_buffer: HDF5Buffer or BufferBinder
+            A single- or multi-source buffer that has a MappedBuffer interface. Mapped array(s) may be Channel x Time
             or Time x Channel. Output slices from this object are always Channel x Time.
+        electrode_field: str
+            The dataset field name for electrode recording channels. Only needed if mirroring to a new file with
+            identical dataset fields.
         electrode_channels: None or sequence
             The subset of channels in the electrode data array that contain electrode signals. A value of None
             indicates all channels contain electrode signals.
@@ -105,47 +92,39 @@ class MappedSource(ElectrodeDataSource):
             electrode channels is None. The set of active electrodes is where the binary mask is True. The number of
             rows returned in a slice from this data source is sum(channel_mask). A value of None indicates all
             electrode channels are active.
-        aligned_arrays: sequence
+        aligned_arrays: dict
             Any other datasets in source_file that should be aligned with the electrode signal array. These fields
             will be kept at the same sampling rate and index alignment as the electrode signal. They will also be
-            preserved if this source is mirrored or copied to another source. Elements of the sequence can be dataset
-            names in the mapped file, or (name, channel-list) pairs in the case that the aligned array is particular
-            subset of channels in the same array (e.g. same as the electrode data).
+            preserved if this source is mirrored or copied to another source. Element of aigned_arrays are
+            name:buffer pairs.
         units_scale: float or 2-tuple
             Either the scaling value or (offset, scaling) values such that signal = (memmap + offset) * scaling
         transpose: bool
-            The is the mapped array stored in transpose (Time x Channels)?
-            limit. If you really want to read-out anyway, use the `with source.big_slices(True)` context.
+            Is the mapped array stored in transpose (Time x Channels)?
+        raise_on_big_slice: bool
+            If True (default), then raise an exception if the proposed read slice will be larger than the memory
+
         """
 
-        if isinstance(source_file, str):
-            source_file = h5py.File(source_file, 'r')
-            self.__close_source = True
-        else:
-            self.__close_source = False
-        self._source_file = source_file
         self._electrode_field = electrode_field
+        # TODO: unclear what value this has?
         self.channel_mask = channel_mask
-        self._electrode_array = self._source_file[self._electrode_field]
+        # The data buffer object is an array slicing cache with possible units conversion.
+        # This class uses mapping logic to expose only (active) electrode channels, depending on the
+        # electrode_channels list and the current channel mask
+        self.data_buffer = data_buffer
         # electrode_channels is a list of of data channel indices where electrode data are (immutable)
         if electrode_channels is None:
-            n_channels = self._electrode_array.shape[1] if transpose else self._electrode_array.shape[0]
-            self.__electrode_channels = list(range(n_channels))
+            n_channels = self.data_buffer.shape[1] if transpose else self.data_buffer.shape[0]
+            self._electrode_channels = list(range(n_channels))
         else:
-            self.__electrode_channels = electrode_channels
+            self._electrode_channels = electrode_channels
 
-        # As the "data" object, set up a array slicing cache with possible units conversion
-        # This data cache will need special logic to expose only (active) electrode channels, depending on the
-        # electrode_channels list and the current channel mask
-        self._units_scale = units_scale
-        self.data_buffer = HDF5Buffer(self._electrode_array, units_scale=units_scale)
-        if self.data_buffer.writeable and not source_file.swmr_mode:
-            source_file.swmr_mode = True
         self._transpose = transpose
         self.dtype = self.data_buffer.dtype
 
         # channel_mask is the list of data indices for the active electrode set (mutable)
-        self._active_channels = self.__electrode_channels
+        self._active_channels = self._electrode_channels
         self.set_channel_mask(channel_mask)
 
         # this is toggle than when called creates a context manager with the supplied state (ToggleState)
@@ -158,29 +137,92 @@ class MappedSource(ElectrodeDataSource):
 
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
-        array_names = []
+        if aligned_arrays is None:
+            aligned_arrays = dict()
+        for key in aligned_arrays:
+            setattr(self, key, aligned_arrays[key])
+        self.aligned_arrays = tuple(aligned_arrays.keys())
+
+    @classmethod
+    def from_hdf_sources(cls, source_files: Sequence[h5py.File], electrode_field, aligned_arrays=(), units_scale=None,
+                         transpose=False, **kwargs):
+        """
+        Constructs a MappedSource from one or more h5py.File objects. This builder creates the appropriate
+        MappedBuffer-like object first.
+
+        Parameters
+        ----------
+        source_files: Sequence[h5py.File]
+            An opened HDF5 file: the file access mode will be respected.
+        electrode_field: str
+            The electrode recording channels are in source_file[electrode_field]. Mapped array may be Channel x Time
+            or Time x Channel. Output slices from this object are always Channel x Time.
+        aligned_arrays: sequence
+            Any other datasets in source_files that should be aligned with the electrode signal array. These fields
+            will be kept at the same sampling rate and index alignment as the electrode signal. They will also be
+            preserved if this source is mirrored or copied to another source. Elements of the sequence can be dataset
+            names in the mapped file, or (name, channel-list) pairs in the case that the aligned array is particular
+            subset of channels in the same array (e.g. same as the electrode data).
+        units_scale: float or 2-tuple
+            Either the scaling value or (offset, scaling) values such that signal = (memmap + offset) * scaling
+        transpose: bool
+            Is the mapped array stored in transpose (Time x Channels)?
+        kwargs:
+            Further arguments detailing channel subsets, etc., for MappedSource
+
+        Returns
+        -------
+        mapdata: MappedSource
+
+        """
+
+        if isinstance(source_files, h5py.File):
+            source_files = (source_files,)
+
+        # Set up underlying data buffer(s). Use a BufferBinder if there are multiple sources
+        main_buffers = [HDF5Buffer(hdf[electrode_field], units_scale=units_scale) for hdf in source_files]
+        for b, hdf in zip(main_buffers, source_files):
+            if b.writeable and not hdf.swmr_mode:
+                try:
+                    hdf.swmr_mode = True
+                except ValueError as e:
+                    if str(e).startswith('Unable to convert file format'):
+                        print('Single-writer multiple-reader mode was not supported for this data file. ' 
+                              'Block iteration on this MappedSource may be crashy.')
+                        print('Original error:', str(e))
+                    else:
+                        # unknown error -- reraise it
+                        raise e
+
+        concat_axis = 0 if transpose else 1
+        if len(main_buffers) > 1:
+            data_buffer = BufferBinder(main_buffers, axis=concat_axis)
+        else:
+            data_buffer = main_buffers[0]
+
+        # Handle aligned arrays similarly to the "electrode_field" except no unit conversion
+        array_names = OrderedDict()
         for field in aligned_arrays:
             if isinstance(field, str):
-                setattr(self, field, source_file[field])
+                aux_buffers = [HDF5Buffer(hdf[field]) for hdf in source_files]
+                if len(aux_buffers) > 1:
+                    array_names[field] = BufferBinder(aux_buffers, axis=concat_axis)
+                else:
+                    array_names[field] = aux_buffers[0]
             else:
-                # this actually loads the channels
-                channels = np.s_[:, field[1]] if self._transpose else np.s_[field[1], :]
+                # this actually loads the channels to main memory??
+                channels = np.s_[:, field[1]] if transpose else np.s_[field[1], :]
                 field = field[0]
-                setattr(self, field, self._electrode_array[channels])
-            array_names.append(field)
-        # after this, only refer to these arrays by name
-        self.aligned_arrays = array_names
-
-    def __del__(self):
-        if self.__close_source:
-            self._source_file.close()
+                arrays = [mb[channels] for mb in main_buffers]
+                if len(arrays) > 1:
+                    array_names[field] = np.concatenate(arrays, axis=concat_axis)
+                else:
+                    array_names[field] = arrays[0]
+        return MappedSource(data_buffer, electrode_field=electrode_field, transpose=transpose,
+                            aligned_arrays=array_names, **kwargs)
 
     def __len__(self):
         return self.shape[0]
-
-    def close_source(self):
-        """Close off the source file"""
-        self._source_file.close()
 
     @property
     def shape(self):
@@ -208,29 +250,67 @@ class MappedSource(ElectrodeDataSource):
         if not all_active:
             return False
         num_disk_channels = self.data_buffer.shape[1] if self._transpose else self.data_buffer.shape[0]
-        mapped_channels = np.array(self.__electrode_channels)
+        mapped_channels = np.array(self._electrode_channels)
         all_mapped = np.array_equal(mapped_channels, np.arange(num_disk_channels))
         return all_mapped
 
     @property
     def binary_channel_mask(self):
         if not hasattr(self, '_bmask'):
-            self._bmask = np.ones(len(self.__electrode_channels), '?')
+            self._bmask = np.ones(len(self._electrode_channels), '?')
         if self._bmask.sum() == len(self._active_channels):
             return self._bmask
         active_channels = set(self._active_channels)
-        for n, c in enumerate(self.__electrode_channels):
+        for n, c in enumerate(self._electrode_channels):
             self._bmask[n] = c in active_channels
         return self._bmask
 
     @property
     def _auto_block_length(self):
-        chunks = self._electrode_array.chunks
+        # a bit hacky now...
+        if isinstance(self.data_buffer, HDF5Buffer):
+            chunks = self.data_buffer.chunks
+        else:
+            chunks = self.data_buffer.chunks[0]
         block_size = chunk_size = chunks[0] if self._transpose else chunks[1]
         min_block_size = 10000
         while block_size < min_block_size:
             block_size += chunk_size
         return block_size
+
+    def join(self, other_source: 'MappedSource') -> 'MappedSource':
+        if not isinstance(other_source, MappedSource):
+            raise ValueError('Cannot append source type {} to this MappedSource'.format(type(other_source)))
+        if set(self.aligned_arrays) != set(other_source.aligned_arrays):
+            raise ValueError('Mismatch in aligned arrays')
+        if self._transpose is not other_source._transpose:
+            raise ValueError('Mismatch in transposed sources')
+        # data buffer and aligned arrays can be a plain buffer or a binder, and transpose can be T/F
+        keys = ['data_buffer'] + list(self.aligned_arrays)
+        new_sources = OrderedDict()
+        # For all sources (data_buffer plus others):
+        # 1) promote this buffer to a binder if needed
+        # 2) tell binder to extend to other source
+        # This will raise error for various inconsistencies:
+        # * dimension mismatch, concat axis mismatch, read/write mode mismatch
+        # * missing aligned array keys
+        # TODO: check consistency for electrode channels.. if the mapped channels are not consistent, it would be
+        #  possible to join them after mirroring each source to direct maps with copy='all'
+        if self._electrode_channels != other_source._electrode_channels:
+            raise ValueError('Joining sources with different channel maps is not yet supported.')
+        for k in keys:
+            this_buf = getattr(self, k)
+            if isinstance(this_buf, HDF5Buffer):
+                this_buf = BufferBinder([this_buf], axis=0 if self._transpose else 1)
+            new_buf = this_buf + getattr(other_source, k)
+            new_sources[k] = new_buf
+        data_buffer = new_sources.pop('data_buffer')
+        binary_mask = self.binary_channel_mask & other_source.binary_channel_mask
+        return MappedSource(data_buffer, electrode_field=self._electrode_field,
+                            electrode_channels=self._electrode_channels, channel_mask=binary_mask,
+                            aligned_arrays=new_sources, transpose=self._transpose,
+                            raise_on_big_slice=self._raise_on_big_slice)
+
 
     def set_channel_mask(self, channel_mask):
         """
@@ -248,15 +328,15 @@ class MappedSource(ElectrodeDataSource):
         # data2 = data1(mask2)  len(mask2) == num_mask1_electrodes
         #
         # So mask resets will have to be stated in terms of the full electrode set
-        n_electrodes = len(self.__electrode_channels)
+        n_electrodes = len(self._electrode_channels)
         if channel_mask is None or not len(channel_mask):
             # (re)set to the full set of electrode channels
-            self._active_channels = self.__electrode_channels
+            self._active_channels = self._electrode_channels
         elif len(channel_mask) != n_electrodes:
             raise ValueError('channel_mask must be length {}'.format(n_electrodes))
         else:
             self._active_channels = list()
-            for n, c in enumerate(self.__electrode_channels):
+            for n, c in enumerate(self._electrode_channels):
                 if channel_mask[n]:
                     self._active_channels.append(c)
 
@@ -297,8 +377,10 @@ class MappedSource(ElectrodeDataSource):
 
     def slice_subset(self, slicer):
         new_electrode_channels = np.array(self._active_channels)[slicer].tolist()
-        return MappedSource(self._source_file, self._electrode_field, electrode_channels=new_electrode_channels,
-                            aligned_arrays=self.aligned_arrays, units_scale=self._units_scale, transpose=self._transpose,
+        aligned = OrderedDict([(k, getattr(self, k)) for k in self.aligned_arrays])
+        return MappedSource(self.data_buffer, electrode_field=self._electrode_field,
+                            electrode_channels=new_electrode_channels,
+                            aligned_arrays=aligned, transpose=self._transpose,
                             raise_on_big_slice=self._raise_on_big_slice)
 
     def cache_slice(self, slicer, **kwargs):
@@ -352,6 +434,7 @@ class MappedSource(ElectrodeDataSource):
                 raise e
 
     def iter_channels(self, chans_per_block=None, use_max_memory=True, return_slice=False):
+        # TODO: argument that supplies a channel order permutation
         # Just change the signature to use maximum memory by default
         return super(MappedSource, self).iter_channels(chans_per_block=chans_per_block,
                                                        use_max_memory=use_max_memory, return_slice=return_slice)
@@ -373,7 +456,8 @@ class MappedSource(ElectrodeDataSource):
         return self
 
     def mirror(self, new_rate_ratio=None, writeable=True, mapped=True, channel_compatible=False, filename='',
-               copy='', **map_args):
+               copy='', new_sources=dict(), **map_args):
+        # TODO: channel order permutation in mirrored source
         """
         Create an empty ElectrodeDataSource based on the current source, possibly with a new sampling rate and new
         access permissions.
@@ -396,6 +480,9 @@ class MappedSource(ElectrodeDataSource):
             Code whether to copy any arrays, which is only valid when new_rate_ratio is None or 1. 'aligned' copies
             aligned arrays. 'electrode' copies electrode data: only valid if channel_compatible is False.
             'all' copies all arrays. By default, nothing is copied.
+        new_sources: dict
+            If mapped=False, then pre-allocated arrays can be provided for each source (i.e. 'data_buffer' and any
+            aligned arrays).
         map_args: dict
             Any other MappedSource arguments
 
@@ -438,8 +525,8 @@ class MappedSource(ElectrodeDataSource):
 
         if mapped:
             if channel_compatible:
-                electrode_channels = self.__electrode_channels
-                C = self._electrode_array.shape[1] if self._transpose else self._electrode_array.shape[0]
+                electrode_channels = self._electrode_channels
+                C = self.data_buffer.shape[1] if self._transpose else self.data_buffer.shape[0]
                 channel_mask = self.binary_channel_mask
             else:
                 C = self.shape[0]
@@ -450,9 +537,9 @@ class MappedSource(ElectrodeDataSource):
                 reopen_mode = 'r+'
                 units_scale = None
             else:
-                new_dtype = self._electrode_array.dtype
+                new_dtype = self.data_buffer.map_dtype
                 reopen_mode = 'r'
-                units_scale = self._units_scale
+                units_scale = self.data_buffer.units_scale
             tempfile = not filename
             if tempfile:
                 with TempFilePool(mode='ab') as f:
@@ -476,13 +563,20 @@ class MappedSource(ElectrodeDataSource):
                         aligned = getattr(self, name)[:]
                         fw[name][:] = aligned.T if self._transpose else aligned
             f_mapped = h5py.File(filename, reopen_mode)
-            return MappedSource(f_mapped, self._electrode_field, electrode_channels=electrode_channels,
-                                channel_mask=channel_mask, aligned_arrays=self.aligned_arrays, units_scale=units_scale,
-                                transpose=False, **map_args)
+            return MappedSource.from_hdf_sources(f_mapped, self._electrode_field, units_scale=units_scale,
+                                                 aligned_arrays=self.aligned_arrays, transpose=False,
+                                                 electrode_channels=electrode_channels, channel_mask=channel_mask,
+                                                 **map_args)
+            # return MappedSource(f_mapped, self._electrode_field, electrode_channels=electrode_channels,
+            #                     channel_mask=channel_mask, aligned_arrays=self.aligned_arrays,
+            #                     transpose=False, **map_args)
         else:
             self._check_slice_size(np.s_[:, :T])
             C = self.shape[0]
-            new_source = shared_ndarray((C, T), fp_dtype.char)
+            if 'data_buffer' in new_sources:
+                new_source = new_sources['data_buffer']
+            else:
+                new_source = shared_ndarray((C, T), fp_dtype.char)
             if copy_electrodes:
                 for block, sl in self.iter_blocks(return_slice=True):
                     new_source[sl] = block
@@ -493,7 +587,12 @@ class MappedSource(ElectrodeDataSource):
                 arr = getattr(self, name)
                 if len(arr.shape) > 1:
                     dims = (arr.shape[1], T) if self._transpose else (arr.shape[0], T)
-                aligned_arrays[name] = shared_ndarray(dims, fp_dtype.char)
+                else:
+                    dims = (T,)
+                if name in new_sources:
+                    aligned_arrays[name] = new_sources[name]
+                else:
+                    aligned_arrays[name] = shared_ndarray(dims, fp_dtype.char)
                 if copy_aligned:
                     aligned = getattr(self, name)[:]
                     aligned_arrays[name][:] = aligned.T if self._transpose else aligned

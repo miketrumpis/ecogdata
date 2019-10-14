@@ -188,7 +188,7 @@ def hdf5_open_ephys_channels(
         n_extra = len(OE.get_filelist(rec_path, ctype=arr, source=rec_num[0]))
         if not n_extra:
             continue
-        with h5py.File(hdf5_name, 'r+') as h5:
+        with h5py.File(hdf5_name, 'r+', libver='latest') as h5:
             chans = h5.create_dataset(arr.lower(), dtype=arr_dtype, chunks=True, shape=(n_extra, d_len))
             start_chan = 0
             while True:

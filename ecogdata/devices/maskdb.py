@@ -13,9 +13,9 @@ def _walk_paths(root, level=0):
     keys = sorted(root.keys())
     for k in keys:
         v = root[k]
-        print('\t'*level + k)
+        print('\t' * level + k)
         if 'chan_mask' not in v:
-            _walk_paths(v, level=level+1)
+            _walk_paths(v, level=level + 1)
 
 
 def merge_db(source, dest):
@@ -31,7 +31,7 @@ def merge_db(source, dest):
             print('Dest mask: {0} channels'.format(dst_mask.sum()))
             choice = 'Overwrite destination? ([y]/n) '
             if choice.lower() in ('y', ''):
-                #print 'would write', d_, 'at path:', level
+                # print 'would write', d_, 'at path:', level
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     # remove trailing slash
@@ -39,13 +39,13 @@ def merge_db(source, dest):
                     s_load = load_bunch(source, k)
                     save_bunch(dest, k, s_load, overwrite_paths=True)
             return
-        
-        src_keys = set( s_.keys() )
-        dst_keys = set( d_.keys() )
+
+        src_keys = set(s_.keys())
+        dst_keys = set(d_.keys())
 
         new_keys = src_keys.difference(dst_keys)
         for nk in new_keys:
-            #print 'would write', s_[nk], 'at path:', '/'+nk
+            # print 'would write', s_[nk], 'at path:', '/'+nk
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 s_load = load_bunch(source, level + nk)
@@ -57,19 +57,19 @@ def merge_db(source, dest):
     _merge_level(src, dst)
 
 
-class MaskDB(object):
+class MaskDB:
 
     dbfile = 'channel_mask_database'
 
     def __init__(self, local=False, dbfile=None):
         if dbfile is None:
-            dbfile = os.path.join( 
-                global_params.channel_mask, MaskDB.dbfile 
-                ) + '.h5'
+            dbfile = os.path.join(
+                global_params.channel_mask, MaskDB.dbfile
+            ) + '.h5'
             if local or not os.path.exists(dbfile):
-                dbfile = os.path.join( 
-                    global_params.stash_path, MaskDB.dbfile 
-                    ) + '.h5'
+                dbfile = os.path.join(
+                    global_params.stash_path, MaskDB.dbfile
+                ) + '.h5'
         if not os.path.exists(dbfile):
             with h5py.File(dbfile, 'w'):
                 pass
@@ -80,7 +80,7 @@ class MaskDB(object):
         session = '/' + session
         rec = '/' + rec[1:]
         return session + rec
-        
+
     def lookup(self, dset_name):
         path = self._dset_to_path(dset_name)
         try:

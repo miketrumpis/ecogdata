@@ -1,9 +1,10 @@
 from warnings import warn
 import numpy as np
+import h5py
 from tqdm import tqdm
 
 from ecogdata.expconfig import load_params
-from ecogdata.parallel.array_split import shared_copy
+from ecogdata.parallel.array_split import shared_copy, shared_ndarray
 from ecogdata.filt.time import downsample, filter_array, notch_all
 from ecogdata.filt.blocks import BlockSignalBase
 
@@ -73,11 +74,15 @@ class DataSourceBlockIter(BlockSignalBase):
         # this really should not happen
         # if start < 0 or start >= self.T:
         #     raise StopIteration
-        end = min(self.T + self.start_offset, start + self.L)
-        if self._reverse:
-            sl = (slice(None), slice(end - 1, start - 1, -1))
+        end = min(self.T - self.start_offset, start + self.L)
+        if self.L == 1:
+            # assume that a dimension-eating slice is wanted if block size is 1
+            sl = (slice(None), start)
         else:
-            sl = (slice(None), slice(start, end))
+            if self._reverse:
+                sl = (slice(None), slice(end - 1, start - 1, -1))
+            else:
+                sl = (slice(None), slice(start, end))
         if self.axis == 0:
             sl = sl[::-1]
         return sl
@@ -104,7 +109,7 @@ class DataSourceBlockIter(BlockSignalBase):
             return output
 
 
-class ElectrodeDataSource(object):
+class ElectrodeDataSource:
     """
     a parent class for all types
     """
@@ -376,6 +381,11 @@ class ElectrodeDataSource(object):
         # Needs overload
         pass
 
+    def join(self, other_source: 'ElectrodeDataSource') -> 'ElectrodeDataSource':
+        """Return a new data source joining this source with another."""
+        # Needs overload
+        pass
+
 
 class PlainArraySource(ElectrodeDataSource):
 
@@ -385,33 +395,62 @@ class PlainArraySource(ElectrodeDataSource):
 
     """
 
-    def __init__(self, data_matrix, use_shared_mem=False, **aligned_arrays):
+    def __init__(self, data_matrix, shared_mem=False, **aligned_arrays):
         """
 
         Parameters
         ----------
         data_matrix: ndarray
             Channel x Time matrix, presumably floating point
-        samp_rate: float
-            Sampling rate S/s
-        use_shared_mem: bool
-            If True, copy arrays to shared memory. Wasteful if arrays are already shared.
+        shared_mem: bool
+            Is the data buffer in shared memory? Affects set_channel_mask
         aligned_arrays: dict
             Any other datasets that should be aligned with the electrode signal array. These arrays
             will be kept at the same sampling rate and index alignment as the electrode signal. They will also be
             preserved if this source is mirrored or copied to another source.
         """
 
-        self.data_buffer = shared_copy(data_matrix) if use_shared_mem else data_matrix
+        self.data_buffer = data_matrix
         self.dtype = data_matrix.dtype
         for name in aligned_arrays:
-            setattr(self, name, (shared_copy(aligned_arrays[name]) if use_shared_mem else aligned_arrays[name]))
-        self.aligned_arrays = list(aligned_arrays.keys())
+            setattr(self, name, aligned_arrays[name])
+        self.aligned_arrays = tuple(aligned_arrays.keys())
+        self._shm = shared_mem
+
+    def join(self, other_source: 'PlainArraySource') -> 'PlainArraySource':
+        if not isinstance(other_source, PlainArraySource):
+            raise ValueError('Cannot append source type {} to this PlainArraySource'.format(type(other_source)))
+        if set(self.aligned_arrays) != set(other_source.aligned_arrays):
+            raise ValueError('Mismatch in aligned arrays')
+        # TODO: deal with shared memory
+        new_array = np.concatenate([self.data_buffer, other_source.data_buffer], axis=1)
+        new_aligned = dict()
+        for k in self.aligned_arrays:
+            new_aligned[k] = np.concatenate([getattr(self, k), getattr(other_source, k)], axis=1)
+        return PlainArraySource(new_array, **new_aligned)
+
 
     def set_channel_mask(self, channel_mask):
         """Apply the binary channel mask to the current data matrix"""
-        # TODO: preserve shared memory
-        self.data_buffer = self.data_buffer[channel_mask]
+        if self._shm:
+            data_buffer = shared_ndarray((channel_mask.sum(), self.shape[1]))
+            data_buffer[:] = self.data_buffer[channel_mask]
+            self.data_buffer = data_buffer
+        else:
+            self.data_buffer = self.data_buffer[channel_mask]
+
+    def to_map(self):
+        """Creates a temp HDF5 file and returns a MappedSource for this datasource."""
+        from .memmap import TempFilePool, MappedSource
+        with TempFilePool(mode='ab') as tf:
+            filename = tf.name
+        fp_precision = load_params().floating_point.lower()
+        typecode = 'f' if fp_precision == 'single' else 'd'
+        hdf = h5py.File(filename, 'w', libver='latest')
+        hdf.create_dataset('data', data=self.data_buffer.astype(typecode), chunks=True)
+        for name in self.aligned_arrays:
+            hdf.create_dataset(name, data=getattr(self, name).astype(typecode), chunks=True)
+        return MappedSource.from_hdf_sources(hdf, 'data', aligned_arrays=self.aligned_arrays)
 
     def __getitem__(self, slicer):
         return self.data_buffer[slicer]
@@ -440,8 +479,7 @@ class PlainArraySource(ElectrodeDataSource):
         if inplace:
             return self
         aligned_arrays = dict([(a, getattr(self, a)) for a in self.aligned_arrays])
-        # use_shared_mem = False b/c the array returned from filter_array is already shared mem.
-        return PlainArraySource(f_arr, use_shared_mem=False, **aligned_arrays)
+        return PlainArraySource(f_arr, **aligned_arrays)
 
     def notch_filter(self, *args, **kwargs):
         """
@@ -464,8 +502,17 @@ class PlainArraySource(ElectrodeDataSource):
         if inplace:
             return self
         aligned_arrays = dict([(a, getattr(self, a)) for a in self.aligned_arrays])
-        # use_shared_mem = False b/c the array returned from filter_array is already shared mem.
-        return PlainArraySource(f_arr, use_shared_mem=False, **aligned_arrays)
+        return PlainArraySource(f_arr, **aligned_arrays)
+
+    # Simplify these (don't use iteration)
+    def sum(self, **kwargs):
+        return self.data_buffer.sum(**kwargs)
+
+    def mean(self, **kwargs):
+        return self.data_buffer.mean(**kwargs)
+
+    def var(self, **kwargs):
+        return self.data_buffer.var(**kwargs)
 
     # Simplify these (don't use iteration)
     def sum(self, **kwargs):

@@ -9,6 +9,7 @@ from matplotlib.tri import Triangulation, LinearTriInterpolator, \
 
 
 def map_intersection(maps):
+    """Return a binary grid of intersecting electrode sites between all maps with the same geometry."""
     geometries = set([m.geometry for m in maps])
     if len(geometries) > 1:
         raise ValueError('cannot intersect maps with different geometries')
@@ -19,7 +20,7 @@ def map_intersection(maps):
 
 
 class ChannelMap(list):
-    "A map of sample vector(s) to a matrix representing 2D sampling space."
+    """A map of sample vector(s) to a matrix representing 2D sampling space."""
     
     def __init__(self, chan_map, geometry, col_major=False, pitch=1.0):
         """
