@@ -404,6 +404,38 @@ def test_buffer_binder_direct_read_transpose():
     assert_true(np.all(out1 == direct_out), 'direct read returned wrong values')
 
 
+def test_multidim_binder():
+    buf, data = _create_binder(n_rows=20, n_cols=40, extra_dims=(10,), axis=0)
+    # cuts across buffers and also eliminates one dimension
+    sl = np.s_[10:40, 0, :]
+    out = buf[sl]
+    assert_true(np.all(out == data[sl]), 'multidim binder failed with dimension eating')
+    d_out = np.zeros_like(out)
+    with buf.direct_read(sl, d_out):
+        buf[sl]
+    assert_true(np.all(d_out == data[sl]), 'multidim direct-read binder failed with dimension eating')
+
+    # cuts across buffers, eliminates one dimension, and changes concat dimension from 1 to 0
+    buf, data = _create_binder(n_rows=20, n_cols=40, extra_dims=(10,), axis=1)
+    sl = np.s_[:, 30:60, 5]
+    out = buf[sl]
+    assert_true(np.all(out == data[sl]), 'multidim binder failed with dimension eating')
+    d_out = np.zeros_like(out)
+    with buf.direct_read(sl, d_out):
+        buf[sl]
+    assert_true(np.all(d_out == data[sl]), 'multidim direct-read binder failed with dimension eating')
+
+    # cuts across buffers, eliminates one dimension, and changes concat dimension from 2 to 1
+    buf, data = _create_binder(n_rows=20, n_cols=40, extra_dims=(10,), axis=2)
+    sl = np.s_[:, 0, 5:25]
+    out = buf[sl]
+    assert_true(np.all(out == data[sl]), 'multidim binder failed with dimension eating')
+    d_out = np.zeros_like(out)
+    with buf.direct_read(sl, d_out):
+        buf[sl]
+    assert_true(np.all(d_out == data[sl]), 'multidim direct-read binder failed with dimension eating')
+
+
 def test_subprocess_caching():
     buf, data = _create_binder(n_rows=10, n_cols=100, axis=1, dtype='i')
     # 1) test a slice into a single buffer
