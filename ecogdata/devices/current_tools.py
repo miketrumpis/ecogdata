@@ -192,7 +192,12 @@ def smooth_transfer_functions(bb, aa, mask_poles=-1, mask_zeros=-1):
 def plot_smooth_transforms(bb, aa, w_lo=1e-1, w_hi=1e4, **kwargs):
     import matplotlib.pyplot as pp
     import seaborn as sns
-    sns.reset_orig()
+    # Fix until MPL or seaborn gets straightened out
+    import warnings
+    with warnings.catch_warnings():
+        import matplotlib as mpl
+        warnings.simplefilter('ignore', mpl.cbook.MatplotlibDeprecationWarning)
+        sns.reset_orig()
     bb_s, aa_s = smooth_transfer_functions(bb, aa, **kwargs)
 
     g = bb.shape[:2]

@@ -43,6 +43,7 @@ class ChannelMap(list):
             Flat indexing is for column-major addressing. Default is False for row-major.
         pitch: float or tuple
             The electrode pitch, either as a single distance or as (dy, dx)
+
         """
         list.__init__(self)
         self[:] = chan_map
