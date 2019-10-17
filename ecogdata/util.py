@@ -10,6 +10,7 @@ from contextlib import contextmanager
 import numpy as np
 from scipy.ndimage import convolve1d
 from scipy.integrate import simps
+from scipy.signal.windows import dpss
 
 
 # ye olde Bunch object
@@ -433,6 +434,31 @@ def integrate_roc(roc_pts):
     y = np.r_[0, y, 1]
     cp = simps(y, x=x, even='avg')
     return cp
+
+
+def dpss_windows(N, NW, K):
+    """
+    Convenience wrapper of scipy's DPSS window method that always returns K orthonormal tapers and eigenvalues.
+
+    Parameters
+    ----------
+    N: int
+        Sequence length
+    NW: float
+        Sequence time-frequency product (half integers).
+    K: int
+        Number of DPSS to calculate (typically <= 2 * NW)
+
+    Returns
+    -------
+    dpss: ndarray
+        (K, N) orthonormal tapers
+    eigs: ndarray
+        K eigenvalues (bandpass concentration ratios)
+
+    """
+    vecs, eigs = dpss(N, NW, Kmax=int(K), sym=False, norm=2, return_ratios=True)
+    return vecs, eigs
 
 
 def savitzky_golay(y, window_size, order, deriv=0, rate=1, axis=-1):

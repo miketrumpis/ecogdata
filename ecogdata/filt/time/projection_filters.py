@@ -1,7 +1,6 @@
 import numpy as np
-from nitime.algorithms import dpss_windows
 from numpy.lib.stride_tricks import as_strided
-from ecogdata.util import input_as_2d
+from ecogdata.util import input_as_2d, dpss_windows
 from ecogdata.parallel.array_split import split_at
 
 __all__ = ['slepian_projection', 'moving_projection']
