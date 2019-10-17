@@ -43,7 +43,7 @@ extensions = [
 
 # generate autosummary even if no references
 autosummary_generate = True
-autodoc_default_flags = ['members', 'undoc-members', 'private-member']
+autodoc_default_options = ['members', 'undoc-members', 'private-member']
 
 # Napoleon settings
 napoleon_google_docstring = True
@@ -62,6 +62,16 @@ napoleon_use_keyword = True
 
 # Some nbshpinx options are copied here.. others (for notebook widgets and latex build?)
 # might be relevant: https://github.com/spatialaudio/nbsphinx/blob/master/doc/conf.py
+
+# Allow longish runtimes for some examples. Can alternatively add this to notebook metadata
+# "nbsphinx": {
+#   "timeout": 60
+# },
+#
+nbsphinx_timeout = 60
+
+# allow errors in notebooks, but continue docs building
+nbsphinx_allow_errors = True
 
 # List of arguments to be passed to the kernel that executes the notebooks:
 nbsphinx_execute_arguments = [

@@ -9,6 +9,8 @@ SPHINXAPIDOC = sphinx-apidoc
 SOURCEDIR     = source
 BUILDDIR      = build
 PROJDIR = $(PWD)/../ecogdata
+# this is to prevent any weirdness when importing vis stuff
+QT_API := ""
 
 # Put it first so that "make" without argument is like "make help".
 help:
