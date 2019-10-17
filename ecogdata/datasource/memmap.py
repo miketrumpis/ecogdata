@@ -31,6 +31,19 @@ _rand_temp_path = 'MAPPED_TEMPFILES_' + ''.join([random.choice(string.ascii_lett
 
 
 class TempFilePool:
+    """
+    Create a temporary file in the temp "pool" that can be closed and reopened without going away. The entire pool of
+    temporary files will be cleared when the process exits.
+
+    Example usage:
+
+    >>> with TempFilePool() as f:
+    >>>    name = f.filename
+    >>> with h5py.File(name, 'w') as hdf_write:
+    >>>    hdf_write.create_dataset(...)
+    >>> hdf_read = h5py.File(name, 'r')
+
+    """
 
     pool_dir = os.path.join(os.path.abspath(os.path.curdir), _rand_temp_path)
 
