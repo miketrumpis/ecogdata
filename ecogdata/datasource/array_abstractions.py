@@ -93,6 +93,7 @@ def tile_slices(slicers, shape, chunks):
     --------
     Slicing a hypothetical (20, 20)-shape array with (5, 5) chunks using a combination of big strides and
     discontiguous ranges:
+
     >>> i, o = aa.tile_slices(np.s_[::10, [0, 1, 10, 11]], (20, 20), (5, 5))
     >>> out_arr = np.zeros((2, 4))
     >>> for n, sl in enumerate(o):

@@ -9,3 +9,5 @@ ecogdata.egg-info/
 sandbox
 scratch
 .ipynb_checkpoints
+docs/build
+docs/source/apidocs
