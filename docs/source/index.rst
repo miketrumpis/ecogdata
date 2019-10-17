@@ -12,6 +12,7 @@ Welcome to ecogdata's documentation!
 
    usage_demos/index
    api
+..   apidocs/modules
 
 
 

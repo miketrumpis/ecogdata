@@ -43,7 +43,11 @@ extensions = [
 
 # generate autosummary even if no references
 autosummary_generate = True
-autodoc_default_options = ['members', 'undoc-members', 'private-member']
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': True,
+    'private-member': False
+}
 
 # Napoleon settings
 napoleon_google_docstring = True
