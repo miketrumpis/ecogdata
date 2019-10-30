@@ -1,7 +1,5 @@
-.. ecogdata documentation master file, created by
-   sphinx-quickstart on Thu Oct 17 11:59:14 2019.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+.. |date| date::
+.. |time| date:: %H:%M
 
 Welcome to ecogdata's documentation!
 ====================================
@@ -14,7 +12,10 @@ Welcome to ecogdata's documentation!
    api
 ..   apidocs/modules
 
+Misc
+====
 
+Documents rebuilt |date| at |time|.
 
 Indices and tables
 ==================
