@@ -275,7 +275,7 @@ class FileLoader:
 
         ds_file = super().create_downsample_file(data_file, resample_rate, ...)
         with h5py.File(data_file, 'r') as orig_file, h5py.File(ds_file, 'r+') as new_file:
-            # add/copy other metadata from the original source file
+        # add/copy other metadata from the original source file
 
         Parameters
         ----------
