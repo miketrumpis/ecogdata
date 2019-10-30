@@ -97,7 +97,7 @@ def filter_array(
 
 def notch_all(
         arr, Fs, lines=60.0, nzo=3,
-        nwid=3.0, inplace=True, nmax=-1, **filt_kwargs
+        nwid=3.0, inplace=True, nmax=None, **filt_kwargs
         ):
     """Apply notch filtering to a array timeseries.
 
@@ -139,8 +139,10 @@ def notch_all(
     if isinstance(lines, (float, int)):
         # repeat lines until nmax
         nf = lines
-        nmax = min( nmax, Fs/2.0 )
-        lines = [ nf*i for i in range(1, int(nmax//nf) + 1) ]
+        if nmax is None:
+            nmax = nf
+        nmax = min(nmax, Fs / 2.0)
+        lines = [nf * i for i in range(1, int(nmax // nf) + 1)]
     else:
         lines = [x for x in lines if x < Fs/2]
 
