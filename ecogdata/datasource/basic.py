@@ -65,7 +65,7 @@ class DataSourceBlockIter(BlockSignalBase):
     def block(self, b):
         if self._itr.start <= b < self._itr.stop:
             sl = self._make_slice(b)
-            return self.datasource[sl]
+            return self.datasource[sl], sl if self.return_slice else self.datasource[sl]
         else:
             raise ValueError('Slice {} out of bounds'.format(b))
 
@@ -80,7 +80,10 @@ class DataSourceBlockIter(BlockSignalBase):
             sl = (slice(None), start)
         else:
             if self._reverse:
-                sl = (slice(None), slice(end - 1, start - 1, -1))
+                start -= 1
+                if start < 0:
+                    start = None
+                sl = (slice(None), slice(end - 1, start, -1))
             else:
                 sl = (slice(None), slice(start, end))
         if self.axis == 0:
@@ -291,8 +294,9 @@ class ElectrodeDataSource:
     # Implement a few common ndarray methods (with easy logic!)...
     # sum, mean, std, and var can be processed in stereotyped logic
     def _setup_reduce_method(self, axis, dtype, out):
-        while axis < 0:
-            axis += self.ndim
+        if axis is not None:
+            while axis < 0:
+                axis += self.ndim
         if axis in (None, 1):
             # reduction is either total or over time
             itr = self.iter_blocks()
@@ -334,6 +338,35 @@ class ElectrodeDataSource:
                 dims.insert(axis, 1)
             out = out.reshape(*dims)
         return out
+
+
+    def min(self, axis=None, out=None, keepdims=False, **kwargs):
+        if len(kwargs):
+            warn('These arguments are not supported: {}'.format([k for k in kwargs]), UserWarning)
+        itr, dtype, out = self._setup_reduce_method(axis, self.dtype, out)
+        first_min = True
+        for block in itr:
+            b_min = block.min(axis=axis)
+            if first_min:
+                out.fill(np.iinfo(out.dtype).max)
+                first_min = False
+            out = np.minimum(b_min, out)
+        return self._end_reduce_method(out, axis, keepdims)
+
+
+    def max(self, axis=None, out=None, keepdims=False, **kwargs):
+        if len(kwargs):
+            warn('These arguments are not supported: {}'.format([k for k in kwargs]), UserWarning)
+        itr, dtype, out = self._setup_reduce_method(axis, self.dtype, out)
+        first_max = True
+        for block in itr:
+            b_max = block.max(axis=axis)
+            if first_max:
+                out.fill(np.iinfo(out.dtype).min)
+                first_max = False
+            out = np.maximum(b_max, out)
+        return self._end_reduce_method(out, axis, keepdims)
+
 
     def sum(self, axis=None, dtype=None, out=None, keepdims=np._NoValue, **kwargs):
         if len(kwargs):
