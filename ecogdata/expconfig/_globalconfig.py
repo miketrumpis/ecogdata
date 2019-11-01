@@ -8,14 +8,14 @@ SafeConfigParser = ConfigParser
 
 
 all_keys = {
-    'local_exp': Path,
-    'network_exp': Path,
-    'stash_path': Path,
-    'user_sessions': Path,
-    'clear_temp_converted': BoolOrNum,
-    'floating_point': Parameter,  # just a string
-    'memory_limit': TypedParam.from_type(float),
-    'channel_mask': Path
+    'local_exp': Path.with_default(os.path.expanduser('~/')),
+    'network_exp': Path.with_default(os.path.expanduser('~/')),
+    'stash_path': Path.with_default(os.path.expanduser('~/')),
+    'user_sessions': Path.with_default(os.path.expanduser('~/')),
+    'clear_temp_converted': BoolOrNum.with_default('false'),
+    'floating_point': Parameter.with_default('single'),  # just a string
+    'memory_limit': TypedParam.from_type(float, default=1e9),  # 1 GB default
+    'channel_mask': Path.with_default(os.path.expanduser('~/'))
 }
 
 # Kind of hacky, but the param values can be set/reset at run-time by
