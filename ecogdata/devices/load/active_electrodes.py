@@ -24,7 +24,7 @@ active_headstages = ('zif26 to 2x uhdmi',
                      'zif51_p4-50_demux-14c20r',)
 
 
-def load_active(exp_path, name, electrode, daq, headstage, bnc=(), **load_kwargs):
+def load_active(exp_path, name, electrode, daq, headstage, bnc=(), trigger_idx=0, **load_kwargs):
     """
 
     Parameters
@@ -41,6 +41,8 @@ def load_active(exp_path, name, electrode, daq, headstage, bnc=(), **load_kwargs
         Headstage equipment tag
     bnc: int or sequence
         Columns in the acquired data corresponding to BNC inputs
+    trigger_idx: int
+        If there are BNC columns, then this one corresponds to a timestamp trigger.
     **load_kwargs: dict
         Other arguments for the FileLoader type
 
