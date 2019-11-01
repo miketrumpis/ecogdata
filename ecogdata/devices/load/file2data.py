@@ -96,7 +96,7 @@ class FileLoader:
             If True, raise exceptions on unexpected events. Otherwise try to proceed with warnings.
         """
 
-        self.experiment_path = experiment_path
+        self.experiment_path = os.path.expanduser(experiment_path)
         self.recording = recording
         self.electrode = electrode
         self.bandpass = bandpass
