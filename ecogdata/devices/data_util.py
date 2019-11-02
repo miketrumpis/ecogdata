@@ -45,6 +45,7 @@ _converts_tdms = ('stim_mux64', 'mux3', 'mux4',
 params_table = {
     # common args
     'exp_path': Path,
+    'nwk_path': Path,
     'test': Parameter,
     'electrode': Parameter,
     # FileLoader args
