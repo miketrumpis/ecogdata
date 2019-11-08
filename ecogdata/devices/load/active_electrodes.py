@@ -53,7 +53,7 @@ def load_active(exp_path, name, electrode, daq, headstage, bnc=(), trigger_idx=0
 
     """
 
-    loader = ActiveLoader(exp_path, name, electrode, daq, headstage, bnc=bnc, **load_kwargs)
+    loader = ActiveLoader(exp_path, name, electrode, daq, headstage, bnc=bnc, trigger_idx=trigger_idx, **load_kwargs)
     return loader.create_dataset()
 
 
