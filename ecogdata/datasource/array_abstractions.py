@@ -12,6 +12,9 @@ __all__ = ['slice_to_range', 'range_to_slice', 'unpack_ellipsis', 'tile_slices',
            'BufferBase', 'MappedBuffer', 'HDF5Buffer', 'BufferBinder', 'slice_data_buffer']
 
 
+_integer_types = tuple(np.sctypes['int']) + (int,)
+
+
 def slice_to_range(slicer, r_max):
     """Convert a slice object to the corresponding index list"""
     step = 1 if slicer.step is None else slicer.step
@@ -114,7 +117,7 @@ def tile_slices(slicers, shape, chunks):
     new_slicers = []
     out_slicers = []
     for slicer in slicers:
-        if isinstance(slicer, int):
+        if isinstance(slicer, _integer_types):
             new_slicers.append([slicer])
             # this is a dimension-reducing slice, so do not put an output slice??
             # out_slicers.append([slicer])
@@ -401,7 +404,7 @@ class HDF5Buffer(MappedBuffer):
         for isl, osl in zip(i_slices, o_slices):
             if self._transpose_state:
                 # generally need to reverse the slice order
-                if isinstance(osl, int):
+                if isinstance(osl, _integer_types):
                     osl = (osl,)
                 osl = osl[::-1]
                 if len(osl) < out_arr.ndim:
@@ -548,7 +551,7 @@ class BufferBinder(BufferBase):
         axis = self._concat_axis
         skip_slice = slicer[axis]
         # handle the chance that this is just a singleton slice
-        if isinstance(skip_slice, int):
+        if isinstance(skip_slice, _integer_types):
             buffer = running_length.searchsorted(skip_slice, side='right') - 1
             slicer[axis] = skip_slice - running_length[buffer]
             return [(self._buffers[buffer], slicer)]
@@ -606,7 +609,7 @@ class BufferBinder(BufferBase):
         correction = 0
         for n, sl in enumerate(slicer):
             # need to reduce the concat axis for every dimension-eating slice that occurs before it
-            if n < self._concat_axis and isinstance(sl, int):
+            if n < self._concat_axis and isinstance(sl, _integer_types):
                 correction -= 1
         return self._concat_axis + correction
 
