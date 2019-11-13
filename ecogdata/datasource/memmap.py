@@ -413,7 +413,10 @@ class MappedSource(ElectrodeDataSource):
             return
         self._caching_process.join()
         self._caching_process = None
-        return self._cache_output
+        # try to release memory
+        out = self._cache_output
+        self._cache_output = None
+        return out
 
     def __getitem__(self, slicer):
         """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
