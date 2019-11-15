@@ -327,7 +327,7 @@ class FileLoader:
                 if delete_file:
                     os.unlink(ds_filename)
             # this should close the file
-            downsamp.close_source()
+            downsamp.data_buffer.close_source()
         self.transpose_array = False
         return ds_filename
 

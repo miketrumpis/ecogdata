@@ -285,6 +285,8 @@ class BufferBase:
         else:
             return self._read_output
 
+    def close_source(self):
+        raise NotImplementedError('Only implemented in subclasses')
 
 
 class MappedBuffer(BufferBase):
@@ -357,6 +359,12 @@ class MappedBuffer(BufferBase):
     def writeable(self):
         return self.__writeable
 
+    def close_source(self):
+        self._array.flush()
+        # Maybe this is a little seg-faulty?
+        # self._array.base.close()
+        del self._array
+
     def _scale_segment(self, x):
         if self.units_scale is None:
             return x
@@ -395,6 +403,11 @@ class HDF5Buffer(MappedBuffer):
     @property
     def chunks(self):
         return self._array.chunks
+
+    def close_source(self):
+        self._array.file.flush()
+        self._array.file.close()
+        del self._array
 
     def __getitem__(self, sl):
         # this function computes the output shape -- use ID=0 to explicitly *not* work for funky RegionReference slicing
@@ -524,6 +537,10 @@ class BufferBinder(BufferBase):
         dims = list(self._other_dims)
         dims.insert(self._concat_axis, self._total_length)
         return tuple(dims)
+
+    def close_source(self):
+        for b in self._buffers:
+            b.close_source()
 
     @contextmanager
     def transpose_reads(self, status=None):
