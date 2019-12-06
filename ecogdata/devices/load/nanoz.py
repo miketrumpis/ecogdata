@@ -8,26 +8,27 @@ def import_nanoz(fname, magphs=False, mag_scale=1e6):
     "Import nano-Z electrode impedance measurements"
     # fname is the text file of the nanoz report -- assuming it always
     # comes in the same flavor
-    arr = np.genfromtxt(
-        fname, delimiter='\t', 
-        skip_header=3, skip_footer=1, 
-        missing_values=['', '\t']
-        )
+    with open(fname, 'rb') as fp:
+        arr = np.genfromtxt(
+            fp, delimiter='\t',
+            skip_header=3, skip_footer=1,
+            missing_values=['', '\t']
+            )
     arr = arr[:, 1:]
     if arr.shape[1] % 2:
         arr = arr[:, :-1]
-    n_freq = arr.shape[1] / 2
+    n_freq = arr.shape[1] // 2
     arr = np.ma.masked_invalid(arr)
     mag = arr[:,0::2] * mag_scale
     phs = arr[:,1::2]
-    f = open(fname)
-    t = f.readline()
-    while not t.startswith('Site'):
-        t = f.readline()
-    freqs = t.split('\t')[1::2]
+    with open(fname, 'rb') as fp:
+        t = fp.readline()
+        while not t.startswith(b'Site'):
+            t = fp.readline()
+    freqs = t.split(b'\t')[1::2]
     fx = list()
     for f in freqs[:n_freq]:
-        fx.append( float(f.split(' ')[0]) )
+        fx.append( float(f.split(b' ')[0]) )
     fx = np.array(fx) if len(fx) > 1 else fx[0]
     mag = mag.squeeze()
     phs = phs.squeeze()
