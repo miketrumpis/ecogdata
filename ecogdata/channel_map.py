@@ -1,18 +1,23 @@
 import numpy as np
 import itertools
-import scipy.misc as spmisc
 from matplotlib.colors import BoundaryNorm, Normalize
 import matplotlib.cm as cm
 from matplotlib.patches import Rectangle
 from matplotlib.tri import Triangulation, LinearTriInterpolator, \
      CubicTriInterpolator
 
+from .util import Bunch, flat_to_mat, flat_to_flat, mat_to_flat
+
+
+class ChannelMapError(Exception):
+    pass
+
 
 def map_intersection(maps):
     """Return a binary grid of intersecting electrode sites between all maps with the same geometry."""
     geometries = set([m.geometry for m in maps])
     if len(geometries) > 1:
-        raise ValueError('cannot intersect maps with different geometries')
+        raise ChannelMapError('cannot intersect maps with different geometries')
     bin_map = maps[0].embed(np.ones(len(maps[0])), fill=0)
     for m in maps[1:]:
         bin_map *= m.embed(np.ones(len(m)), fill=0)
@@ -58,6 +63,11 @@ class ChannelMap(list):
             dy = dx = pitch
         r, c = geometry
         self.boundary = (-dx / 2.0, (c - 0.5) * dx, -dy / 2.0, (r - 0.5) * dy)
+        # use a hash table for lookups
+        rows, cols = flat_to_mat(geometry, np.array(chan_map), col_major=col_major)
+        # self._chan2site = dict([(x, (r, c)) for x, r, c in zip(chan_map, rows, cols)])
+        self._chan2site = dict(enumerate(zip(rows, cols)))
+        self._site2chan = dict([(v, k) for k, v in self._chan2site.items()])
 
 
     @classmethod
@@ -66,7 +76,6 @@ class ChannelMap(list):
         and a matrix shape (e.g. (5, 5)).
         """
 
-        from .util import mat_to_flat
         i, j = zip(*ij)
         map = mat_to_flat(shape, i, j, col_major=col_major)
         return cls(map, shape, col_major=col_major, pitch=pitch)
@@ -91,7 +100,6 @@ class ChannelMap(list):
         return self._combs
     
     def as_row_major(self):
-        from .util import flat_to_flat
         if self.col_major:
             return ChannelMap(
                 flat_to_flat(self.geometry, self[:]),
@@ -100,7 +108,6 @@ class ChannelMap(list):
         return self
 
     def as_col_major(self):
-        from .util import flat_to_flat
         if not self.col_major:
             return ChannelMap(
                 flat_to_flat(self.geometry, self[:], col_major=False),
@@ -109,24 +116,31 @@ class ChannelMap(list):
         return self
 
     def to_mat(self):
-        from .util import flat_to_mat
         return flat_to_mat(self.geometry, self, col_major=self.col_major)
 
     def lookup(self, i, j):
-        if np.iterable(i):
-            i = np.array(i, dtype='i')
-            j = np.array(j, dtype='i')
-        else:
+        if not np.iterable(i):
             i, j = map(int, (i, j))
-        from .util import mat_to_flat
-        flat_idx = mat_to_flat(self.geometry, i, j, col_major=self.col_major)
-        if np.iterable(flat_idx):
-            return np.array([self.index(fi) for fi in flat_idx])
-        return self.index(flat_idx)
+            try:
+                return self._site2chan[(i, j)]
+            except KeyError:
+                raise ChannelMapError('Site {}, {} is not mapped'.format(i, j))
+        else:
+            try:
+                return [self._site2chan[(row, col)] for row, col in zip(i, j)]
+            except KeyError:
+                raise ChannelMapError('One of the sites is not mapped')
 
     def rlookup(self, c):
-        from .util import flat_to_mat
-        return flat_to_mat(self.geometry, self[c], col_major=self.col_major)
+        if not np.iterable(c):
+            try:
+                return self._chan2site[c]
+            except KeyError:
+                raise ChannelMapError('Channel {} is not mapped'.format(c))
+        try:
+            return [self._chan2site[chan] for chan in c]
+        except KeyError:
+            raise ChannelMapError('One of the channels is not mapped')
 
     def subset(self, sub, as_mask=False, map_intersect=False):
         """
@@ -146,28 +160,20 @@ class ChannelMap(list):
             # check that it's a submap
             submap = map_intersection([self, sub])
             if submap.sum() < len(sub):
-                raise ValueError(
-                    'The given channel map is not a subset of this map'
-                    )
+                raise ChannelMapError('The given channel map is not a subset of this map')
             # get the channels/indices of the subset of sites
             sub = self.lookup(*submap.nonzero())
         elif isinstance(sub, np.ndarray):
             if sub.ndim==2:
                 # Get the channels/indices of the subset of sites.
-                # This needs to be sorted to look up the subset of
+                # The channel lookups need to be sorted to get the subset of
                 # channels in sequence
                 if map_intersect:
-                    # allow 2d binary map to cover missing sites
-                    ii, jj = sub.nonzero()
-                    sites = []
-                    for i, j in zip(ii, jj):
-                        try:
-                            sites.append(self.lookup(i, j))
-                        except ValueError:
-                            pass
-                else:
-                    # if this looks up missing sites, then raise
-                    sites = self.lookup(*sub.nonzero())
+                    # AND this map with the input binary map to cover missing sites
+                    this_mask = self.embed(np.ones(len(self), dtype='?'), fill=False)
+                    sub *= this_mask
+                # If this looks up missing sites, then raise
+                sites = self.lookup(*sub.nonzero())
                 sub = np.sort( sites )
             elif sub.ndim==1:
                 if sub.dtype.kind in ('b',):
@@ -211,9 +217,7 @@ class ChannelMap(list):
         data = np.atleast_1d(data)
         shape = list(data.shape)
         if shape[axis] != len(self):
-            raise ValueError(
-                'Data array does not have the correct number of channels'
-                )
+            raise ValueError('Data array does not have the correct number of channels')
         shape.pop(axis)
         shape.insert(axis, self.geometry[0]*self.geometry[1])
         array = np.empty(shape, dtype=data.dtype)
@@ -374,11 +378,9 @@ class CoordinateChannelMap(ChannelMap):
 
         if isinstance(sub, np.ndarray):
             if sub.ndim == 2:
-                raise ValueError('No binary maps')
+                raise ValueError('No binary maps allowed')
         elif isinstance(sub, ChannelMap) or not isinstance(sub, (tuple, list)):
-            raise ValueError(
-                "Can't interpret subset type: {0}".format(type(sub))
-                )
+            raise ValueError("Can't interpret subset type: {0}".format(type(sub)))
         return super(CoordinateChannelMap, self).subset(sub, as_mask=as_mask)
 
     def image(
@@ -503,7 +505,6 @@ def channel_combinations(chan_map, scale=1.0, precision=4):
 
     combs = np.array(list(itertools.combinations(range(len(chan_map)), 2)))
     combs = combs[combs[:, 1] > combs[:, 0]]
-    from .util import Bunch
     chan_combs = Bunch()
     npair = len(combs)
     chan_combs.p1 = np.empty(npair, 'i')
