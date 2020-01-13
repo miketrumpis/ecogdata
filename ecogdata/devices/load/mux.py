@@ -149,7 +149,7 @@ def load_mux(
     channels, Fs, dshape, info = loaded
     nrow, ncol_data = dshape
     if channels.shape[0] >= nrow * ncol_data:
-        ncol = channels.shape[0] / nrow
+        ncol = channels.shape[0] // nrow
         channels = channels.reshape(ncol, nrow, -1)
     else:
         ncol = channels.shape[0]
