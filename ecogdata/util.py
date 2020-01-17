@@ -84,8 +84,12 @@ def get_default_args(func):
     """
     returns a dictionary of arg_name:default_values for the input function
     """
-    args, varargs, keywords, defaults = inspect.getargspec(func)
-    return dict(list(zip(reversed(args), reversed(defaults))))
+    argspec = inspect.getfullargspec(func)
+    args = argspec.args
+    defaults = argspec.defaults
+    if defaults is None:
+        defaults = ()
+    return dict(zip(reversed(args), reversed(defaults)))
 
 
 # Path trick from SO:
