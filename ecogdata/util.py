@@ -151,15 +151,37 @@ def equalize_groups(x, group_sizes, axis=0, fill=np.nan, reshape=True):
     return y
 
 
-def fenced_out(samps, quantiles=(25, 75), thresh=3.0, axis=None, low=True):
+def fenced_out(samps, quantiles=(25, 75), thresh=3.0, axis=None, fences='both'):
     """
     Threshold input sampled based on Tukey's box-plot heuristic. An
     outlier is a value that lies beyond some multiple of of an
     inter-percentile range (3 multiples of the inter-quartile range
     is default). If the sample has an inter-percentile range of zero,
     then the sample median is substituted.
-    """
 
+
+    Parameters
+    ----------
+    samps: ndarray
+        Samples in n dimensions.
+    quantiles: tuple
+        Quantiles to define the nominal range: usually (25, 75) for inter-quartile
+    thresh: float
+        This multiples the normal sample range to define the limits of the outer fences.
+    axis: int or None
+        By default (None), use the entire sample (in all dimensions) to find outliers. If
+        an axis is specified, then repeat the outlier detection separately for all 1D samples
+        that slice along that dimension.
+    fences: str
+        By default, reject samples outside of the upper and lower fences (fences='both'). If
+        fences='lower' or fences='upper', then only detect outliers that are too low or too high.
+
+    Returns
+    -------
+    mask: ndarray
+        A binary mask of the same size as "samps", where True indicates an inlier and False an outlier.
+
+    """
     samps = np.asanyarray(samps)
     thresh = float(thresh)
     if isinstance(samps, np.ma.MaskedArray):
@@ -178,17 +200,24 @@ def fenced_out(samps, quantiles=(25, 75), thresh=3.0, axis=None, low=True):
     q_lo, q_hi = np.nanpercentile(samps, quantiles, axis=-1)
     extended_range = thresh * (q_hi - q_lo)
     if (extended_range == 0).any():
-        print('Equal percentiles: estimating outlier range from median value')
+        warn('Equal percentiles: estimating outlier range from median value', RuntimeWarning)
         m = (extended_range > 0).astype('d')
         md_range = thresh * q_hi
         extended_range = extended_range * m + md_range * (1 - m)
 
     high_cutoff = q_hi + extended_range / 2
     low_cutoff = q_lo - extended_range / 2
+    if fences.lower() not in ('lower', 'upper', 'both'):
+        warn('"fences" value not understood: marking all outliers', RuntimeWarning)
+        fences = 'both'
+    check_lo = fences.lower() in ('lower', 'both')
+    check_hi = fences.lower() in ('upper', 'both')
     # don't care about warnings about comparing nans to reals
     with np.errstate(invalid='ignore'):
-        out_mask = samps < high_cutoff[..., None]
-        if low:
+        out_mask = np.ones(samps.shape, dtype='?')
+        if check_hi:
+            out_mask &= samps < high_cutoff[..., None]
+        if check_lo:
             out_mask &= samps > low_cutoff[..., None]
     # be sure to reject nans as well
     out_mask &= ~np.isnan(samps)
