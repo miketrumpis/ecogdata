@@ -9,13 +9,19 @@ NonSignalChannels = Enum('NonSignalChannels', ['grounded', 'reference', 'other']
 GND = NonSignalChannels.grounded
 REF = NonSignalChannels.reference
 OTHER = NonSignalChannels.other
+# Turn this into a set to support membership logic ("x in NonSignalChannels")
+NonSignalChannels = set(NonSignalChannels)
 
 
 def _rev(n, coords):
-    return [c if c in NonSignalChannels else (n - c - 1) for c in coords]
+    return [c if (c is np.ma.masked or c in NonSignalChannels) else (n - c - 1) for c in coords]
 
 
 def marray(x, mask=None, **kwargs):
+    # This seems to serve the purpose of translating a heterogeneous
+    # list of numbers and NonSignalChannels values into a (masked) array.
+    # So far it's not clear that an array is needed (as opposed to a list),
+    # but maybe it would be valuable for composing masks.
     if mask is not None:
         return np.ma.masked_array(x, mask=mask, **kwargs)
     xf = [(-5 if x_ in NonSignalChannels else x_) for x_ in x]
