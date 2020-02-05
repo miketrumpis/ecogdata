@@ -947,6 +947,7 @@ electrode_maps = dict(
     # direct maps
     psv_256_rhd=psv_256_rhd,
     psv_1024_rhd=psv_1024_rhd,
+    psv_128_rhd=psv_128_rhd,
     psv_244_rhd=psv_244_rhd,
     psv_244_mux1=psv_244_mux1,
     psv_32=psv_32,
