@@ -258,10 +258,16 @@ def iter_epochs(x, pivots, selected=(), pre=0, post=0, fill=np.nan):
     x = np.atleast_2d(x) if x.ndim == 1 else x
     if isinstance(pivots, StimulatedExperiment):
         pivots, _ = trigs_and_conds(pivots)
-    epoch_len = int(np.median(np.diff(pivots)))
+    if not np.iterable(pivots):
+        pivots = [pivots]
 
     if not (post or pre):
-        post = epoch_len
+        if len(pivots) > 1:
+            print('Default epoch length based on median inter-trial time')
+            post = int(np.median(np.diff(pivots)))
+        else:
+            print('Default epoch length 200 pts')
+            post = 200
 
     epoch_len = int(round(post + pre))
     pre = int(round(pre))
@@ -323,10 +329,16 @@ def extract_epochs(x, pivots, selected=(), pre=0, post=0, fill=np.nan):
     x = np.atleast_2d(x) if x.ndim == 1 else x
     if isinstance(pivots, StimulatedExperiment):
         pivots, _ = trigs_and_conds(pivots)
-    epoch_len = int(np.median(np.diff(pivots)))
+    if not np.iterable(pivots):
+        pivots = [pivots]
 
     if not (post or pre):
-        post = epoch_len
+        if len(pivots) > 1:
+            print('Default epoch length based on median inter-trial time')
+            post = int(np.median(np.diff(pivots)))
+        else:
+            print('Default epoch length 200 pts')
+            post = 200
 
     epoch_len = int(round(post + pre))
     pre = int(round(pre))
