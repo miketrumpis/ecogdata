@@ -6,6 +6,7 @@ import tables
 from tables import NoSuchNodeError
 import os
 from contextlib import closing
+from pickle import PickleError, PicklingError
 
 from ecogdata.util import Bunch
 from ecogdata.parallel.array_split import shared_ndarray
@@ -125,39 +126,42 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0):
     return
 
 
-def load_bunch(f, path='/', shared_arrays=(), load=True, scan=False):
+def load_bunch(f, path='/', shared_arrays=(), load=True, scan=False, skip_stale_pickles=True):
     """
     Load a saved bunch, or an arbitrary collection of arrays into a
     new Bunch object. Sub-paths are recursively loaded as Bunch attributes.
     
     Parameters
     ---------
-    f : file name or fid
+    f: file name or fid
         Path or open tables file.
-    path : string
+    path: string
         HDF5 path within the tables file to load (default root path).
-    load : bool (True)
+    load: bool (True)
         Pre-load arrays into the returned Bunch. If False, then return
         a Bunch whose attributes are PyTables array-access objects. Note
         that the HDF5 file is left open in read-only mode.
-    scan : bool (False)
+    scan: bool (False)
         Only scan the contents of the path without loading arrays. Returns
         a Bunch with the path structure, but the file is closed.
+    skip_stale_pickles: bool (True)
+        Option to pass on unpickling data from incompatible library versions.
 
     Return
     ------
-    b : Bunch
+    b: Bunch
         The hierarchical dataset at "path" in Bunch format.
     
     """
 
     shared_arrays = ['/'.join([path, a]) for a in shared_arrays]
     return traverse_table(
-        f, path=path, shared_paths=shared_arrays, load=load, scan=scan
+        f, path=path, shared_paths=shared_arrays, load=load, scan=scan,
+        skip_stale_pickles=skip_stale_pickles
         )
 
 
-def traverse_table(f, path='/', load=True, scan=False, shared_paths=()):
+def traverse_table(f, path='/', load=True, scan=False, shared_paths=(), skip_stale_pickles=True):
     # Walk nodes and stuff arrays into the bunch.
     # If we encouter a group, then loop back into this method
     if not isinstance(f, tables.file.File):
@@ -214,7 +218,13 @@ def traverse_table(f, path='/', load=True, scan=False, shared_paths=()):
             gbunch[n.name] = arr
         elif isinstance(n, tables.VLArray):
             if load:
-                obj = n.read()[0]
+                try:
+                    obj = n.read()[0]
+                except (ModuleNotFoundError, PickleError, PicklingError):
+                    if not skip_stale_pickles:
+                        raise
+                    gbunch[n.name] = 'unloadable pickle'
+                    continue
                 # if it's a generic Bunch Pickle, then update the bunch
                 if n.name == 'b_pickle':
                     gbunch.update(obj)
