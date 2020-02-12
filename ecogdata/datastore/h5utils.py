@@ -37,26 +37,35 @@ class HDF5Bunch(Bunch):
         self.close()
 
 
-def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0):
+def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0, skip_pickles=False):
     """
     Save a Bunch type to an HDF5 group in a new or existing table.
-
-    Parameters
-    ---------
-
-    f : path or open tables file
-    path : path within the tables file, where the Bunch will be saved
-    b : the Bunch itself
-    mode : file mode (see tables.open_file)
-    compress_arrays : if >0, then ndarrays will be compressed at this level
 
     Arrays, strings, lists, and various scalar types are saved as
     naturally supported array types. Sub-Bunches are written
     recursively in sub-paths. The remaining Bunch elements are
     pickled, preserving their object classification.
 
+    Parameters
+    ----------
+    f: path or open tables file
+    path: str
+        Path in the HDF5 tree (e.g. /branch/node)
+    b: Bunch
+        Bunch to store at the path
+    mode: str
+        File access mode (caution: 'w' overwrites the entire file)
+    overwrite_paths: bool
+        If True, then an existing path in the HDF5 may be over-written
+    compress_arrays: int
+        Compression level (>0) for arrays. Arrays uncompressed if 0.
+    skip_pickles: bool
+        Non-array types are "pickled" as strings in pytables, which may be unpickled by
+        Python on loading. For maximum compatibility (e.g. Matlab), skip pickling.
+
     """
-    
+
+
     # * create a new group
     # * save any array-like type natively (esp ndarrays)
     # * save everything else as the pickled ObjectAtom 
@@ -67,7 +76,8 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0):
             return save_bunch(
                 f, path, b, 
                 overwrite_paths=overwrite_paths,
-                compress_arrays=compress_arrays
+                compress_arrays=compress_arrays,
+                skip_pickles=skip_pickles
                 )
 
     # If we want to overwrite a node, check to see that it exists.
@@ -113,15 +123,20 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0):
             pickle_bunch[key] = val
 
     # 2) pickle the remaining items (that are not bunches)
-    p_arr = f.create_vlarray(path, 'b_pickle', atom=tables.ObjectAtom())
-    p_arr.append(pickle_bunch)
+    if len(pickle_bunch):
+        if skip_pickles:
+            print('Warning: these keys are being skipped on path {}'.format(path))
+            print(pickle_bunch)
+        else:
+            p_arr = f.create_vlarray(path, 'b_pickle', atom=tables.ObjectAtom())
+            p_arr.append(pickle_bunch)
 
     # 3) repeat these steps for any bunch elements that are also bunches
     for n, b in sub_bunches:
         #print 'saving', n, b
         subpath = path + '/' + n if path != '/' else path + n
         save_bunch(
-            f, subpath, b, compress_arrays=compress_arrays
+            f, subpath, b, compress_arrays=compress_arrays, skip_pickles=skip_pickles
             )
     return
 
