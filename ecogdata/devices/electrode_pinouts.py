@@ -14,19 +14,31 @@ NonSignalChannels = set(NonSignalChannels)
 
 
 def _rev(n, coords):
-    return [c if (c is np.ma.masked or c in NonSignalChannels) else (n - c - 1) for c in coords]
+    """
+    Utility to "flip" array coordiantes (reverse grid columns)
+
+    Parameters
+    ----------
+    n: int
+        Column dimension
+    coords: sequence
+        Grid column indices
+
+    Returns
+    -------
+    revlist: list
+        Reversed index sequence
+
+    """
+    return [c if c in NonSignalChannels else (n - c - 1) for c in coords]
 
 
-def marray(x, mask=None, **kwargs):
-    # This seems to serve the purpose of translating a heterogeneous
-    # list of numbers and NonSignalChannels values into a (masked) array.
-    # So far it's not clear that an array is needed (as opposed to a list),
-    # but maybe it would be valuable for composing masks.
-    if mask is not None:
-        return np.ma.masked_array(x, mask=mask, **kwargs)
-    xf = [(-5 if x_ in NonSignalChannels else x_) for x_ in x]
-    xm = [x_ in NonSignalChannels for x_ in x]
-    return np.ma.masked_array(xf, mask=xm, **kwargs)
+def _shift_indices(idx, shift=-1):
+    """
+    Shift indices (e.g. 1-based to 0-based)
+
+    """
+    return [i if i in NonSignalChannels else i + shift for i in idx]
 
 
 def undo_gray_code(pinout, starting=0):
@@ -594,55 +606,54 @@ psv_16_gerbil = dict(
 psv_61_stim1 = dict(
     geometry=(8, 8),
     pitch=0.406,
-    rows=marray([3, 2, 3, 2, 3, 2, 3, GND, 1, 4, 1, 4, 1, 4,
-                 1, GND, 4, 1, 4, 1, 4, 1, 4, GND, 2, 3, 2, 3,
-                 2, 3, 2, GND], dtype='i') - 1,
-    cols=_rev(8, marray([4, 3, 3, 2, 2, 1, 1, GND, 4, 5, 5,
-                         6, 6, 7, 7, GND, 4, 3, 3, 2, 2, 1, 1,
-                         GND, 4, 5, 5, 6, 6, 7, 7, GND], dtype='i') - 1)
+    rows=_shift_indices([3, 2, 3, 2, 3, 2, 3, GND, 1, 4, 1, 4, 1, 4,
+                         1, GND, 4, 1, 4, 1, 4, 1, 4, GND, 2, 3, 2, 3,
+                         2, 3, 2, GND]),
+    cols=_rev(8, _shift_indices([4, 3, 3, 2, 2, 1, 1, GND, 4, 5, 5,
+                                 6, 6, 7, 7, GND, 4, 3, 3, 2, 2, 1, 1,
+                                 GND, 4, 5, 5, 6, 6, 7, 7, GND]))
 )
 
 psv_61_stim64 = dict(
     geometry=(8, 8),
     pitch=0.406,
-    rows=marray([GND, 8, 7, 7, 6, 6, 5, 5, 3, 4, 1, 4, 1, 4, 1, 4, GND,
-                 8, 8, 7, 7, 6, 6, 5, 5, 2, 3, 2, 3, 2, 3, 2, GND,
-                 8, 7, 7, 6, 6, 5, 5, 2, 3, 2, 3, 2, 3, 2, 3, GND,
-                 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 1, 4, 1, 4, 1], dtype='i') - 1,
-    cols=_rev(8, marray([GND, 7, 6, 7, 6, 7, 6, 7, 8, 8, 7, 7, 6, 6,
-                         5, 5, GND, 6, 5, 8, 5, 8, 5, 8, 5, 8, 7, 7,
-                         6, 6, 5, 5, GND, 3, 2, 3, 2, 3, 2, 3, 1, 1,
-                         2, 2, 3, 3, 4, 4, GND, 4, 2, 4, 1, 4, 1, 4,
-                         1, 1, 2, 2, 3, 3, 4, 4], dtype='i') - 1)
+    rows=_shift_indices([GND, 8, 7, 7, 6, 6, 5, 5, 3, 4, 1, 4, 1, 4, 1, 4, GND,
+                         8, 8, 7, 7, 6, 6, 5, 5, 2, 3, 2, 3, 2, 3, 2, GND,
+                         8, 7, 7, 6, 6, 5, 5, 2, 3, 2, 3, 2, 3, 2, 3, GND,
+                         8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 1, 4, 1, 4, 1]),
+    cols=_rev(8, _shift_indices([GND, 7, 6, 7, 6, 7, 6, 7, 8, 8, 7, 7, 6, 6,
+                                 5, 5, GND, 6, 5, 8, 5, 8, 5, 8, 5, 8, 7, 7,
+                                 6, 6, 5, 5, GND, 3, 2, 3, 2, 3, 2, 3, 1, 1,
+                                 2, 2, 3, 3, 4, 4, GND, 4, 2, 4, 1, 4, 1, 4,
+                                 1, 1, 2, 2, 3, 3, 4, 4]))
 )
 
 psv_61_stim64_15row = dict(
     geometry=(8, 8),
     pitch=0.406,
-    rows=marray([8, 7, 7, 6, 6, 5, 5, 3, 4, 1, 4, 1, 4, 1, 4,
-                 8, 8, 7, 7, 6, 6, 5, 5, 2, 3, 2, 3, 2, 3, 2,
-                 8, 7, 7, 6, 6, 5, 5, 2, 3, 2, 3, 2, 3, 2, 3,
-                 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 1, 4, 1, 4, 1], dtype='i') - 1,
-    cols=_rev(8, marray([7, 6, 7, 6, 7, 6, 7, 8, 8, 7, 7, 6, 6,
-                         5, 5, 6, 5, 8, 5, 8, 5, 8, 5, 8, 7, 7,
-                         6, 6, 5, 5, 3, 2, 3, 2, 3, 2, 3, 1, 1,
-                         2, 2, 3, 3, 4, 4, 4, 2, 4, 1, 4, 1, 4,
-                         1, 1, 2, 2, 3, 3, 4, 4], dtype='i') - 1)
+    rows=_shift_indices([8, 7, 7, 6, 6, 5, 5, 3, 4, 1, 4, 1, 4, 1, 4,
+                         8, 8, 7, 7, 6, 6, 5, 5, 2, 3, 2, 3, 2, 3, 2,
+                         8, 7, 7, 6, 6, 5, 5, 2, 3, 2, 3, 2, 3, 2, 3,
+                         8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 1, 4, 1, 4, 1]),
+    cols=_rev(8, _shift_indices([7, 6, 7, 6, 7, 6, 7, 8, 8, 7, 7, 6, 6,
+                                 5, 5, 6, 5, 8, 5, 8, 5, 8, 5, 8, 7, 7,
+                                 6, 6, 5, 5, 3, 2, 3, 2, 3, 2, 3, 1, 1,
+                                 2, 2, 3, 3, 4, 4, 4, 2, 4, 1, 4, 1, 4,
+                                 1, 1, 2, 2, 3, 3, 4, 4]))
 )
 
 psv_61_ddc = dict(
     geometry=(8, 8),
     pitch=0.406,
-    rows=marray([0, 3, 2, 1, 0, 0, 4, 5, 6, 7, 6, 7, 1, 4, 4, GND,
-                 0, 3, 1, 2, 3, 3, 4, 5, 6, 5, 6, 7, 2, 1, 5, 2, GND,
-                 4, 4, 1, 7, 6, 7, 6, 5, 4, 3, 3, 1, 2, 0, 3, GND,
-                 5, 1, 2, 7, 6, 5, 6, 5, 4, 2, 0, 2, 1, 0, 3], dtype='i'),
+    rows=[0, 3, 2, 1, 0, 0, 4, 5, 6, 7, 6, 7, 1, 4, 4, GND, 0,
+          3, 1, 2, 3, 3, 4, 5, 6, 5, 6, 7, 2, 1, 5, 2, GND, 4,
+          4, 1, 7, 6, 7, 6, 5, 4, 3, 3, 1, 2, 0, 3, GND, 5, 1,
+          2, 7, 6, 5, 6, 5, 4, 2, 0, 2, 1, 0, 3],
 
-    cols=_rev(8, marray([2, 2, 2, 2, 1, 0, 0, 0, 0, 1, 2, 2, 0, 2,
-                         1, GND, 3, 3, 3, 1, 1, 0, 3, 3, 3, 1, 1, 3,
-                         0, 1, 2, 3, GND, 7, 4, 7, 4, 4, 6, 6, 6, 6,
-                         7, 6, 5, 4, 5, 5, GND, 4, 6, 6, 5, 7, 7, 5,
-                         5, 5, 7, 6, 5, 4, 4, 4], dtype='i'))
+    cols=_rev(8, [2, 2, 2, 2, 1, 0, 0, 0, 0, 1, 2, 2, 0, 2, 1, GND, 3,
+                  3, 3, 1, 1, 0, 3, 3, 3, 1, 1, 3, 0, 1, 2, 3, GND, 7,
+                  4, 7, 4, 4, 6, 6, 6, 6, 7, 6, 5, 4, 5, 5, GND, 4, 6,
+                  6, 5, 7, 7, 5, 5, 5, 7, 6, 5, 4, 4, 4])
 )
 
 # same as above, but without disconnected channels
@@ -761,18 +772,18 @@ psv_61_wireless_sub = dict(
 # This is the lookup from mux3 channel to ZIF pin..
 # ZIF pin counts go in zig-zag zipper order, so approximate this
 # by a (2,32) "array" shape
-_mux3_to_zif = marray(
-    [GND, 1, 2, 4, 6, 8, 10, 12, 14, 16, 20, 22, 24, 26,
-     28, 30, GND, 60, 58, 56, 54, 52, 50, 48, 46, 44, 42,
-     40, 38, 36, 34, 32, GND, 61, 59, 57, 55, 53, 51, 49,
-     47, 45, 43, 41, 39, 37, 35, 33, GND, 3, 5, 7, 9, 11,
-     13, 15, 17, 19, 21, 23, 25, 27, 29, 31], dtype='i'
-) - 1
-_mux3_rows, _mux3_cols = np.unravel_index(
-    np.clip(_mux3_to_zif, 0, 63), (2, 32), order='F'
-)
-_mux3_rows = marray(_mux3_rows, _mux3_to_zif.mask, dtype='i')
-_mux3_cols = marray(_mux3_cols, _mux3_to_zif.mask, dtype='i')
+_mux3_to_zif = [GND, 1, 2, 4, 6, 8, 10, 12, 14, 16, 20, 22, 24, 26, 28, 30, GND, 60, 58, 56, 54, 52, 50, 48, 46, 44,
+                42, 40, 38, 36, 34, 32, GND, 61, 59, 57, 55, 53, 51, 49, 47, 45, 43, 41, 39, 37, 35, 33, GND, 3, 5,
+                7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
+_mux3_rows = list()
+_mux3_cols = list()
+for i in _mux3_to_zif:
+    if i in NonSignalChannels:
+        _mux3_rows.append(i)
+        _mux3_cols.append(i)
+    else:
+        _mux3_rows.append((i - 1) % 2)
+        _mux3_cols.append((i - 1) // 2)
 
 mux3_to_zif = dict(
     geometry=(2, 32),
@@ -793,7 +804,7 @@ ratv4_mux6 = dict(
 
 aro_puzzle = dict(
     geometry=(16, 16),
-    rows=marray(
+    rows=_shift_indices(
         [9, 8, 9, 8, 16, 8, 9, 8, 15, 16, 15, 15, 15, 16, 15, 16,
          14, 16, 16, 16, 10, 12, 15, 16, 14, 7, 13, 11, 14, 8, 14, 7,
          14, 7, 15, 8, 7, 7, 1, 1, 3, 5, 2, 4, 4, 6, 5, 2, 2, 4, 6, 3,
@@ -808,10 +819,9 @@ aro_puzzle = dict(
          13, 9, 10, 9, 16, 7, 7, 9, 7, 7, 8, 7, 7, 6, 7, 7, 8, 9, 8, 9,
          8, 9, 9, 15, 8, 15, 8, 15, 16, 15, 16, 15, 16, 15, 16, 15, 16,
          5, 1, 1, 5, 3, 6, 2, 4, 3, 6, 2, 4, 5, 2, 4, 3, 4, 2, 6, 3,
-         11, 1, 1, 5, 8, 16, 8, 12], dtype='i'
-    ) - 1,
+         11, 1, 1, 5, 8, 16, 8, 12]),
 
-    cols=marray(
+    cols=_shift_indices(
         [8, 2, 2, 5, 16, 7, 4, 3, 13, 12, 11, 10, 15, 14, 12,
          15, 9, 13, 9, 11, 9, 9, 9, 10, 14, 7, 9, 9, 16, 8, 12,
          5, 10, 1, 16, 1, 6, 8, 15, 14, 15, 15, 15, 15, 16, 15,
@@ -828,8 +838,7 @@ aro_puzzle = dict(
          15, 16, 12, 16, 16, 10, 14, 9, 14, 14, 12, 15, 16, 9,
          5, 13, 1, 11, 7, 2, 3, 4, 6, 1, 2, 5, 4, 3, 4, 4, 5,
          3, 4, 4, 4, 4, 5, 3, 5, 3, 1, 3, 1, 3, 2, 2, 2, 2, 8,
-         3, 2, 2, 12, 7, 10, 8], dtype='i'
-    ) - 1,
+         3, 2, 2, 12, 7, 10, 8]),
 )
 
 
