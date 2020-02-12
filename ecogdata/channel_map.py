@@ -211,8 +211,27 @@ class ChannelMap(list):
 
     def embed(self, data, axis=0, fill=np.nan):
         """
-        Embed the data in electrode array geometry, mapping channels
-        on the given axis
+        Embed the data in electrode array geometry, mapping channels on the given axis.
+        For example, if data is (channels, time), then embed(data, axis=0) yields the
+        shape (rows, cols, time). Similarly (time, channels) with axis=1 -> (time, rows, cols)
+
+        Parameters
+        ----------
+        data: ndarray
+            Electrode signal in channel order
+        axis: int
+            Axis with channel signal in data
+        fill: scalar
+            Fill the non-mapped channels with this value. *Caution* the default value of NaN
+            will cause the output array to be floating point, potentially up-casting the input
+            array. To retain an integer type output, you must use an integer fill value that
+            does not overflow.
+
+        Returns
+        -------
+        grid_data: ndarray
+            Embedded array matrix
+
         """
         data = np.atleast_1d(data)
         shape = list(data.shape)
@@ -220,7 +239,7 @@ class ChannelMap(list):
             raise ValueError('Data array does not have the correct number of channels')
         shape.pop(axis)
         shape.insert(axis, self.geometry[0]*self.geometry[1])
-        array = np.empty(shape, dtype=data.dtype)
+        array = np.empty(shape, dtype=np.result_type(data, fill))
         if not isinstance(fill, str):
             array.fill(fill)
         slicing = [slice(None)] * len(shape)
