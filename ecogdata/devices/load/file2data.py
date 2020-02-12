@@ -521,6 +521,7 @@ class FileLoader:
         # If mapped, then datasource and datasource_w will be identical (after filter_array call)
         # If loaded, then datasource_w is None and datasource is filtered in-place
         if self.bandpass:
+            # TODO: should filter in two stages for stabilitys
             # filter inplace if the "writeable" source is set to None
             filter_kwargs = dict(ftype='butterworth',
                                  inplace=datasource_w is None,
