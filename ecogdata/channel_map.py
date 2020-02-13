@@ -296,10 +296,37 @@ class ChannelMap(list):
             image[ _slice(i, j, 0) ] = fill
         return image
 
-    def image(
-            self, arr=None, cbar=True, nan='//',
-            fill=np.nan, ax=None, **kwargs
-            ):
+    def image(self, arr=None, cbar=True, nan='//', fill=np.nan, ax=None, show_channels=False, **kwargs):
+        """
+        Plot an array-space image of a data-space vector, or a binary map of channels.
+
+        Parameters
+        ----------
+        arr: ndarray
+            If given, embed and image this vector. If arr.shape == self.geometry then plot
+            the array as is. If arr == None, then plot a binary grid of mapped / not-mapped channels
+        cbar: bool
+            By default, plot a colorbar (cbar == True)
+        nan: str
+            Unmapped grid locations are coded as NaN and plotted as white. Use a "hatch" style to
+            visually indicate these sites (e.g. '//' for diagonal hatching, '+' for cross-hatching)
+        fill: float
+            Fill value for unmapped sites (NaN is conventional to mask plotting)
+        ax: Axes
+            Plot into an existing figure using this Axes object
+        show_channels: bool
+            Write channel number text into grid locations
+        kwargs: dict
+            Extra arguments for the Axes.imshow method (e.g. cmap, clim, ...)
+
+        Returns
+        -------
+        f: Figure
+            figure
+        cb: Colorbar
+            colorbar object (if cbar == True)
+
+        """
         kwargs.setdefault('origin', 'upper')
         if ax is None:
             import matplotlib.pyplot as pp
@@ -309,31 +336,72 @@ class ChannelMap(list):
             f = ax.figure
 
         if arr is None:
-            # image self
-            arr = self.embed( np.ones(len(self), 'd'), fill=fill )
+            # image self -- reset these defaults
+            arr = self.embed(np.ones(len(self), 'd'), fill=fill)
             kwargs.setdefault('clim', (0, 1))
             kwargs.setdefault('norm', BoundaryNorm([0, 0.5, 1], 256))
             kwargs.setdefault('cmap', cm.binary)
+            show_channels = True
+            self_map = True
+        else:
+            self_map = False
             
         if arr.shape != self.geometry:
             arr = self.embed(arr, fill=fill)
 
         nans = list(zip(*np.isnan(arr).nonzero()))
         im = ax.imshow(arr, **kwargs)
+
         ext = kwargs.pop('extent', ax.get_xlim() + ax.get_ylim())
         dx = abs(float(ext[1] - ext[0])) / arr.shape[1]
         dy = abs(float(ext[3] - ext[2])) / arr.shape[0]
-        x0 = min(ext[:2]); y0 = min(ext[2:])
+        x0 = min(ext[:2])
+        y0 = min(ext[2:])
         def s(x):
             return (x[0] * dy + y0, x[1] * dx + x0)
         if len(nan):
             for x in nans:
-                r = Rectangle( s(x)[::-1], dx, dy, hatch=nan, fill=False )
+                r = Rectangle(s(x)[::-1], dx, dy, hatch=nan, fill=False)
                 ax.add_patch(r)
         #ax.set_ylim(ext[2:][::-1])
         if cbar:
             cb = f.colorbar(im, ax=ax, use_gridspec=True)
             cb.solids.set_edgecolor('face')
+            if self_map:
+                cb.set_ticks([0.25, 0.75])
+                cb.ax.set_yticklabels(['not mapped', 'mapped'], rotation=90, va='center')
+        # need to make channel text after colorbar in case pixel size changes
+        f.tight_layout()
+        if show_channels:
+            max_tx_wd = int(np.log2(len(self))) + 1
+            pix_size_pts = ax.transData.get_matrix()[0, 0]
+            # fontsize will accomodate either 75% height or 75% width (assume 60% W/H aspect ratio)
+            max_width = 0.75 * pix_size_pts / max_tx_wd / 0.6
+            max_height = 0.75 * pix_size_pts
+            fontsize = min(max_width, max_height)
+            im_rgb = im.get_cmap()(im.norm(im.get_array()))[..., :3]
+            # "linearize" rgb values
+            im_rgb_lin = im_rgb ** 2.2
+            im_luminance = np.sum(im_rgb_lin * np.array([0.2126, 0.7152, 0.0722]), axis=2)
+            rgb_max = im_rgb_lin.max(axis=2)
+            rgb_min = im_rgb_lin.min(axis=2)
+            im_saturation = rgb_max - rgb_min
+            rgb_max[rgb_max == 0] = 1
+            im_saturation /= rgb_max
+            use_blk = (im_saturation < 0.3) & (im_luminance >= 0.5)
+            use_wht = (im_saturation < 0.3) & (im_luminance < 0.5)
+            # use_rgb = im_saturation >= 0.3
+            # set tx_colors to the default rotated RGB value
+            tx_colors = im_rgb + 0.5
+            tx_colors[tx_colors > 1] = tx_colors[tx_colors > 1] - 1
+            # set black and white on low saturation colors
+            tx_colors[use_blk] = 0
+            tx_colors[use_wht] = 1
+            # tx_colors = 1 - im_colors
+            for n, (i, j) in enumerate(zip(*self.to_mat())):
+                ax.text(j, i, str(n), horizontalalignment='center', verticalalignment='center',
+                        fontsize=fontsize, color=tx_colors[i, j])
+        if cbar:
             return f, cb
         return f
 
