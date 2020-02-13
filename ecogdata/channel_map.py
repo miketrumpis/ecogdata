@@ -3,8 +3,7 @@ import itertools
 from matplotlib.colors import BoundaryNorm, Normalize
 import matplotlib.cm as cm
 from matplotlib.patches import Rectangle
-from matplotlib.tri import Triangulation, LinearTriInterpolator, \
-     CubicTriInterpolator
+from matplotlib.tri import Triangulation, LinearTriInterpolator, CubicTriInterpolator
 
 from .util import Bunch, flat_to_mat, flat_to_flat, mat_to_flat
 
@@ -26,7 +25,7 @@ def map_intersection(maps):
 
 class ChannelMap(list):
     """A map of sample vector(s) to a matrix representing 2D sampling space."""
-    
+
     def __init__(self, chan_map, geometry, col_major=False, pitch=1.0):
         """
         A ChannelMap is a vector of grid locations in flat indexing that correspond to the electrode location of data
@@ -69,7 +68,6 @@ class ChannelMap(list):
         self._chan2site = dict(enumerate(zip(rows, cols)))
         self._site2chan = dict([(v, k) for k, v in self._chan2site.items()])
 
-
     @classmethod
     def from_index(cls, ij, shape, col_major=True, pitch=1.0):
         """Return a ChannelMap from a list of matrix index pairs (e.g. [(0, 3), (2, 1), ...])
@@ -79,7 +77,6 @@ class ChannelMap(list):
         i, j = zip(*ij)
         map = mat_to_flat(shape, i, j, col_major=col_major)
         return cls(map, shape, col_major=col_major, pitch=pitch)
-
 
     @classmethod
     def from_mask(cls, mask, col_major=True, pitch=1.0):
@@ -92,19 +89,18 @@ class ChannelMap(list):
         geo = mask.shape
         return cls.from_index(ij, geo, col_major=col_major, pitch=pitch)
 
-
     @property
     def site_combinations(self):
         if self._combs is None and len(self) > 1:
             self._combs = channel_combinations(self, scale=self.pitch)
         return self._combs
-    
+
     def as_row_major(self):
         if self.col_major:
             return ChannelMap(
                 flat_to_flat(self.geometry, self[:]),
                 self.geometry, col_major=False, pitch=self.pitch
-                )
+            )
         return self
 
     def as_col_major(self):
@@ -112,7 +108,7 @@ class ChannelMap(list):
             return ChannelMap(
                 flat_to_flat(self.geometry, self[:], col_major=False),
                 self.geometry, col_major=True, pitch=self.pitch
-                )
+            )
         return self
 
     def to_mat(self):
@@ -148,13 +144,13 @@ class ChannelMap(list):
 
         Most commonly, sub is a sequence (list, tuple, array) of subset
         indices.
-        
+
         ChannelMap: return the subset map for the intersecting sites
 
         ndarray: if NOT subset indices (i.e. a binary mask), then the
         mask is converted to indices. If the array is a 2D binary mask,
         then site-lookup is used.
-        
+
         """
         if isinstance(sub, type(self)):
             # check that it's a submap
@@ -164,7 +160,7 @@ class ChannelMap(list):
             # get the channels/indices of the subset of sites
             sub = self.lookup(*submap.nonzero())
         elif isinstance(sub, np.ndarray):
-            if sub.ndim==2:
+            if sub.ndim == 2:
                 # Get the channels/indices of the subset of sites.
                 # The channel lookups need to be sorted to get the subset of
                 # channels in sequence
@@ -174,8 +170,8 @@ class ChannelMap(list):
                     sub *= this_mask
                 # If this looks up missing sites, then raise
                 sites = self.lookup(*sub.nonzero())
-                sub = np.sort( sites )
-            elif sub.ndim==1:
+                sub = np.sort(sites)
+            elif sub.ndim == 1:
                 if sub.dtype.kind in ('b',):
                     sub = sub.nonzero()[0]
             else:
@@ -184,7 +180,7 @@ class ChannelMap(list):
             raise ValueError('Unknown subset type')
 
         if as_mask:
-            mask = np.zeros( (len(self),), dtype='?' )
+            mask = np.zeros((len(self),), dtype='?')
             mask[sub] = True
             return mask
 
@@ -192,7 +188,7 @@ class ChannelMap(list):
         return cls(
             [self[i] for i in sub], self.geometry,
             col_major=self.col_major, pitch=self.pitch
-            )
+        )
 
     def __getitem__(self, index):
         if not isinstance(index, slice):
@@ -201,7 +197,7 @@ class ChannelMap(list):
         new_map = cls(
             super(ChannelMap, self).__getitem__(index),
             self.geometry, col_major=self.col_major, pitch=self.pitch
-            )
+        )
         # Keep the pre-computed combinations IFF the entire map is copied
         i = index.start if index.start else 0
         j = index.stop if index.stop else len(self)
@@ -238,7 +234,7 @@ class ChannelMap(list):
         if shape[axis] != len(self):
             raise ValueError('Data array does not have the correct number of channels')
         shape.pop(axis)
-        shape.insert(axis, self.geometry[0]*self.geometry[1])
+        shape.insert(axis, self.geometry[0] * self.geometry[1])
         array = np.empty(shape, dtype=np.result_type(data, fill))
         if not isinstance(fill, str):
             array.fill(fill)
@@ -258,8 +254,8 @@ class ChannelMap(list):
         Take the elements of a matrix into the "natural" channel ordering.
         """
         m_shape = matrix.shape
-        m_flat = m_shape[axis] * m_shape[axis+1]
-        c_dims = m_shape[:axis] + (m_flat,) + m_shape[axis+2:]
+        m_flat = m_shape[axis] * m_shape[axis + 1]
+        c_dims = m_shape[:axis] + (m_flat,) + m_shape[axis + 2:]
         matrix = matrix.reshape(c_dims)
         return np.take(matrix, self, axis=axis)
 
@@ -269,31 +265,33 @@ class ChannelMap(list):
     def interpolated(self, image, axis=0, method='median'):
         # acts in-place
         mask = self.embed(np.zeros(len(self), dtype='?'), fill=1)
-        missing = np.where( mask )
+        missing = np.where(mask)
         g = self.geometry
+
         def _slice(i, j, w):
             before = [slice(None)] * axis
             after = [slice(None)] * (image.ndim - axis - 2)
             if w:
-                isl = slice( max(0, i-w), min(g[0], i+w+1) )
-                jsl = slice( max(0, j-w), min(g[1], j+w+1) )
+                isl = slice(max(0, i - w), min(g[0], i + w + 1))
+                jsl = slice(max(0, j - w), min(g[1], j + w + 1))
             else:
-                isl = i; jsl = j
-            before.extend( [isl, jsl] )
-            before.extend( after )
+                isl = i
+                jsl = j
+            before.extend([isl, jsl])
+            before.extend(after)
             return tuple(before)
 
         # first pass, tag all missing sites with nan
         for i, j in zip(*missing):
-            image[ _slice(i, j, 0) ] = np.nan
+            image[_slice(i, j, 0)] = np.nan
         for i, j in zip(*missing):
             # do a +/- 2 neighborhoods (8 neighbors)
-            patch = image[ _slice(i, j, 1) ].copy()
-            s = list( patch.shape )
-            s = s[:axis] + [ s[axis]*s[axis+1] ] + s[axis+2:]
+            patch = image[_slice(i, j, 1)].copy()
+            s = list(patch.shape)
+            s = s[:axis] + [s[axis] * s[axis + 1]] + s[axis + 2:]
             patch.shape = s
-            fill = np.nanmedian( patch, axis=axis )
-            image[ _slice(i, j, 0) ] = fill
+            fill = np.nanmedian(patch, axis=axis)
+            image[_slice(i, j, 0)] = fill
         return image
 
     def image(self, arr=None, cbar=True, nan='//', fill=np.nan, ax=None, show_channels=False, **kwargs):
@@ -345,7 +343,7 @@ class ChannelMap(list):
             self_map = True
         else:
             self_map = False
-            
+
         if arr.shape != self.geometry:
             arr = self.embed(arr, fill=fill)
 
@@ -357,13 +355,14 @@ class ChannelMap(list):
         dy = abs(float(ext[3] - ext[2])) / arr.shape[0]
         x0 = min(ext[:2])
         y0 = min(ext[2:])
+
         def s(x):
             return (x[0] * dy + y0, x[1] * dx + x0)
         if len(nan):
             for x in nans:
                 r = Rectangle(s(x)[::-1], dx, dy, hatch=nan, fill=False)
                 ax.add_patch(r)
-        #ax.set_ylim(ext[2:][::-1])
+        # ax.set_ylim(ext[2:][::-1])
         if cbar:
             cb = f.colorbar(im, ax=ax, use_gridspec=True)
             cb.solids.set_edgecolor('face')
@@ -405,6 +404,7 @@ class ChannelMap(list):
             return f, cb
         return f
 
+
 class CoordinateChannelMap(ChannelMap):
     "A map of sample vector(s) to a coordinate space."
 
@@ -416,7 +416,7 @@ class CoordinateChannelMap(ChannelMap):
             sequence of (y, x) values
         geometry : pair (optional)
             Geometry is determined from coordinate range if set to 'auto'.
-        
+
         """
         list.__init__(self)
         self[:] = coordinates
@@ -436,18 +436,18 @@ class CoordinateChannelMap(ChannelMap):
             self.geometry = geometry
         # this is nonsense, but to satisfy parent class
         self.col_major = col_major
-        
+
     def to_mat(self):
         return list(map(np.array, list(zip(*self))))
 
     def lookup(self, y, x):
-        coords = np.array( self )
+        coords = np.array(self)
         sites = np.c_[y, x]
         chans = []
         for s in sites:
             dist = np.apply_along_axis(
                 np.linalg.norm, 1, coords - s
-                )
+            )
             chans.append(np.argmin(dist))
         return np.array(chans).squeeze()
 
@@ -460,7 +460,7 @@ class CoordinateChannelMap(ChannelMap):
 
         * sub may not be another ChannelMask type
         * sub may not be a 2D binary mask
-                
+
         """
 
         if isinstance(sub, np.ndarray):
@@ -474,7 +474,7 @@ class CoordinateChannelMap(ChannelMap):
             self, arr=None, cbar=True, ax=None, interpolate=None,
             grid_pts=None, norm=None, clim=None, cmap='viridis',
             scatter_kw={}, contour_kw={}, **passthru
-            ):
+    ):
         y, x = self.to_mat()
         if ax is None:
             import matplotlib.pyplot as pp
@@ -493,7 +493,7 @@ class CoordinateChannelMap(ChannelMap):
             clim = arr.min(), arr.max()
         if not norm:
             norm = Normalize(*clim)
-            
+
         if interpolate:
             arrg, coords = self.embed(arr, interpolate=interpolate,
                                       grid_pts=grid_pts, grid_coords=True)
@@ -522,11 +522,11 @@ class CoordinateChannelMap(ChannelMap):
                 cb.solids.set_edgecolor('face')
             return f, cb
         return f
-            
+
     def embed(
             self, data, axis=0, interpolate='linear', grid_pts=None,
             grid_coords=False
-            ):
+    ):
         """
         Interpolates sample vector(s) in data onto a grid using Delauney
         triangulation. Interpolation modes may be "linear" or "cubic"
@@ -543,6 +543,7 @@ class CoordinateChannelMap(ChannelMap):
         yg = np.linspace(g[2], g[3], grid_pts[0])
         xg = np.linspace(g[0], g[1], grid_pts[1])
         xg, yg = np.meshgrid(xg, yg, indexing='xy')
+
         def f(x, interp_mode):
             xgr = xg.ravel()
             ygr = yg.ravel()
@@ -552,8 +553,8 @@ class CoordinateChannelMap(ChannelMap):
                 interp = CubicTriInterpolator(triang, x)
             return interp(xgr, ygr).reshape(grid_pts)
         arrg = np.apply_along_axis(f, axis, data, interpolate)
-        return ( arrg, (xg, yg) ) if grid_coords else arrg
-    
+        return (arrg, (xg, yg)) if grid_coords else arrg
+
     # many methods no longer make sense with coordinates
     def as_col_major(self):
         raise NotImplementedError
@@ -570,7 +571,7 @@ class CoordinateChannelMap(ChannelMap):
 
     def interpolated(self, *args, **kwargs):
         raise NotImplementedError
-    
+
 
 def channel_combinations(chan_map, scale=1.0, precision=4):
     """Compute tables identifying channel-channel pairs.
