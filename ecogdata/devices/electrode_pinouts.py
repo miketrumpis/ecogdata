@@ -133,21 +133,39 @@ def connect_passive_map(
         geometry, electrode_map, daq_order,
         interconnects=(), reverse_cols=True, pitch=1.0
 ):
-    # Make an end-to-end channel map. In the simplest scenario, only
-    # daq_order and electrode_map are used.
-    #
-    # geometry is the electrode grid size (nrow, ncol)
-    #
-    # daq_order is a list of pin names corresponding to the data array
-    # channels.
-    #
-    # electrode_map is a dictionary of pin names to grid indices
-    #
-    # interconnects is an optional list of inter-connecting pin-to-pin
-    # lookups between the DAQ and the electrode pins
-    #
-    # reverse_cols indicates that the column indices need to be flipped
-    #
+    """
+    Make an end-to-end channel map. In the simplest scenario, only
+    daq_order and electrode_map are used.
+
+    interconnects is an optional list of inter-connecting pin-to-pin
+    lookups between the DAQ and the electrode pins
+
+
+    Parameters
+    ----------
+    geometry: tuple
+        Electrode geometry (rows, cols)
+    electrode_map: dict
+        Dictionary of pin names (any pins) to grid indices (i.e. (row, col))
+    daq_order: sequence
+        A list of pin names in the order of the data array channels
+    interconnects: sequence
+        Any intermediate pin-to-pin mappings between the daq_order sequence
+        and the electrode_map lookup. Intermediate maps are dictionaries. The
+        first map in the sequence takes the pin names in daq_order as keys and
+        returns new key names (that feed into the next interconnect, and so on).
+        The final map returns pin names in electrode_map.
+    reverse_cols: bool
+        array columns should be flipped to anatomical (surgeon's) perspective
+    pitch: float or (float, float)
+        inter-electrode pitch
+
+    Returns
+    -------
+    map_dict: dict
+        a channel mapping dictionary
+
+    """
 
     rows = []
     cols = []
