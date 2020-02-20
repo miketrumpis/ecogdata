@@ -8,6 +8,7 @@ Just curious: :py:class:`ecogdata.datasource.basic.ElectrodeDataSource`
 .. toctree::
    :maxdepth: 1
 
+   channel_maps
    data_sources
    mapped_sources
    joining_datasets
