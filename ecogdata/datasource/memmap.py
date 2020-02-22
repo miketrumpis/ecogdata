@@ -6,7 +6,8 @@ import atexit
 from typing import Union, Sequence
 from collections import OrderedDict
 from tempfile import NamedTemporaryFile
-from ecogdata.parallel.mproc import Process
+# disable for now
+# from ecogdata.parallel.mproc import Process
 import numpy as np
 import h5py
 from scipy.signal import lfilter_zi
@@ -146,7 +147,8 @@ class MappedSource(ElectrodeDataSource):
         # Normally self[:10] will return an array. With this state toggled, it will return a new MappedSource
         self._slice_channels_as_maps = ToggleState(init_state=False)
         # Allow for a subprocess that will cache buffer reads in the background
-        self._caching_process = None
+        # (disabled for now)
+        # self._caching_process = None
 
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
@@ -401,19 +403,28 @@ class MappedSource(ElectrodeDataSource):
         self._check_slice_size(slicer)
         with self.data_buffer.transpose_reads(self._transpose):
             output = self.data_buffer.get_output_array(slicer)
-        p = Process(target=slice_data_buffer, args=(self.data_buffer, slicer),
-                    kwargs=dict(transpose=self._transpose, output=output))
-        p.start()
-        self._caching_process = p
+        # Sub-process issues on Windows and unaccountable lag on MacOS, so
+        # make the slice in this main process
+        # p = Process(target=slice_data_buffer, args=(self.data_buffer, slicer),
+        #             kwargs=dict(transpose=self._transpose, output=output))
+        # p.start()
+        # self._caching_process = p
+
+        # non-dispatched slicing
+        slice_data_buffer(self.data_buffer, slicer, transpose=self._transpose, output=output)
         self._cache_output = output
 
     def get_cached_slice(self):
-        if self._caching_process == None:
-            print('There is no cached read pending')
-            return
-        self._caching_process.join()
-        self._caching_process = None
+        # Remove sub-process slice retrieval for now
+        # if self._caching_process == None:
+        #     print('There is no cached read pending')
+        #     return
+        # self._caching_process.join()
+        # self._caching_process = None
         # try to release memory
+        if self._cache_output is None:
+            print('There is no slice available')
+            return
         out = self._cache_output
         self._cache_output = None
         return out
