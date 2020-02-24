@@ -56,10 +56,6 @@ def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', b
 
     """
 
-    # filter any out-of-date loading arguments
-    if save_downsamp is None:
-        save_downsamp = loader_kwargs.pop('useFs', None)
-
     loader = RHDLoader(experiment_path, test, electrode,
                        bandpass=bandpass,
                        notches=notches,
@@ -67,7 +63,7 @@ def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', b
                        load_channels=load_channels,
                        trigger_idx=trigger_idx,
                        mapped=mapped,
-                       resample_rate=save_downsamp,
+                       resample_rate=resample_rate,
                        use_stored=use_stored,
                        save_downsamp=save_downsamp,
                        store_path=store_path,
