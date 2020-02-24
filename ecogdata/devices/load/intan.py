@@ -8,9 +8,9 @@ from .file2data import FileLoader
 __all__ = ['load_rhd']
 
 
-def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', bandpass=(), notches=(), useFs=None,
-             trigger_idx=(), mapped=True, save_downsamp=True, use_stored=True, store_path=None,
-             raise_on_glitches=False):
+def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', bandpass=(), notches=(),
+             resample_rate=None, trigger_idx=(), mapped=True, save_downsamp=True, use_stored=True, store_path=None,
+             raise_on_glitches=False, **loader_kwargs):
     """
     Load a combined RHD file recording converted to HDF5.
 
@@ -31,7 +31,7 @@ def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', b
         Bandpass specified as (low-corner, high-corner). Use (-1, fc) for lowpass and (fc, -1) for highpass.
     notches: sequence
         List of notch filters to apply.
-    useFs: float
+    resample_rate: float
         Downsample to this frequency (must divide the full sampling frequency).
     trigger_idx: int or sequence
         The index/indices of a logic-level trigger signal in the "ADC" array.
@@ -46,6 +46,8 @@ def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', b
         If given, store the downsampled datasource here. Otherwise store it in the experiment_path directory.
     raise_on_glitches: bool
         Raise exceptions if any expected auxilliary channels are not loaded, otherwise emit warnings.
+    loader_kwargs: dict
+        Other loader kwargs (for backwards compatibility with older argument convetions)
 
     Returns
     -------
@@ -54,6 +56,10 @@ def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', b
 
     """
 
+    # filter any out-of-date loading arguments
+    if save_downsamp is None:
+        save_downsamp = loader_kwargs.pop('useFs', None)
+
     loader = RHDLoader(experiment_path, test, electrode,
                        bandpass=bandpass,
                        notches=notches,
@@ -61,7 +67,7 @@ def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', b
                        load_channels=load_channels,
                        trigger_idx=trigger_idx,
                        mapped=mapped,
-                       resample_rate=useFs,
+                       resample_rate=save_downsamp,
                        use_stored=use_stored,
                        save_downsamp=save_downsamp,
                        store_path=store_path,
