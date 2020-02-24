@@ -135,9 +135,9 @@ def load_experiment_auto(session, test, **load_kwargs):
     electrode = test_info.electrode
     headstage = test_info.headstage
     if os.name == 'nt':
-        if test_info.exp_path[0] == '/':
+        if test_info.exp_path and test_info.exp_path[0] == '/':
             test_info.exp_path = test_info.exp_path[1:]
-        if test_info.nwk_path[0] == '/':
+        if test_info.nwk_path and test_info.nwk_path[0] == '/':
             test_info.nwk_path = test_info.nwk_path[1:]
     test_info.exp_path = test_info.exp_path.replace('//', '/')
 
