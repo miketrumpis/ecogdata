@@ -78,7 +78,7 @@ def available_sessions(group=''):
         _, p2 = osp.split(p1)
         return '/'.join((p2, x))
     sessions = list(map(_two_path, conf_files))
-    return [s.strip('.txt').replace('_conf', '') for s in sessions]
+    return [s.replace('.txt', '').replace('_conf', '') for s in sessions]
 
 
 def locate_old_session(session, use_first=False):
