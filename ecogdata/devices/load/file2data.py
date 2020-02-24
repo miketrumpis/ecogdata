@@ -4,7 +4,7 @@ import numpy as np
 import warnings
 
 from ecogdata.util import Bunch
-from ecogdata.datasource import MappedSource, downsample_and_load
+from ecogdata.datasource import MappedSource, TempFilePool, downsample_and_load
 from ecogdata.devices.electrode_pinouts import get_electrode_map
 from ecogdata.devices.units import convert_scale
 from ecogdata.trigger_fun import process_trigger
@@ -366,7 +366,10 @@ class FileLoader:
             Datasource for reference channels. May be an empty list
 
         """
-        h5file = h5py.File(data_file, open_mode)
+        h5file = h5py.File(str(data_file), open_mode)
+        if isinstance(data_file, TempFilePool):
+            # need to register this to close since it will be left open
+            data_file.register_to_close(h5file)
         print('Opening source file {} in mode {}'.format(data_file, open_mode))
         print('Creating mapped sources: downsample ratio {}'.format(downsample_ratio))
         # Only map aligned arrays *that exist in the file!*

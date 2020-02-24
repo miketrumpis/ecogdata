@@ -476,10 +476,11 @@ class PlainArraySource(ElectrodeDataSource):
         """Creates a temp HDF5 file and returns a MappedSource for this datasource."""
         from .memmap import TempFilePool, MappedSource
         with TempFilePool(mode='ab') as tf:
-            filename = tf.name
+            filename = str(tf)
         fp_precision = load_params().floating_point.lower()
         typecode = 'f' if fp_precision == 'single' else 'd'
         hdf = h5py.File(filename, 'w', libver='latest')
+        tf.register_to_close(hdf)
         hdf.create_dataset('data', data=self.data_buffer.astype(typecode), chunks=True)
         for name in self.aligned_arrays:
             hdf.create_dataset(name, data=getattr(self, name).astype(typecode), chunks=True)

@@ -431,6 +431,7 @@ class OpenEphysLoader(FileLoader):
         else:
             ds_filename = downsamp_file
         downsamp_ratio = self.raw_sample_rate() // resample_rate
+        # here the TempFilePool does not remain open so do not need to register a closing callback
         hdf5_open_ephys_channels(self.experiment_path, self.recording, ds_filename, data_chans='all',
                                  downsamp=downsamp_ratio)
         return ds_filename
@@ -468,7 +469,7 @@ class OpenEphysLoader(FileLoader):
             if os.path.isdir(data_file):
                 # mapped_file = data_file + '.h5'
                 with TempFilePool(mode='ab') as mf:
-                    mapped_file = mf.name
+                    mapped_file = mf
                 print('Take note!! Creating full resolution map file {}'.format(mapped_file))
                 # Get a little tricky and see if this source should be writeable. If no, then leave it quantized with
                 # a scaling factor. If yes, then convert the source to microvolts.
@@ -480,6 +481,8 @@ class OpenEphysLoader(FileLoader):
                 else:
                     open_mode = 'r+'
                     self.units_scale = convert_scale(1, 'uv', self.units)
+                # Note: pass file "name" directly as a TempFilePool object so that file-closing can be registered
+                # downstream!!
                 data_file = mapped_file
             print('Calling super to map/load {} in mode {} scaling units {}'.format(data_file, open_mode,
                                                                                     self.units_scale))

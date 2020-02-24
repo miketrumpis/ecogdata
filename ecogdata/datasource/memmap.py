@@ -39,10 +39,15 @@ class TempFilePool:
     Example usage:
 
     >>> with TempFilePool() as f:
-    >>>    name = f.filename
+    >>>    name = str(f)
     >>> with h5py.File(name, 'w') as hdf_write:
     >>>    hdf_write.create_dataset(...)
     >>> hdf_read = h5py.File(name, 'r')
+
+    When the resulting tempfile is meant to remain open (i.e. not in a file-open context), then
+    use "register_to_close" to attempt closing before deleting
+
+    >>> f.register_to_close(hdf_read)
 
     """
 
@@ -57,12 +62,28 @@ class TempFilePool:
                 fw.write('This directory contains temporary files for memory mapped arrays. It should be deleted.\n')
         self.tf = NamedTemporaryFile(*args, **kwargs)
 
+    def __str__(self):
+        return self.tf.name
+
+    def __repr__(self):
+        return repr(self.tf.name)
+
     def __enter__(self):
         self.tf.__enter__()
-        return self.tf
+        return self
 
     def __exit__(self, exc, value, tb):
         return self.tf.__exit__(exc, value, tb)
+
+    def register_to_close(self, file_handle):
+        def closer():
+            try:
+                file_handle.close()
+                print('closed file {}'.format(self))
+            except Exception:
+                print('Could not close file {}'.format(self))
+                pass
+        atexit.register(closer)
 
 
 def _remove_pool():
@@ -572,8 +593,10 @@ class MappedSource(ElectrodeDataSource):
                 with TempFilePool(mode='ab') as f:
                     # punt on the unlink-on-close issue for now with "delete=False"
                     # f.file.close()
-                    filename = f.name
-            with h5py.File(filename, 'w', libver='latest') as fw:
+                    filename = f
+            # open as string just in case its a TempFilePool
+            # TODO: (need to figure out how to make it work seamless as a string)
+            with h5py.File(str(filename), 'w', libver='latest') as fw:
                 # Create all new datasets as non-transposed
                 fw.create_dataset(self._electrode_field, shape=(C, T), dtype=new_dtype, chunks=True)
                 if copy_electrodes:
@@ -589,7 +612,9 @@ class MappedSource(ElectrodeDataSource):
                     if copy_aligned:
                         aligned = getattr(self, name)[:]
                         fw[name][:] = aligned.T if self._transpose else aligned
-            f_mapped = h5py.File(filename, reopen_mode)
+            f_mapped = h5py.File(str(filename), reopen_mode)
+            if isinstance(filename, TempFilePool):
+                filename.register_to_close(f_mapped)
             return MappedSource.from_hdf_sources(f_mapped, self._electrode_field, units_scale=units_scale,
                                                  aligned_arrays=self.aligned_arrays, transpose=False,
                                                  electrode_channels=electrode_channels, channel_mask=channel_mask,

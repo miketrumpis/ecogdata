@@ -179,7 +179,7 @@ def test_hdf_buffer_transpose_negative_step():
 def test_hdf_buffer_raise_write_fail():
     # Create a buffer long-hand with a temp file that can be re-opened
     with TempFilePool(mode='ab') as f:
-        filename = f.name
+        filename = str(f)
     with h5py.File(filename, 'w') as hdf:
         hdf.create_dataset('data', shape=(10, 10), dtype='i')
     # now re-open in read mode
@@ -191,7 +191,7 @@ def test_hdf_buffer_raise_write_fail():
 def test_hdf_buffer_silent_write_fail():
     # Create a buffer long-hand with a temp file that can be re-opened
     with TempFilePool(mode='ab') as f:
-        filename = f.name
+        filename = str(f)
     with h5py.File(filename, 'w') as hdf:
         hdf.create_dataset('data', data=np.ones((10, 10)))
     # now re-open in read mode
