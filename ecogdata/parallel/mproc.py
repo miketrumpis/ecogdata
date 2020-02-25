@@ -41,7 +41,7 @@ def make_stderr_logger(level='info'):
         logger.setLevel(base_level)
 
 
-if platform.system().lower().find('windows') < 0:
+if platform.system().lower().find('windows') < 0 and get_start_method() != 'spawn':
     # Do monkey-patch suggested for Python Issue 30919
     # https://bugs.python.org/issue30919
     # This issue was *addressed* in Python 3.7, but performance is still poor.
