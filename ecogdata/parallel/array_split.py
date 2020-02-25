@@ -4,7 +4,6 @@ from contextlib import closing, contextmanager
 import warnings
 from decorator import decorator
 import numpy as np
-from functools import reduce
 from ecogdata.util import ToggleState
 from datetime import datetime
 
@@ -50,59 +49,103 @@ dtype_ctype = dict((('F', 'f'), ('D', 'd'), ('G', 'g')))
 ctype_dtype = dict(((v, k) for k, v in dtype_ctype.items()))
 
 
-def shared_ndarray(shape, typecode='d'):
-    if not parallel_controller.state:
-        return np.empty(shape, dtype=typecode)
-    N = reduce(np.multiply, shape)
-    if typecode in dtype_ctype:
-        N *= 2
-        ctypecode = dtype_ctype[typecode]
-    else:
-        ctypecode = typecode
-    shm = mp.Array(ctypecode, int(N))
-    return SharedmemManager.tonumpyarray(shm, shape=shape, dtype=typecode)
+class SharedmemTool:
 
-
-def shared_copy(x):
-    # don't create wasteful copy if not doing parallel
-    if not parallel_controller.state:
-        return x
-    typecode = dtype_maps_to.get(x.dtype.char, x.dtype.char)
-    y = shared_ndarray(x.shape, typecode=typecode)
-    y[:] = x.astype(typecode, copy=False)
-    return y
-
-
-class SharedmemManager:
-
-    def __init__(self, np_array, use_lock=False):
-        self.dtype = np_array.dtype.char
-        self.shape = np_array.shape
-        if self.dtype in dtype_ctype:
-            ctype_view = dtype_ctype[self.dtype]
-            self.shm = mp.sharedctypes.synchronized(
-                np.ctypeslib.as_ctypes(np_array.view(ctype_view))
-            )
-        else:
-            self.shm = mp.sharedctypes.synchronized(
-                np.ctypeslib.as_ctypes(np_array)
-            )
-        # There may be some cases where you'd want to use locking intermittently?
+    def __init__(self, shm_object, shape, dtype_code, use_lock=False):
+        self.shm = shm_object
+        self.shape = shape
+        self.dtype = dtype_code
         self.use_lock = ToggleState(init_state=use_lock)
+
+    @classmethod
+    def sharedctypes_from_shape_and_code(cls, shape, typecode='d'):
+        N = int(shape[0])
+        for dim in shape[1:]:
+            N *= int(dim)
+        # check for complex type -- needs to be flattened into real pairs
+        if typecode in dtype_ctype:
+            N *= 2
+            ctypecode = dtype_ctype[typecode]
+        else:
+            ctypecode = typecode
+
+        shm = mp.Array(ctypecode, N)
+        return shm
+
+    @classmethod
+    def shared_ndarray(cls, shape, typecode='d'):
+        ctype_array = cls.sharedctypes_from_shape_and_code(shape, typecode=typecode)
+        return cls.tonumpyarray(ctype_array, shape=shape, dtype=typecode)
+
+    @classmethod
+    def shared_copy(cls, x):
+        typecode = dtype_maps_to.get(x.dtype.char, x.dtype.char)
+        y = cls.shared_ndarray(x.shape, typecode=typecode)
+        y[:] = x.astype(typecode, copy=False)
+        return y
 
     @contextmanager
     def get_ndarray(self):
+        cls = type(self)
         if self.use_lock.state:
             with self.shm.get_lock():
-                yield SharedmemManager.tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)
+                yield cls.tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)
         else:
-            yield SharedmemManager.tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)
+            yield cls.tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)
 
-    @staticmethod
-    def tonumpyarray(mp_arr, dtype=float, shape=None):
+    @classmethod
+    def tonumpyarray(cls, mp_arr, dtype=float, shape=None):
         if shape is None:
             shape = shape_
         return np.frombuffer(mp_arr.get_obj(), dtype=dtype).reshape(shape)
+
+
+class ForkSharedmemManager(SharedmemTool):
+
+    def __init__(self, np_array, use_lock=False):
+        dtype = np_array.dtype.char
+        shape = np_array.shape
+        if dtype in dtype_ctype:
+            ctype_view = dtype_ctype[dtype]
+            shm = mp.sharedctypes.synchronized(
+                np.ctypeslib.as_ctypes(np_array.view(ctype_view))
+            )
+        else:
+            shm = mp.sharedctypes.synchronized(
+                np.ctypeslib.as_ctypes(np_array)
+            )
+        super(ForkSharedmemManager, self).__init__(shm, shape, dtype, use_lock=use_lock)
+
+
+class SpawnSharedmemManager(SharedmemTool):
+    """
+    Basically the same but we have to hold shared mem as a plain sharedctypes.Array
+    and COPY a numpy ndarray into the array
+    """
+
+    def __init__(self, np_array, use_lock=False):
+        dtype = np_array.dtype.char
+        shape = np_array.shape
+        # instead of creating a ctypes "view" a la numpy.ctypeslib.as_ctypes, we
+        # need to make a whole new shared ctypes Array that can be pickled (hopefully the pointer only?)
+        shared_ctypes = SharedmemTool.sharedctypes_from_shape_and_code(shape, typecode=dtype)
+        super(SpawnSharedmemManager, self).__init__(shared_ctypes, shape, dtype, use_lock=use_lock)
+        # shm = mp.sharedctypes.synchronized(shared_ctypes)
+        # must copy np_array into the new array
+        with self.get_ndarray() as ndarray:
+            ndarray[:] = np_array
+        # super(SpawnSharedmemManager, self).tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)[:] = np_array
+        # self.use_lock = ToggleState(init_state=use_lock)
+
+
+if mp.get_start_method() == 'spawn':
+    SharedmemManager = SpawnSharedmemManager
+else:
+    SharedmemManager = ForkSharedmemManager
+
+
+shared_ndarray = SharedmemManager.shared_ndarray
+shared_copy = SharedmemManager.shared_copy
 
 
 def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurrent=False):
