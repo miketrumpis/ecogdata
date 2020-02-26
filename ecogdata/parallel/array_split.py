@@ -1,4 +1,3 @@
-import platform
 import ecogdata.parallel.mproc as mp
 from contextlib import closing, contextmanager
 import warnings
@@ -12,10 +11,7 @@ def timestamp():
     return datetime.now().strftime('%H-%M-%S-%f')
 
 
-if platform.system().lower().find('windows') >= 0:
-    parallel_controller = ToggleState(name='Parallel Controller', permanent_state=False)
-else:
-    parallel_controller = ToggleState(name='Parallel Controller')
+parallel_controller = ToggleState(name='Parallel Controller')
 
 # from the "array" module docstring
 """
@@ -75,7 +71,8 @@ class SharedmemTool:
     @classmethod
     def shared_ndarray(cls, shape, typecode='d'):
         ctype_array = cls.sharedctypes_from_shape_and_code(shape, typecode=typecode)
-        return cls.tonumpyarray(ctype_array, shape=shape, dtype=typecode)
+        # this should actually always return np.frombuffer(ctypes_array.get_obj(), ...)
+        return np.frombuffer(ctype_array.get_obj(), dtype=typecode).reshape(shape)
 
     @classmethod
     def shared_copy(cls, x):
@@ -117,25 +114,49 @@ class ForkSharedmemManager(SharedmemTool):
         super(ForkSharedmemManager, self).__init__(shm, shape, dtype, use_lock=use_lock)
 
 
+_spawning_mem_cache = dict()
+
+
 class SpawnSharedmemManager(SharedmemTool):
     """
     Basically the same but we have to hold shared mem as a plain sharedctypes.Array
-    and COPY a numpy ndarray into the array
+    and COPY a numpy ndarray into the array. However, if this class was already used to
+    create a shared array (shared_ndarray), then the sharedctypes.Array should be found
+    in the memory cache dictionary.
     """
 
     def __init__(self, np_array, use_lock=False):
         dtype = np_array.dtype.char
         shape = np_array.shape
-        # instead of creating a ctypes "view" a la numpy.ctypeslib.as_ctypes, we
-        # need to make a whole new shared ctypes Array that can be pickled (hopefully the pointer only?)
-        shared_ctypes = SharedmemTool.sharedctypes_from_shape_and_code(shape, typecode=dtype)
+        ptr = np_array.__array_interface__['data'][0]
+        if ptr in _spawning_mem_cache:
+            shared_ctypes = _spawning_mem_cache[ptr]
+            existing_shared_mem = True
+        else:
+            # instead of creating a ctypes "view" a la numpy.ctypeslib.as_ctypes, we
+            # need to make a whole new shared ctypes Array that can be pickled (hopefully the pointer only?)
+            shared_ctypes = SharedmemTool.sharedctypes_from_shape_and_code(shape, typecode=dtype)
+            existing_shared_mem = False
         super(SpawnSharedmemManager, self).__init__(shared_ctypes, shape, dtype, use_lock=use_lock)
         # shm = mp.sharedctypes.synchronized(shared_ctypes)
         # must copy np_array into the new array
-        with self.get_ndarray() as ndarray:
-            ndarray[:] = np_array
-        # super(SpawnSharedmemManager, self).tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)[:] = np_array
-        # self.use_lock = ToggleState(init_state=use_lock)
+        if not existing_shared_mem:
+            with self.get_ndarray() as ndarray:
+                ndarray[:] = np_array
+                # also add this pointer to the cache?
+                ptr = ndarray.__array_interface__['data'][0]
+                _spawning_mem_cache[ptr] = shared_ctypes
+
+    @classmethod
+    def shared_ndarray(cls, shape, typecode='d'):
+        ctype_array = cls.sharedctypes_from_shape_and_code(shape, typecode=typecode)
+        # this should actually always return np.frombuffer(ctypes_array.get_obj(), ...)
+        ndarray = np.frombuffer(ctype_array.get_obj(), dtype=typecode).reshape(shape)
+        ptr = ndarray.__array_interface__['data'][0]
+        _spawning_mem_cache[ptr] = ctype_array
+        return ndarray
+
+
 
 
 if mp.get_start_method() == 'spawn':
@@ -171,14 +192,6 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
     """
     info = mp.get_logger().info
     info('{} Starting wrap'.format(timestamp()))
-    # short circuit if the platform is Windows-based (look into doing
-    # real multiproc later)
-    if n_jobs == 0 or platform.system().lower().find('windows') >= 0:
-        @decorator
-        def inner_split_method(method, *args, **kwargs):
-            return method(*args, **kwargs)
-        return inner_split_method
-
     # normalize inputs
     if not np.iterable(splice_at):
         splice_at = (splice_at,)
@@ -233,30 +246,9 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
                 processes=n_jobs, initializer=_init_globals,
                 initargs=init_args
         )) as p:
-            n_div = estimate_chunks(split_x[0].size, len(p._pool))
             dim_size = split_x[0].shape[0]
-
-            # if there are less or equal dims as procs, then split it up 1 per
-            # otherwise, balance it with some procs having
-            # N=ceil(dims / procs) dims, and the rest having N-1
-
-            max_dims = int(np.ceil(float(dim_size) / n_div))
-            job_dims = [max_dims] * n_div
-            n = -1
-            # step back and subtract job size until sum matches total size
-            while np.sum(job_dims) > dim_size:
-                m = job_dims[n]
-                job_dims[n] = m - 1
-                n -= 1
-            # filter out any proc with zero size
-            job_dims = [_f for _f in job_dims if _f]
-            n = 0
-            job_slices = list()
-            # now form the data slicing to map out to the jobs
-            for dims in job_dims:
-                job_slices.extend([slice(n, n + dims)])
-                n += dims
             # map the jobs
+            job_slices = divy_slices(dim_size, len(p._pool))
             info('{} Mapping jobs'.format(timestamp()))
             res = p.map_async(_global_method_wrap, job_slices)
 
@@ -275,9 +267,28 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
     return inner_split_method
 
 
-def estimate_chunks(arr_size, nproc):
-    # do nothing now
-    return nproc
+def divy_slices(dim_size, n_div):
+    # if there are less or equal dims as procs, then split it up 1 per
+    # otherwise, balance it with some procs having
+    # N=ceil(dims / procs) dims, and the rest having N-1
+
+    max_dims = int(np.ceil(float(dim_size) / n_div))
+    job_dims = [max_dims] * n_div
+    n = -1
+    # step back and subtract job size until sum matches total size
+    while np.sum(job_dims) > dim_size:
+        m = job_dims[n]
+        job_dims[n] = m - 1
+        n -= 1
+    # filter out any proc with zero size
+    job_dims = [_f for _f in job_dims if _f]
+    n = 0
+    job_slices = list()
+    # now form the data slicing to map out to the jobs
+    for dims in job_dims:
+        job_slices.extend([slice(n, n + dims)])
+        n += dims
+    return job_slices
 
 
 def splice_results(map_list, splice_at):
@@ -308,6 +319,8 @@ class shared_readonly:
         self.mem_mgr = mem_mgr
 
     def __getitem__(self, idx):
+        # TODO: is a copy really needed here? will any subsequent access to this slice, even if read-only, interfere
+        #  with other processes? I guess probably yes?
         with self.mem_mgr.get_ndarray() as shm_ndarray:
             return shm_ndarray[idx].copy()
 
