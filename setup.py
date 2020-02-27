@@ -35,4 +35,5 @@ if __name__=='__main__':
         scripts=glob('scripts/*.py'),
         ext_modules=[slepian_projection],
         cmdclass={'build_ext': build_ext},
+        package_data={'ecogdata.expconfig': ['*.txt']}
     )
