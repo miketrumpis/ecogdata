@@ -36,10 +36,10 @@ Pip:
 $ pip install -r ecogdata/requirements.txt
 ```
 
-Conda
+Conda: **change "tables" to "pytables" in requirements.txt** (and add conda forge channel to your settings to avoid "-c")
 
 ```bash
-$ conda install -n <your-env-name> --file requirements.txt
+$ conda install -c conda-forge -n <your-env-name> --file requirements.txt
 ```
 
 Last, install ecogdata in any way you choose. 
