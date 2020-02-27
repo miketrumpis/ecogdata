@@ -49,3 +49,8 @@ I use "editable" mode to avoid re-installing after git pulls: pip install -e
 $ pip install -e ./ecogdata
 ```
 
+Run tests to check install:
+
+```bash
+$ nosetests ecogdata
+```
