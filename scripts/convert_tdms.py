@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 import os
 from glob import glob
+try:
+    import resource
+    RES_DEFED = True
+except ImportError:
+    RES_DEFED = False
 
 from ecogdata.devices.load.tdms import tdms_to_hdf5
 
@@ -39,6 +44,14 @@ if __name__ == '__main__':
     else:
         all_tdms = args.tdms_file
         all_h5 = args.h5_file
+
+    if RES_DEFED:
+        (flim_soft, flim_hard) = resource.getrlimit(resource.RLIMIT_NOFILE)
+        # assume 500 channels per file
+        flim_needed = len(all_tdms) * 500
+        if flim_needed > flim_soft:
+            print('boosting file limits', 3 * flim_needed)
+            resource.setrlimit(resource.RLIMIT_NOFILE, (3 * flim_needed, flim_hard))
 
     for tf, hf in zip(all_tdms, all_h5):
         if hf:
