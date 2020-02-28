@@ -23,12 +23,25 @@ Quick install
 Generic steps for cloning ecogdata and installing follow.
 If you are using `conda`_ or `pyenv`_ then activate environments and/or change the install procedure accordingly.
 
+.. attention::
+   When using pip in an empty virtualenv, install ``numpy`` and ``scipy`` in order and before other packages.
+
 .. code-block:: bash
 
     $ git clone git@github.com:miketrumpis/ecogdata.git
     $ cd ecogdata
     $ pip install -r requirements.txt
     $ pip install .
+
+Building these docs
+```````````````````
+
+Install from ``requirements_docs.txt`` and
+
+.. code-block:: bash
+
+    $ cd docs
+    $ make all
 
 More about ecogdata
 -------------------

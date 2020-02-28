@@ -54,3 +54,15 @@ Run tests to check install:
 ```bash
 $ nosetests ecogdata
 ```
+
+## Docs & demo notebooks
+
+To build API documentation and usage demos, first install requirements in requirements-docs.txt.
+Then:
+
+```bash
+$ cd docs
+$ make all
+```
+
+Alternatively, install ``jupyter`` and run the notebooks in ``docs/source/usage_demos`` interactively.
