@@ -1,5 +1,6 @@
 # Numpy note: you should pip install this BEFORE any batch install!
 numpy<=1.16.0
+cython
 lxml
 decorator
 nitime==0.8.1
