@@ -474,7 +474,7 @@ class OpenEphysLoader(FileLoader):
                 # Get a little tricky and see if this source should be writeable. If no, then leave it quantized with
                 # a scaling factor. If yes, then convert the source to microvolts.
                 quantized = not (self.ensure_writeable or self.bandpass or self.notches)
-                hdf5_open_ephys_channels(self.experiment_path, self.recording, mapped_file, data_chans='all',
+                hdf5_open_ephys_channels(self.experiment_path, self.recording, str(mapped_file), data_chans='all',
                                          quantized=quantized)
                 if quantized:
                     open_mode = 'r'
