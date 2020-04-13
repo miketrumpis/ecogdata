@@ -3,7 +3,7 @@ import h5py
 import numpy as np
 import warnings
 
-from ecogdata.util import Bunch
+from ecogdata.util import Bunch, mkdir_p
 from ecogdata.datasource import MappedSource, TempFilePool, downsample_and_load
 from ecogdata.devices.electrode_pinouts import get_electrode_map
 from ecogdata.devices.units import convert_scale
@@ -192,6 +192,9 @@ class FileLoader:
                 else:
                     # use the preferred path with the preferred extension (always .h5)
                     new_downsamp_file = os.path.join(search_dirs[0], new_downsamp_file) + '.h5'
+                    # create the path if necessary
+                    if not os.path.exists(search_dirs[0]):
+                        mkdir_p(search_dirs[0])
         else:
             new_downsamp_file = None
 
