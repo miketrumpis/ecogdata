@@ -1,7 +1,7 @@
 import os
 from nose.tools import assert_true, assert_equal, raises
 import numpy as np
-from ecogdata.datasource.array_abstractions import HDF5Buffer, BufferBinder
+from ecogdata.datasource.array_abstractions import HDF5Buffer
 from ecogdata.datasource.memmap import MappedSource, MemoryBlowOutError
 from ecogdata.datasource.basic import PlainArraySource
 
