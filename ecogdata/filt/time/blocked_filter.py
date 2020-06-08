@@ -2,7 +2,7 @@ import numpy as np
 import scipy.signal as signal
 from scipy.fftpack import fft, ifft
 from scipy.linalg import LinAlgError
-from tqdm import tqdm
+# from tqdm import tqdm
 from ecogdata.util import input_as_2d, nextpow2
 
 from ..blocks import BlockedSignal
@@ -132,10 +132,10 @@ def overlap_add(x, w, progress=False):
     # not-centered padding
     z = np.zeros( x.shape[:-1] + (nfft-N,) )
 
-    if progress:
-        itr = tqdm(range(nb1))
-    else:
-        itr = range(nb1)
+    # if progress:
+    #     itr = tqdm(range(nb1))
+    # else:
+    itr = range(nb1)
     for n in itr:
         
         b = blocks.block(n)

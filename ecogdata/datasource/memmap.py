@@ -12,7 +12,7 @@ import numpy as np
 import h5py
 from scipy.signal import lfilter_zi
 from numpy.linalg import LinAlgError
-from tqdm import tqdm
+# from tqdm import tqdm
 
 from ecogdata.expconfig import load_params
 from ecogdata.util import ToggleState
@@ -687,9 +687,9 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
     zi = None
     itr = x.iter_blocks(return_slice=True)
     # Disable verbose & tqdm -- garbage collection issue
-    verbose = False
-    if verbose:
-        itr = tqdm(itr, desc='Blockwise filtering', leave=True, total=len(itr))
+    # verbose = False
+    # if verbose:
+    #     itr = tqdm(itr, desc='Blockwise filtering', leave=True, total=len(itr))
     for xc, sl in itr:
         if zi is None:
             zi = zii[zi_sl] * xc[xc_sl]
@@ -711,8 +711,8 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
         itr = x.iter_blocks(return_slice=True, reverse=True)
     else:
         itr = out.iter_blocks(return_slice=True, reverse=True)
-    if verbose:
-        itr = tqdm(itr, desc='Blockwise filtering (reverse)', leave=True, total=len(itr))
+    # if verbose:
+    #     itr = tqdm(itr, desc='Blockwise filtering (reverse)', leave=True, total=len(itr))
     for xc, sl in itr:
         if zi is None:
             zi = zii[zi_sl] * xc[xc_sl]

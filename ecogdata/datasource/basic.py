@@ -1,7 +1,7 @@
 from warnings import warn
 import numpy as np
 import h5py
-from tqdm import tqdm
+# from tqdm import tqdm
 
 from ecogdata.expconfig import load_params
 from ecogdata.parallel.array_split import shared_copy, shared_ndarray
@@ -256,9 +256,9 @@ class ElectrodeDataSource:
         chan_itr = self.iter_channels(return_slice=True)
         # DISABLE tqdm for now -- it seems to hold onto a reference for the iteration variable (i.e. big array) and
         # prevents garbage collection
-        verbose = False
-        if verbose:
-            chan_itr = tqdm(chan_itr, desc='Downsampling channels', leave=True, total=len(chan_itr))
+        # verbose = False
+        # if verbose:
+        #     chan_itr = tqdm(chan_itr, desc='Downsampling channels', leave=True, total=len(chan_itr))
 
         for raw_channels, sl in chan_itr:
             # kind of fake the sampling rate
