@@ -356,17 +356,29 @@ def join_datasets(all_sets, popdata=True, shared_mem=True, source_type=''):
     d_len = np.sum(all_len)
     full_map = map_intersection([d.chan_map for d in all_sets])
     nchan = full_map.sum()
+    # find out if there are any leading datasets without experiments,
+    # would need to add these samples to the final experiment timestamps
+    extra_points = 0
+    first_exp = 0
+    for n, dataset in enumerate(all_sets):
+        if dataset.exp is not None:
+            first_exp = n
+            break
+        extra_points += dataset.data.shape[1]
     experiments = []
     offsets = []
     off = 0
-    for dataset in all_sets:
+    for dataset in all_sets[n:]:
+        # the offsets sequence leads the experiments sequence
+        off += dataset.data.shape[1]
         if dataset.exp is None:
-            off += dataset.data.shape[1]
             continue
         offsets.append(off)
         experiments.append(dataset.exp)
+    # throw away the last offset
     if len(experiments):
-        full_exp = join_experiments(experiments, offsets)
+        full_exp = join_experiments(experiments, offsets[:-1])
+        full_exp.time_stamps += extra_points
     else:
         full_exp = None
 
