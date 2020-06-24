@@ -41,7 +41,7 @@ def test_basic_construction_binder():
 
 def test_construction_from_single_source():
     aux_arrays = ('test1', 'test2')
-    f = _create_hdf5(aux_arrays=aux_arrays)[0]
+    f = _create_hdf5(aux_arrays=aux_arrays)
     shape = f['data'].shape
     map_source = MappedSource.from_hdf_sources(f, 'data', aligned_arrays=aux_arrays)
     assert_equal(map_source.shape, shape, 'Shape wrong')
@@ -57,7 +57,7 @@ def test_construction_from_single_source():
 
 def test_construction_from_sources():
     aux_arrays = ('test1', 'test2')
-    files = [_create_hdf5(aux_arrays=aux_arrays)[0] for i in range(3)]
+    files = [_create_hdf5(aux_arrays=aux_arrays) for i in range(3)]
     shape = files[0]['data'].shape
     shape = (shape[0], 3 * shape[1])
     map_source = MappedSource.from_hdf_sources(files, 'data', aligned_arrays=aux_arrays)
@@ -80,9 +80,9 @@ def test_construction_from_sources():
 
 def test_joining():
     aux_arrays = ('test1', 'test2')
-    files = [_create_hdf5(aux_arrays=aux_arrays)[0] for i in range(3)]
+    files = [_create_hdf5(aux_arrays=aux_arrays) for i in range(3)]
     map_source1 = MappedSource.from_hdf_sources(files, 'data', aligned_arrays=aux_arrays)
-    next_file = _create_hdf5(aux_arrays=aux_arrays)[0]
+    next_file = _create_hdf5(aux_arrays=aux_arrays)
     map_source2 = MappedSource.from_hdf_sources(next_file, 'data', aligned_arrays=aux_arrays)
     full_map = map_source1.join(map_source2)
     assert_true(full_map.shape == (len(map_source1), map_source1.shape[1] + map_source2.shape[1]),
@@ -94,9 +94,9 @@ def test_joining():
 
 def test_joiningT():
     aux_arrays = ('test1', 'test2')
-    files = [_create_hdf5(aux_arrays=aux_arrays)[0] for i in range(3)]
+    files = [_create_hdf5(aux_arrays=aux_arrays) for i in range(3)]
     map_source1 = MappedSource.from_hdf_sources(files, 'data', aligned_arrays=aux_arrays, transpose=True)
-    next_file = _create_hdf5(aux_arrays=aux_arrays)[0]
+    next_file = _create_hdf5(aux_arrays=aux_arrays)
     map_source2 = MappedSource.from_hdf_sources(next_file, 'data', aligned_arrays=aux_arrays, transpose=True)
     full_map = map_source1.join(map_source2)
     assert_true(full_map.shape == (len(map_source1), map_source1.shape[1] + map_source2.shape[1]),
@@ -107,13 +107,13 @@ def test_joiningT():
 
 
 def test_direct_mapped():
-    f = _create_hdf5()[0]
+    f = _create_hdf5()
     mapped_source = MappedSource.from_hdf_sources(f, 'data')
     assert_true(mapped_source.is_direct_map, 'direct map should be true')
     mapped_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=range(4))
     assert_true(not mapped_source.is_direct_map, 'direct map should be false')
     # for transposed disk arrays
-    f = _create_hdf5(transpose=True)[0]
+    f = _create_hdf5(transpose=True)
     mapped_source = MappedSource.from_hdf_sources(f, 'data', transpose=True)
     assert_true(mapped_source.is_direct_map, 'direct map should be true')
     mapped_source = MappedSource.from_hdf_sources(f, 'data', transpose=True, electrode_channels=range(4))
@@ -121,7 +121,7 @@ def test_direct_mapped():
 
 
 def test_scaling():
-    f, filename = _create_hdf5()
+    f = _create_hdf5()
     float_data = f['data'][:, 500:1000].astype('d')
     map_source = MappedSource.from_hdf_sources(f, 'data', units_scale=2.0)
     assert_true(np.all(map_source[:, 500:1000] == float_data * 2).all(), 'scalar scaling wrong')
@@ -130,7 +130,7 @@ def test_scaling():
 
 
 def test_electrode_subset():
-    f, filename = _create_hdf5()
+    f = _create_hdf5()
     electrode_channels = [2, 4, 6, 8]
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels)
     data = f['data'][:, :][electrode_channels]
@@ -138,7 +138,7 @@ def test_electrode_subset():
 
 
 def test_electrode_subsetT():
-    f, filename = _create_hdf5(transpose=True)
+    f = _create_hdf5(transpose=True)
     electrode_channels = [2, 4, 6, 8]
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels, transpose=True)
     data = f['data'][:, :][:, electrode_channels].T
@@ -146,7 +146,7 @@ def test_electrode_subsetT():
 
 
 def test_channel_map():
-    f, filename = _create_hdf5()
+    f = _create_hdf5()
     electrode_channels = list(range(10))
     binary_mask = np.ones(10, '?')
     binary_mask[:5] = False
@@ -165,7 +165,7 @@ def test_channel_map():
 
 
 def test_channel_mapT():
-    f, filename = _create_hdf5(transpose=True)
+    f = _create_hdf5(transpose=True)
     electrode_channels = list(range(10))
     binary_mask = np.ones(10, '?')
     binary_mask[:5] = False
@@ -184,7 +184,7 @@ def test_channel_mapT():
 
 
 def test_channel_slicing():
-    f, filename = _create_hdf5()
+    f = _create_hdf5()
     electrode_channels = list(range(6, 17))
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels, units_scale=5.0)
     data_first_channels = map_source[:3, :]
@@ -198,7 +198,7 @@ def test_channel_slicing():
 
 
 def test_channel_slicingT():
-    f, filename = _create_hdf5(transpose=True)
+    f = _create_hdf5(transpose=True)
     electrode_channels = list(range(6, 17))
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels, transpose=True, units_scale=5.0)
     data_first_channels = map_source[:3, :]
@@ -212,7 +212,7 @@ def test_channel_slicingT():
 
 
 def test_channel_slicing_with_mask():
-    f, filename = _create_hdf5()
+    f = _create_hdf5()
     electrode_channels = list(range(6, 17))
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels)
     mask = map_source.binary_channel_mask
@@ -231,7 +231,7 @@ def test_channel_slicing_with_mask():
 @raises(MemoryBlowOutError)
 def test_big_slicing_exception():
     import ecogdata.expconfig._globalconfig as globalconfig
-    f = _create_hdf5()[0]
+    f = _create_hdf5()
     data = f['data']
     globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
     map_source = MappedSource.from_hdf_sources(f, 'data')
@@ -245,7 +245,7 @@ def test_big_slicing_exception():
 
 def test_big_slicing_allowed():
     import ecogdata.expconfig._globalconfig as globalconfig
-    f = _create_hdf5()[0]
+    f = _create_hdf5()
     data = f['data']
     globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
     map_source = MappedSource.from_hdf_sources(f, 'data')
@@ -260,7 +260,7 @@ def test_big_slicing_allowed():
 
 def test_big_slicing_allowed_always():
     import ecogdata.expconfig._globalconfig as globalconfig
-    f = _create_hdf5()[0]
+    f = _create_hdf5()
     data = f['data']
     globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
     map_source = MappedSource.from_hdf_sources(f, 'data', raise_on_big_slice=False)
@@ -273,7 +273,7 @@ def test_big_slicing_allowed_always():
 
 
 def test_write():
-    f, filename = _create_hdf5()
+    f = _create_hdf5()
     electrode_channels = list(range(10))
     binary_mask = np.ones(10, '?')
     binary_mask[:5] = False
@@ -291,7 +291,7 @@ def test_write():
 
 
 def test_write_to_binder():
-    files = [_create_hdf5()[0] for i in range(3)]
+    files = [_create_hdf5() for i in range(3)]
     electrode_channels = list(range(10))
     binary_mask = np.ones(10, '?')
     binary_mask[:5] = False
@@ -311,7 +311,7 @@ def test_write_to_binder():
 
 
 def test_iter():
-    f, filename = _create_hdf5()
+    f = _create_hdf5()
     electrode_channels = [2, 4, 6, 8]
     data = f['data'][:]
     block_size = data.shape[1] // 2 + 100
@@ -325,7 +325,7 @@ def test_iter():
 
 
 def test_iter_binder():
-    files = [_create_hdf5(n_cols=100)[0] for i in range(3)]
+    files = [_create_hdf5(n_cols=100) for i in range(3)]
     electrode_channels = [2, 4, 6, 8]
     data = np.concatenate([f['data'][:] for f in files], axis=1)
     block_size = data.shape[1] // 2 + 20
@@ -339,7 +339,7 @@ def test_iter_binder():
 
 
 def test_iter_overlap():
-    f, filename = _create_hdf5(n_cols=100)
+    f = _create_hdf5(n_cols=100)
     data = f['data'][:]
     block_size = 20
     overlap = 10
@@ -357,7 +357,7 @@ def test_iter_overlap():
 
 
 def test_iter_overlap_binder():
-    files = [_create_hdf5(n_cols=100)[0] for i in range(3)]
+    files = [_create_hdf5(n_cols=100) for i in range(3)]
     data = np.concatenate([f['data'][:] for f in files], axis=1)
     block_size = 20
     overlap = 10
@@ -375,7 +375,7 @@ def test_iter_overlap_binder():
 
 
 def test_iterT():
-    f, filename = _create_hdf5(transpose=True)
+    f = _create_hdf5(transpose=True)
     electrode_channels = [2, 4, 6, 8]
     data = f['data'][:].T
     block_size = data.shape[1] // 2 + 100
@@ -386,7 +386,7 @@ def test_iterT():
 
 
 def test_iterT_binder():
-    files = [_create_hdf5(transpose=True, n_cols=100)[0] for i in range(3)]
+    files = [_create_hdf5(transpose=True, n_cols=100) for i in range(3)]
     data = np.concatenate([f['data'][:] for f in files], axis=0).T
     electrode_channels = [2, 4, 6, 8]
     block_size = data.shape[1] // 2 + 20
@@ -397,7 +397,7 @@ def test_iterT_binder():
 
 
 def test_iter_channels():
-    f, filename = _create_hdf5(n_rows=10, n_cols=100)
+    f = _create_hdf5(n_rows=10, n_cols=100)
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=[2, 4, 6, 8, 9])
     data = f['data'][:]
     channel_blocks = []
@@ -408,7 +408,7 @@ def test_iter_channels():
 
 
 def test_iter_channelsT():
-    f, filename = _create_hdf5(n_rows=10, n_cols=100, transpose=True)
+    f = _create_hdf5(n_rows=10, n_cols=100, transpose=True)
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=[2, 4, 6, 8, 9], transpose=True)
     data = f['data'][:].T
     channel_blocks = []
@@ -428,7 +428,7 @@ def _clean_up_hdf_files(temp_files):
 
 def test_basic_mirror():
     try:
-        f, filename = _create_hdf5(n_rows=25, n_cols=500)
+        f = _create_hdf5(n_rows=25, n_cols=500)
         electrode_channels = [2, 4, 6, 8]
         map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels)
         temp_files = []
@@ -447,14 +447,14 @@ def test_basic_mirror():
 
 
 def test_mirror_modes():
-    f, filename = _create_hdf5(n_rows=25, n_cols=500)
+    f = _create_hdf5(n_rows=25, n_cols=500)
     electrode_channels = [2, 4, 6, 8]
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels)
     clone1 = map_source.mirror(writeable=True, mapped=True, channel_compatible=False)
     assert_true(clone1.shape == (len(electrode_channels), 500), 'wrong # of samples')
     clone2 = map_source.mirror(writeable=True, mapped=True, channel_compatible=True)
     assert_true(clone2.data_buffer.shape == (25, 500), 'wrong # of channels for channel-compat')
-    f, filename = _create_hdf5(n_rows=25, n_cols=500, transpose=True)
+    f = _create_hdf5(n_rows=25, n_cols=500, transpose=True)
     map_source = MappedSource.from_hdf_sources(f, 'data', electrode_channels=electrode_channels, transpose=True)
     clone3 = map_source.mirror(mapped=True, channel_compatible=True)
     assert_true(clone3.data_buffer.shape == (25, 500), 'mapped mirror did not reverse the source transpose')

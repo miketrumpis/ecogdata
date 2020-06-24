@@ -2,14 +2,17 @@ from itertools import product
 from contextlib import contextmanager, ExitStack
 from typing import Sequence
 import numpy as np
+import h5py
 from h5py._hl.selections import select
 from ecogdata.util import ToggleState
-from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.array_split import shared_ndarray, SharedmemManager
+from ecogdata.parallel.mproc import Process
 from ecogdata.expconfig import load_params
 
 
 __all__ = ['slice_to_range', 'range_to_slice', 'unpack_ellipsis', 'tile_slices',
-           'BufferBase', 'MappedBuffer', 'HDF5Buffer', 'BufferBinder', 'slice_data_buffer']
+           'BufferBase', 'MappedBuffer', 'HDF5Buffer', 'BufferBinder', 'slice_data_buffer',
+           'BackgroundRead']
 
 
 _integer_types = tuple(np.sctypes['int']) + (int,)
@@ -300,8 +303,9 @@ class MappedBuffer(BufferBase):
 
         Parameters
         ----------
-        array: numpy.memmap
-            A memory-mapped array. If using HDF5, take advantage of `HDF5Buffer`.
+        array: file-mapped array
+            A memory-mapped array supporting slice syntax. This class assumes numpy.memmap. If using HDF5,
+            construct with `HDF5Buffer`.
         units_scale: float or 2-tuple
             Either the scaling value or (offset, scaling) values such that signal = (memmap + offset) * scaling
         """
@@ -359,6 +363,28 @@ class MappedBuffer(BufferBase):
     def writeable(self):
         return self.__writeable
 
+    def describe(self):
+        """
+        Return sufficient info to reconstruct this buffer.
+
+        Returns
+        -------
+        h5_name: str
+            file name of the HDF5
+        h5_path: str
+            path info of this buffer's array
+
+        """
+        mm_name = self.filename
+        mm_dtype = self.dtype
+        mm_shape = self.shape
+        return (mm_name, mm_dtype, mm_shape, self.units_scale, self._raise_bad_write)
+
+    @classmethod
+    def reopen(cls, buffer_info):
+        mm_ro = np.memmap(buffer_info[0], mode='r', dtype=buffer_info[1], shape=buffer_info[2])
+        return cls(mm_ro, units_scale=buffer_info[3], raise_bad_write=buffer_info[4])
+
     def close_source(self):
         self._array.flush()
         # Maybe this is a little seg-faulty?
@@ -408,6 +434,28 @@ class HDF5Buffer(MappedBuffer):
         self._array.file.flush()
         self._array.file.close()
         del self._array
+
+    def describe(self):
+        """
+        Return sufficient info to reconstruct this buffer.
+
+        Returns
+        -------
+        h5_name: str
+            file name of the HDF5
+        h5_path: str
+            path info of this buffer's array
+
+        """
+        h5_name = self.filename
+        h5_path = self._array.name
+        return (h5_name, h5_path, self.units_scale, self._raise_bad_write)
+
+    @classmethod
+    def reopen(cls, buffer_info):
+        h5_ro = h5py.File(buffer_info[0], 'r', libver='latest', swmr=True)
+        arr = h5_ro[buffer_info[1]]
+        return cls(arr, units_scale=buffer_info[2], raise_bad_write=buffer_info[3])
 
     def __getitem__(self, sl):
         # this function computes the output shape -- use ID=0 to explicitly *not* work for funky RegionReference slicing
@@ -541,6 +589,21 @@ class BufferBinder(BufferBase):
     def close_source(self):
         for b in self._buffers:
             b.close_source()
+
+    def describe(self):
+        # return each buffer's info and sneak in the type of the buffer as well
+        info = tuple([(type(b),) + b.describe() for b in self._buffers])
+        return (self._concat_axis,) + info
+
+    @classmethod
+    def reopen(cls, buffer_info):
+        buffers = []
+        axis = buffer_info[0]
+        for info in buffer_info[1:]:
+            # split info into buffer class and actual info
+            b_cls, b_info = info[0], info[1:]
+            buffers.append(b_cls.reopen(b_info))
+        return cls(buffers, axis=axis)
 
     @contextmanager
     def transpose_reads(self, status=None):
@@ -739,152 +802,25 @@ class BufferBinder(BufferBase):
             buffer[sl] = sub_arr
 
 
-class ReadCache:
-    # TODO -- re-enable read-caching (or change name/nature of the object)
-    # TODO -- make mapped access compatible with numpy "memmap" arrays
+class BackgroundRead(Process):
     """
-    Buffers row indexes from memmap or hdf5 file.
-
-    --> For now just pass through slicing without cache. Perform scaling and return.
-
-    Ignore this for now
-    ---vvvvvvvvvvvvv---
-
-    For cases where array[0, m:n], array[1, m:n], array[2, m:n] are
-    accessed sequentially, this object buffers the C x (n-m)
-    submatrix before yielding individual rows.
-
-    Access such as array[p:q, m:n] is handled by the underlying
-    array's __getitem__ method.
-
-    http://docs.h5py.org/en/stable/high/dataset.html#reading-writing-data
+    A Process that can re-open mapped files in read-only mode and slice out some data in the background
     """
 
-    def __init__(self, array, units_scale=None):
-        self._array = array
-        self._current_slice = None
-        self._current_seg = ()
-        self._raw_offset = None
-        self.units_scale = None
-        if units_scale is not None:
-            if np.iterable(units_scale):
-                self._raw_offset = units_scale[0]
-                self.units_scale = units_scale[1]
-            else:
-                self.units_scale = units_scale
-        if self.units_scale is None:
-            self.dtype = array.dtype
-        else:
-            fp_precision = load_params().floating_point.lower()
-            typecode = 'f' if fp_precision == 'single' else 'd'
-            self.dtype = np.dtype(typecode)
-        self.shape = array.shape
+    def __init__(self, buffer: BufferBase, slicer: slice, transpose: bool=False, output=None):
+        super(BackgroundRead, self).__init__()
+        self.slicer = slicer
+        self.transpose = transpose
+        if output is None:
+            output = buffer.get_output_array(slicer)
+        self.output = SharedmemManager(output)
+        self.buffer_type = type(buffer)
+        self.buffer_info = buffer.describe()
 
-    def __len__(self):
-        return len(self._array)
-
-    @property
-    def file_array(self):
-        return self._array
-
-    def _scale_segment(self, x):
-        if self.units_scale is None:
-            return x
-        if self._raw_offset is not None:
-            x += self._raw_offset
-        x *= self.units_scale
-        return x
-
-    def __getitem__(self, sl):
-        # this function computes the output shape -- use ID=0 to explicitly *not* work for funky RegionReference slicing
-        out_shape = select(self.shape, sl, 0).mshape
-        if self.units_scale is None:
-            out_arr = shared_ndarray(out_shape, self._array.dtype.char)
-            self._array.read_direct(out_arr, source_sel=sl)
-            return out_arr
-        else:
-            # with self._array.astype('d'):
-            #     out = self._array[sl]
-            out_arr = shared_ndarray(out_shape, self.dtype.char)
-            self._array.read_direct(out_arr, source_sel=sl)
-            return self._scale_segment(out_arr)
-        # indx, srange = sl
-        # if not isinstance(indx, (np.integer, int)):
-        #     # make sure to release a copy if no scaling happens
-        #     if self.units_scale is None:
-        #         # read creates copy
-        #         return self._array[sl]
-        #     return self._scale_segment(self._array[sl])
-        # if self._current_slice != srange:
-        #     all_sl = (slice(None), srange)
-        #     self._current_seg = self._scale_segment(self._array[all_sl])
-        #     self._current_slice = srange
-        # # always return the full range after slicing with possibly
-        # # complex original range
-        # new_srange = slice(None)
-        # new_sl = (indx, new_srange)
-        # return self._current_seg[new_sl].copy()
-
-
-# class CommonReferenceReadCache(ReadCache):
-#     """Returns common-average re-referenced blocks"""
-#
-#     def __getitem__(self, sl):
-#         indx, srange = sl
-#         if not isinstance(indx, (np.integer, int)):
-#             return self._array[sl].copy()
-#         if self._current_slice != srange:
-#             all_sl = (slice(None), srange)
-#             if self.dtype in np.sctypes['int']:
-#                 self._current_seg = self._array[all_sl].astype('d')
-#             else:
-#                 self._current_seg = self._array[all_sl].copy()
-#             self._current_seg -= self._current_seg.mean(0)
-#             self._current_slice = srange
-#         # always return the full range after slicing with possibly
-#         # complex original range
-#         new_srange = slice(None)
-#         new_sl = (indx, new_srange)
-#         return self._current_seg[new_sl].copy()
-#
-#
-# class FilteredReadCache(ReadCache):
-#     """
-#     Apply row-by-row filters to a ReadCache
-#     """
-#
-#     def __init__(self, array, filters):
-#         if not isinstance(filters, (tuple, list)):
-#             f = filters
-#             filters = [f] * len(array)
-#         self.filters = filters
-#         super(FilteredReadCache, self).__init__(array)
-#
-#     def __getitem__(self, sl):
-#         idx = sl[0]
-#         x = super(FilteredReadCache, self).__getitem__(sl)
-#         if isinstance(idx, int):
-#             return self.filters[idx](x)
-#         y = np.empty_like(x)
-#         for x_, y_, f in zip(x[idx], y[idx], self.filters[idx]):
-#             y_[:] = f(x_)
-#         return y
-#
-#
-# def _make_subtract(z):
-#     def _f(x):
-#         return x - z
-#
-#     return _f
-#
-#
-# class DCOffsetReadCache(FilteredReadCache):
-#     """
-#     A filtered read cache with a simple offset subtraction.
-#     """
-#
-#     def __init__(self, array, offsets):
-#         # filters = [lambda x: x - off for off in offsets]
-#         filters = [_make_subtract(off) for off in offsets]
-#         super(DCOffsetReadCache, self).__init__(array, filters)
-#         self.offsets = offsets
+    def run(self):
+        ro_buffer = self.buffer_type.reopen(self.buffer_info)
+        try:
+            with self.output.get_ndarray() as output:
+                slice_data_buffer(ro_buffer, self.slicer, transpose=self.transpose, output=output)
+        finally:
+            ro_buffer.close_source()

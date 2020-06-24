@@ -1,47 +1,52 @@
 from nose.tools import assert_true, assert_equal, raises
 import numpy as np
 import h5py
-from tempfile import NamedTemporaryFile
 
-from ecogdata.parallel.mproc import Process
 from ecogdata.datasource.memmap import TempFilePool
 from ecogdata.datasource.array_abstractions import slice_to_range, range_to_slice, unpack_ellipsis, tile_slices, \
-    HDF5Buffer, BufferBinder, slice_data_buffer
+    HDF5Buffer, BufferBinder, BackgroundRead
 
 
 def _create_hdf5(n_rows=20, n_cols=1000, extra_dims=(), rand=False,
                  transpose=False, aux_arrays=(), chunks=True, dtype='i'):
 
-    with NamedTemporaryFile(mode='ab', dir='.') as f:
-        f.file.close()
-        fw = h5py.File(f.name, 'w', libver='latest')
-        arrays = ('data',) + tuple(aux_arrays)
-        array_shape = (n_rows, n_cols) + extra_dims
-        if transpose:
-            disk_shape = array_shape[::-1]
+    # with NamedTemporaryFile(mode='ab', dir='.') as f:
+    #     f.file.close()
+    # switch to tempfilepool so that the file doesn't disappear on disk (helpful for subprocess)
+    with TempFilePool(mode='ab') as f:
+        filename = str(f)
+    fw = h5py.File(filename, 'w', libver='latest')
+    arrays = ('data',) + tuple(aux_arrays)
+    array_shape = (n_rows, n_cols) + extra_dims
+    if transpose:
+        disk_shape = array_shape[::-1]
+    else:
+        disk_shape = array_shape
+    for name in arrays:
+        y = fw.create_dataset(name, shape=disk_shape, dtype=dtype, chunks=chunks)
+        if rand:
+            arr = np.random.randint(0, 2 ** 13, size=array_shape).astype(dtype)
+            y[:] = arr.T if transpose else arr
         else:
-            disk_shape = array_shape
-        for name in arrays:
-            y = fw.create_dataset(name, shape=disk_shape, dtype=dtype, chunks=chunks)
-            if rand:
-                arr = np.random.randint(0, 2 ** 13, size=array_shape).astype(dtype)
-                y[:] = arr.T if transpose else arr
-            else:
-                # test pattern
-                arr = np.arange(np.prod(array_shape), dtype=dtype).reshape(array_shape)
-                y[:] = arr.T if transpose else arr
-    return fw, f.file
+            # test pattern
+            arr = np.arange(np.prod(array_shape), dtype=dtype).reshape(array_shape)
+            y[:] = arr.T if transpose else arr
+        y.flush()
+    # SWMR mode must be toggled AFTER groups/datasets are created. Datasets can be modified afterwards,
+    # but no new groups/datasets can be craeted.
+    fw.swmr_mode = True
+    return fw
 
 
 def _create_buffer(units_scale=None, **kwargs):
-    hdf_file = _create_hdf5(**kwargs)[0]
+    hdf_file = _create_hdf5(**kwargs)
     buffer = HDF5Buffer(hdf_file['data'], units_scale=units_scale)
     data = hdf_file['data'][:]
     return buffer, data
 
 
 def _create_binder(num_buffers=3, axis=0, units_scale=None, **kwargs):
-    hdf_files = [_create_hdf5(**kwargs)[0] for i in range(num_buffers)]
+    hdf_files = [_create_hdf5(**kwargs) for i in range(num_buffers)]
     buffers = [HDF5Buffer(f['data'], units_scale=units_scale) for f in hdf_files]
     data = np.concatenate([b[:] for b in buffers], axis=axis)
     buffer_binder = BufferBinder(buffers, axis=axis)
@@ -441,7 +446,8 @@ def test_subprocess_caching():
     # 1) test a slice into a single buffer
     sl = np.s_[3:6, 20:60]
     output = buf.get_output_array(sl)
-    p = Process(target=slice_data_buffer, args=(buf, sl), kwargs=dict(output=output))
+    # p = Process(target=slice_data_buffer, args=(buf, sl), kwargs=dict(output=output))
+    p = BackgroundRead(buf, sl, transpose=False, output=output)
     p.start()
     p.join()
     # compare output with data array
@@ -449,7 +455,8 @@ def test_subprocess_caching():
     # 2) test a slice across buffers
     sl = np.s_[3:6, 80:130]
     output = buf.get_output_array(sl)
-    p = Process(target=slice_data_buffer, args=(buf, sl), kwargs=dict(output=output))
+    # p = Process(target=slice_data_buffer, args=(buf, sl), kwargs=dict(output=output))
+    p = BackgroundRead(buf, sl, transpose=False, output=output)
     p.start()
     p.join()
     # compare output with data array
@@ -462,7 +469,8 @@ def test_subprocess_cachingT():
     sl = np.s_[3:6, 20:60]
     with buf.transpose_reads(True):
         output = buf.get_output_array(sl)
-    p = Process(target=slice_data_buffer, args=(buf, sl), kwargs=dict(output=output, transpose=True))
+    # p = Process(target=slice_data_buffer, args=(buf, sl), kwargs=dict(output=output, transpose=True))
+    p = BackgroundRead(buf, sl, transpose=True, output=output)
     p.start()
     p.join()
     # compare output with data array
@@ -471,7 +479,8 @@ def test_subprocess_cachingT():
     sl = np.s_[3:6, 80:130]
     with buf.transpose_reads(True):
         output = buf.get_output_array(sl)
-    p = Process(target=slice_data_buffer, args=(buf, sl), kwargs=dict(output=output, transpose=True))
+    # p = Process(target=slice_data_buffer, args=(buf, sl), kwargs=dict(output=output, transpose=True))
+    p = BackgroundRead(buf, sl, transpose=True, output=output)
     p.start()
     p.join()
     # compare output with data array
