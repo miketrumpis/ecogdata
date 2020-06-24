@@ -4,7 +4,7 @@ import scipy.io as sio
 from ecogdata.channel_map import ChannelMap
 from ecogdata.util import Bunch, mat_to_flat
 
-from ecogdata.parallel.array_split import shared_copy
+from ecogdata.parallel.sharedmem import shared_copy
 from ecogdata.parallel.split_methods import filtfilt
 import ecogdata.filt.time as ft
 

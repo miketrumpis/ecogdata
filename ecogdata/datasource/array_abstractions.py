@@ -5,7 +5,7 @@ import numpy as np
 import h5py
 from h5py._hl.selections import select
 from ecogdata.util import ToggleState
-from ecogdata.parallel.array_split import shared_ndarray, SharedmemManager
+from ecogdata.parallel.sharedmem import shared_ndarray, SharedmemManager
 from ecogdata.parallel.mproc import Process
 from ecogdata.expconfig import load_params
 

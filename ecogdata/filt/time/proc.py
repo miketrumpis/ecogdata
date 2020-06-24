@@ -4,7 +4,7 @@ One-stop shopping for digital filtering of arrays
 import numpy as np
 from .design import butter_bp, cheby1_bp, cheby2_bp, notch
 from ecogdata.util import get_default_args, input_as_2d
-from ecogdata.parallel.array_split import shared_ndarray, shared_copy
+from ecogdata.parallel.sharedmem import shared_ndarray, shared_copy
 import scipy.signal as signal
 from nitime.algorithms.autoregressive import AR_est_YW
 

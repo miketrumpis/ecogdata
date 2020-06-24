@@ -5,8 +5,9 @@ import random
 import numpy as np
 
 import ecogdata.parallel.mproc as mp
-from ecogdata.parallel.array_split import shared_ndarray, shared_copy, split_at, divy_slices, ForkSharedmemManager, \
-    SpawnSharedmemManager, SharedmemTool
+from ecogdata.parallel.array_split import split_at, divy_slices
+from ecogdata.parallel.sharedmem import shared_ndarray, shared_copy, ForkSharedmemManager, SpawnSharedmemManager, \
+    SharedmemTool
 
 # This should UNDO the Arena.__init__ monkey patching that might make heaps unpickle-able under spawning
 from importlib import reload

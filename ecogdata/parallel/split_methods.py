@@ -5,7 +5,8 @@ from nitime.algorithms import multi_taper_psd as multi_taper_psd_serial
 
 from ecogdata.filt.time.blocked_filter import bfilter as bfilter_serial
 from ecogdata.filt.time.blocked_filter import overlap_add as overlap_add_serial
-from ecogdata.parallel.array_split import split_at, shared_ndarray
+from ecogdata.parallel.array_split import split_at
+from ecogdata.parallel.sharedmem import shared_ndarray
 
 
 # Parallelized re-definitions

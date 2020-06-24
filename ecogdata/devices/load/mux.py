@@ -4,7 +4,8 @@ import ecogdata.filt.time as ft
 import ecogdata.util as ut
 from ecogdata.datastore import load_bunch, save_bunch
 from ecogdata.trigger_fun import process_trigger
-from ecogdata.parallel.array_split import shared_ndarray, shared_copy, parallel_controller
+from ecogdata.parallel.sharedmem import shared_ndarray, shared_copy
+from ecogdata.parallel.array_split import parallel_controller
 from ecogdata.parallel.split_methods import filtfilt
 import ecogdata.devices.electrode_pinouts as epins
 

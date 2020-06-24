@@ -11,7 +11,7 @@ from ecogdata.expconfig.exp_descr import join_experiments
 from .load import *
 from .load.util import convert_tdms
 
-from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.sharedmem import shared_ndarray
 from ecogdata.expconfig.config_decode import Parameter, TypedParam, BoolOrNum, NSequence, NoneOrStr, uniform_bunch_case
 from ecogdata.datasource import ElectrodeDataSource, MappedSource, PlainArraySource
 

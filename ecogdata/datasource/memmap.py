@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from ecogdata.expconfig import load_params
 from ecogdata.util import ToggleState
-from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.sharedmem import shared_ndarray
 from ecogdata.parallel.split_methods import lfilter
 from ecogdata.filt.time import filter_array, notch_all
 

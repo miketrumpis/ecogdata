@@ -6,7 +6,7 @@ import scipy.signal as signal
 from ecogdata.util import Bunch
 from ecogdata.channel_map import ChannelMap
 from ecogdata.datastore.h5utils import load_bunch
-from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.sharedmem import shared_ndarray
 from .units import convert_scale
 
 

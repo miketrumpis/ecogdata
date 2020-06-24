@@ -7,7 +7,7 @@ from ecogdata.filt.time.proc import filter_array
 
 def test_parfiltfilt():
     from ecogdata.parallel.split_methods import filtfilt as filtfilt_p
-    from ecogdata.parallel.array_split import shared_copy
+    from ecogdata.parallel.sharedmem import shared_copy
     r = np.random.randn(20, 2000)
 
     design_kwargs = dict(lo=30, hi=100, Fs=1000)
