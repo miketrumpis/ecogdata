@@ -140,12 +140,7 @@ def trigs_and_conds(trig_code):
     return trigs, conds
 
 
-@array_split.split_at(splice_at=(0, 1))
-def ep_trigger_avg(
-        x, trig_code, pre=0, post=0,
-        sum_limit=-1, iqr_thresh=-1,
-        envelope=False
-):
+def _ep_trigger_avg(x, trig_code, pre=0, post=0, iqr_thresh=-1, envelope=False):
     """
     Average response to 1 or more experimental conditions
 
@@ -234,6 +229,10 @@ def ep_trigger_avg(
     if envelope:
         np.sqrt(avg, avg)
     return avg, n_avg
+
+
+# create a parallelized version (but only split big jobs)
+ep_trigger_avg = array_split.split_at(splice_at=(0, 1), split_over=100)(_ep_trigger_avg)
 
 
 def iter_epochs(x, pivots, selected=(), pre=0, post=0, fill=np.nan):

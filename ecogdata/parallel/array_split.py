@@ -159,7 +159,7 @@ class SpawnSharedmemManager(SharedmemTool):
 
 
 
-if mp.get_start_method() == 'spawn':
+if mp.get_start_method() in ('spawn', 'forkserver'):
     SharedmemManager = SpawnSharedmemManager
 else:
     SharedmemManager = ForkSharedmemManager
@@ -169,7 +169,69 @@ shared_ndarray = SharedmemManager.shared_ndarray
 shared_copy = SharedmemManager.shared_copy
 
 
-def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurrent=False):
+def parallel_runner(method, static_args, split_arg, shared_split_arrays, shared_args, shared_full_arrays,
+                    splice_args, kwargs, n_jobs, info_logger):
+    """
+    Runs method in a Pool with split and full shared memory.
+
+    Parameters
+    ----------
+    method: callable
+    static_args: tuple
+        Any static arguments in method's signature (not split nor shared)
+    split_arg: tuple
+        Indices of the split arguments in method's signature
+    shared_split_arrays: tuple
+        SharedmemManagers of the split arguments
+    shared_args: tuple
+        Indices of the full shared arrays in method's signature
+    shared_full_arrays: tuple
+        SharedmemManagers of the read-only shared arrays
+    splice_args: tuple
+        Indices of return values to splice from split inputs
+    kwargs: dict
+        method's keyword arguments
+    n_jobs: int
+        Number of Pool processes
+    info_logger: logger
+
+    Returns
+    -------
+    r: result of method(*args, **kwargs)
+
+    """
+    split_shapes = [x.shape for x in shared_split_arrays]
+    init_args = (split_arg,
+                 shared_split_arrays,
+                 split_shapes,
+                 shared_args,
+                 shared_full_arrays,
+                 method,
+                 static_args,
+                 kwargs)
+    mp.freeze_support()
+    info_logger('{} Creating pool'.format(timestamp()))
+    with closing(mp.Pool(processes=n_jobs, initializer=_init_globals, initargs=init_args)) as p:
+        dim_size = shared_split_arrays[0].shape[0]
+        # map the jobs
+        job_slices = divy_slices(dim_size, len(p._pool))
+        info_logger('{} Mapping jobs'.format(timestamp()))
+        res = p.map_async(_global_method_wrap, job_slices)
+
+    p.join()
+    if res.successful():
+        info_logger('{} Joining results'.format(timestamp()))
+        res = splice_results(res.get(), splice_args)
+        # res = res.get()
+    else:
+        # raises exception ?
+        res.get()
+    # gc.collect()
+    info_logger('{} Wrap done'.format(timestamp()))
+    return res
+
+
+def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_jobs=-1, concurrent=False):
     """
     Decorator that enables parallel dispatch over multiple blocks of input ndarrays. Input arrays are cast to shared
     memory pointers using `as_ctypes` from numpy.ctypeslib. These arrays can be modified by subproceses if they were
@@ -184,6 +246,8 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
         Position(s) of any return arguments that should be combined for output
     shared_args: tuple
         Position of any array arguments that should be available to all workers as shared memory
+    split_over: int
+        If not None, only split the array(s) if they're over this many MBs
     n_jobs: int
         Number of workers (if -1 then use all cpus)
     concurrent: bool
@@ -203,66 +267,48 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), n_jobs=-1, concurre
     splice_at = tuple(splice_at)
     split_arg = tuple(split_arg)
     shared_args = tuple(shared_args)
+
     @decorator
     def inner_split_method(method, *args, **kwargs):
-        # make available short-cut to not use subprocesses:
+        # check if the arrays are too small to bother with subprocesses
+        if split_over is not None:
+            mx_size = 0
+            for p in split_arg:
+                arr = args[p]
+                size = arr.size * arr.dtype.itemsize
+                if size > mx_size:
+                    mx_size = size
+            if mx_size / 1024 / 1024 < split_over:
+                return method(*args, **kwargs)
+        # check if the parallel context is false
         if not parallel_controller.state:
             return method(*args, **kwargs)
         pop_args = sorted(split_arg + shared_args)
-        sh_args = list()
+        shared_array_shm = list()
         n = 0
         args = list(args)
-        shm = list()
-        split_x = list()
+        split_array_shm = list()
         for pos in pop_args:
             pos = pos - n
             a = args.pop(pos)
             info('{} Wrapping shared memory size {} MB'.format(timestamp(), a.size * a.dtype.itemsize / 1024. / 1000.))
             x = SharedmemManager(a, use_lock=concurrent)
             if pos + n in split_arg:
-                shm.append(x)
-                split_x.append(a)
+                split_array_shm.append(x)
             else:
-                sh_args.append(x)
+                shared_array_shm.append(x)
             n += 1
         static_args = tuple(args)
-        sh_args = tuple(sh_args)
+        shared_array_shm = tuple(shared_array_shm)
 
-        split_lens = set([len(sx) for sx in split_x])
+        split_lens = set([x.shape[0] for x in split_array_shm])
         if len(split_lens) > 1:
             raise ValueError(
                 'all of the arrays to split must have the same length '
                 'on the first axis'
             )
-
-        # create a pool and map the shared memory array over the method
-        init_args = (split_arg, shm,
-                     [getattr(x, 'shape') for x in split_x],
-                     shared_args, sh_args,
-                     method, static_args, kwargs)
-        mp.freeze_support()
-        info('{} Creating pool'.format(timestamp()))
-        with closing(mp.Pool(
-                processes=n_jobs, initializer=_init_globals,
-                initargs=init_args
-        )) as p:
-            dim_size = split_x[0].shape[0]
-            # map the jobs
-            job_slices = divy_slices(dim_size, len(p._pool))
-            info('{} Mapping jobs'.format(timestamp()))
-            res = p.map_async(_global_method_wrap, job_slices)
-
-        p.join()
-        if res.successful():
-            info('{} Joining results'.format(timestamp()))
-            res = splice_results(res.get(), splice_at)
-            #res = res.get()
-        else:
-            # raises exception ?
-            res.get()
-        # gc.collect()
-        info('{} Wrap done'.format(timestamp()))
-        return res
+        return parallel_runner(method, static_args, split_arg, split_array_shm, shared_args, shared_array_shm,
+                               splice_at, kwargs, n_jobs, info)
 
     return inner_split_method
 

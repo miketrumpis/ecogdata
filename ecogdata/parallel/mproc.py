@@ -10,6 +10,14 @@ import multiprocessing.sharedctypes
 sharedctypes = multiprocessing.sharedctypes
 
 
+if __name__ == '__main__':
+    if platform.system() == 'Darwin':
+        try:
+            set_start_method('fork')
+        except RuntimeError:
+            # already set, perhaps by parent process
+            pass
+
 _stderr_logger = None
 
 

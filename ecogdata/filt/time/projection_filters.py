@@ -222,8 +222,7 @@ try:
 
     # parallel appears safe! (also input as 2d should wrap input splitting)
     @input_as_2d(out_arr=0)
-    @split_at()
-    def moving_projection(
+    def moving_projection_serial(
             x, N, BW, Fs=1.0, f0=0, Kmax=None, baseband=True,
             weight_eigen=True, window=np.hanning,
             dpss=None, save_dpss=False
@@ -333,5 +332,8 @@ try:
             return y, (dpss, eigs)
         return y
 
+
+    moving_projection = split_at()(moving_projection_serial)
+
 except ImportError:
-    moving_projection = _moving_projection_preserve
+    moving_projection = split_at()(_moving_projection_preserve)
