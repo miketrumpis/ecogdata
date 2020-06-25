@@ -1,3 +1,20 @@
+"""
+This module defines a shared memory tool (abstract base class `SharedmemTool`) that can be used to
+
+1. create shared memory from multiprocessing.sharedctypes
+2. wrap shared memory as ndarrays
+3. convert ndarrays to shared memory
+
+The way that translations 2 & 3 work depends on the "start method" of multiprocessing. The `SharedmemManager` is
+conditionally defined based on the start method.
+
+Memory pointers are more straightforward for forked processes--processes inherit memory.
+Copying to shared memory is generally required for spawned processes, so that the shared pointer can be pickled
+correctly. For any shared memory explicity created by the SharedmemTool (i.e. operation 1 above), a ndarray pointer
+to shared array pointer lookup cache is retained to prevent memory copies.
+
+"""
+from abc import ABC
 import ecogdata.parallel.mproc as mp
 import numpy as np
 from contextlib import contextmanager
@@ -8,38 +25,37 @@ __all__ = ['SharedmemManager', 'shared_copy', 'shared_ndarray']
 
 
 # from the "array" module docstring
-"""
-This module defines an object type which can efficiently represent
-an array of basic values: characters, integers, floating point
-numbers.  Arrays are sequence types and behave very much like lists,
-except that the type of objects stored in them is constrained.  The
-type is specified at object creation time by using a type code, which
-is a single character.  The following type codes are defined:
 
-    Type code   C Type             Minimum size in bytes
-    'c'         character          1
-    'b'         signed integer     1
-    'B'         unsigned integer   1
-    'u'         Unicode character  2
-    'h'         signed integer     2
-    'H'         unsigned integer   2
-    'i'         signed integer     2
-    'I'         unsigned integer   2
-    'l'         signed integer     4
-    'L'         unsigned integer   4
-    'f'         floating point     4
-    'd'         floating point     8
+# This module defines an object type which can efficiently represent
+# an array of basic values: characters, integers, floating point
+# numbers.  Arrays are sequence types and behave very much like lists,
+# except that the type of objects stored in them is constrained.  The
+# type is specified at object creation time by using a type code, which
+# is a single character.  The following type codes are defined:
+#
+#     Type code   C Type             Minimum size in bytes
+#     'c'         character          1
+#     'b'         signed integer     1
+#     'B'         unsigned integer   1
+#     'u'         Unicode character  2
+#     'h'         signed integer     2
+#     'H'         unsigned integer   2
+#     'i'         signed integer     2
+#     'I'         unsigned integer   2
+#     'l'         signed integer     4
+#     'L'         unsigned integer   4
+#     'f'         floating point     4
+#     'd'         floating point     8
 
-"""
-
-# can only think of booleans
+# convert dtypes to this ctype if the codes differ
 dtype_maps_to = dict([('?', 'b')])
 
+# Two-way lookups for handling complex types (F, D, G)
 dtype_ctype = dict((('F', 'f'), ('D', 'd'), ('G', 'g')))
 ctype_dtype = dict(((v, k) for k, v in dtype_ctype.items()))
 
 
-class SharedmemTool:
+class SharedmemTool(ABC):
 
     def __init__(self, shm_object, shape, dtype_code, use_lock=False):
         self.shm = shm_object
