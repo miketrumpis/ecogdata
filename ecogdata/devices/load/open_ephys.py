@@ -14,7 +14,7 @@ from ecogdata.trigger_fun import process_trigger
 from ecogdata.filt.time import cheby2_bp, downsample
 from ecogdata.util import Bunch, mkdir_p
 from ecogdata.datastore import load_bunch, save_bunch
-from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.sharedmem import shared_ndarray
 from ecogdata.parallel.split_methods import filtfilt
 
 from . import DataPathError, _OpenEphys as OE

@@ -1,42 +1,46 @@
 import numpy as np
-from scipy.ndimage import convolve1d
-from scipy.signal import lfilter as lfilter_scipy
-from nitime.algorithms import multi_taper_psd
+from scipy.ndimage import convolve1d as convolve1d_serial
+from scipy.signal import lfilter as lfilter_serial
+from nitime.algorithms import multi_taper_psd as multi_taper_psd_serial
 
 from ecogdata.filt.time.blocked_filter import bfilter as bfilter_serial
-from ecogdata.filt.time.blocked_filter import overlap_add
-from ecogdata.parallel.array_split import split_at, shared_ndarray
+from ecogdata.filt.time.blocked_filter import overlap_add as overlap_add_serial
+from ecogdata.parallel.array_split import split_at
+from ecogdata.parallel.sharedmem import shared_ndarray
 
 
 # Parallelized re-definitions
 
-# Turn bfilter's output optional parameter into a split parameter.
-@split_at(split_arg=(2, 3))
-def bfilter_inner(b, a, x, y, **kwargs):
+# redefine bfilter to be a void function (put output into y)
+def bfilter_void(b, a, x, y, **kwargs):
     bfilter_serial(b, a, x, out=y, **kwargs)
 
+# parallelize bfilter_void
+bfilter_para = split_at(split_arg=(2, 3))(bfilter_void)
 
-# Redefine bfilter to operate inplace or not
+# Redefine bfilter to operate inplace or not using parallel driver
 def bfilter(b, a, x, out=None, **kwargs):
     if out is None:
         out = x
-    bfilter_inner(b, a, x, out, **kwargs)
+    bfilter_para(b, a, x, out, **kwargs)
 
 
-overlap_add = split_at()(overlap_add)
+overlap_add = split_at()(overlap_add_serial)
 
 # multi taper spectral estimation
-multi_taper_psd = split_at(splice_at=(1, 2))(multi_taper_psd)
+multi_taper_psd = split_at(splice_at=(1, 2))(multi_taper_psd_serial)
 
 # convolution
-convolve1d = split_at(split_arg=0)(convolve1d)
+convolve1d = split_at(split_arg=0)(convolve1d_serial)
 
 # linear filtering wrapper -- converts lfilter to a "void" method rather than returning an array
 # @split_at(split_arg=(2, 3, 4), splice_at=(0,))
-def lfilter_inner(b, a, x, y, zi, **kwargs):
+def lfilter_void(b, a, x, y, zi, **kwargs):
     kwargs['zi'] = zi
-    y[:], zi = lfilter_scipy(b, a, x, **kwargs)
+    y[:], zi = lfilter_serial(b, a, x, **kwargs)
     return zi
+
+lfilter_para = split_at(split_arg=(2, 3, 4), splice_at=(0,))(lfilter_void)
 
 def lfilter(b, a, x, out=None, **kwargs):
     if out is None:
@@ -44,7 +48,7 @@ def lfilter(b, a, x, out=None, **kwargs):
     zi = kwargs.pop('zi', None)
     if zi is None:
         zi = np.zeros((len(x), len(b) - 1))
-    zi = lfilter_inner(b, a, x, out, zi, **kwargs)
+    zi = lfilter_para(b, a, x, out, zi, **kwargs)
     return out, zi
 
 # Convenience wrappers

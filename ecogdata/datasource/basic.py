@@ -4,7 +4,7 @@ import h5py
 # from tqdm import tqdm
 
 from ecogdata.expconfig import load_params
-from ecogdata.parallel.array_split import shared_copy, shared_ndarray
+from ecogdata.parallel.sharedmem import shared_copy, shared_ndarray
 from ecogdata.filt.time import downsample, filter_array, notch_all
 from ecogdata.filt.blocks import BlockSignalBase
 

@@ -5,7 +5,7 @@ import os
 from ecogdata.util import mkdir_p, Bunch
 import ecogdata.filt.time as ft
 import ecogdata.devices.electrode_pinouts as epins
-from ecogdata.parallel.array_split import shared_ndarray
+from ecogdata.parallel.sharedmem import shared_ndarray
 from ecogdata.parallel.split_methods import filtfilt
 
 from ..units import convert_dyn_range, convert_scale

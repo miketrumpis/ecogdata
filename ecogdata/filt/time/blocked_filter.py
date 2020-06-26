@@ -70,6 +70,7 @@ def bfilter(b, a, x, out=None, bsize=0, axis=-1, zi=None, filtfilt=False):
     del xc
     del x_blk
 
+
 def bdetrend(x, bsize=0, **kwargs):
     "Apply detrending over the (possibly blocked) axis of x."
     axis = kwargs.pop('axis', -1)
@@ -92,6 +93,7 @@ def bdetrend(x, bsize=0, **kwargs):
         xc[:] = signal.detrend(xc, axis=axis, bp=blk_bp, **kwargs)
     del xc
     del x_blk
+
 
 @input_as_2d()
 def overlap_add(x, w, progress=False):
@@ -163,10 +165,8 @@ def overlap_add(x, w, progress=False):
         print('more output blocks than input blocks??')
     
     return xf
-        
-        
-        
-    
+
+
 def remove_modes(x, bsize=0, axis=-1, modetype='dense', n=1):
 
     # remove chronos modes discovered by SVD
