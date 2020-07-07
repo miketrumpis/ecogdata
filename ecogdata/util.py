@@ -79,17 +79,17 @@ def flat_to_flat(mn, idx, col_major=True):
     return mat_to_flat(mn, i, j, col_major=not col_major)
 
 
-# Introspection
+# Introspection: use inspect.signature to address numpy issue #gh-12225
 def get_default_args(func):
     """
     returns a dictionary of arg_name:default_values for the input function
     """
-    argspec = inspect.getfullargspec(func)
-    args = argspec.args
-    defaults = argspec.defaults
-    if defaults is None:
-        defaults = ()
-    return dict(zip(reversed(args), reversed(defaults)))
+    params = inspect.signature(func).parameters
+    kw_params = [p for p in params if params[p].default is not inspect.Parameter.empty]
+    if not kw_params:
+        return ()
+    defaults = [params[p].default for p in kw_params]
+    return dict(zip(kw_params, defaults))
 
 
 # Path trick from SO:
