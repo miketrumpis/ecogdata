@@ -17,11 +17,11 @@ from numpy.linalg import LinAlgError
 from ecogdata.expconfig import load_params
 from ecogdata.util import ToggleState
 from ecogdata.parallel.sharedmem import shared_ndarray
-from ecogdata.parallel.split_methods import lfilter
+from ecogdata.parallel.split_methods import lfilter_void
 from ecogdata.filt.time import filter_array, notch_all
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
-from .array_abstractions import HDF5Buffer, BufferBinder, slice_to_range, slice_data_buffer
+from .array_abstractions import HDF5Buffer, BufferBinder, slice_to_range, slice_data_buffer, BackgroundRead
 
 
 __all__ = ['TempFilePool', 'MappedSource', 'MemoryBlowOutError', 'downsample_and_load', 'bfilter']
@@ -694,7 +694,7 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
         if zi is None:
             zi = zii[zi_sl] * xc[xc_sl]
         # treat xc as mutable, since it is sliced from a mapped source
-        xc, zi = lfilter(b, a, xc, out=xc, axis=1, zi=zi)
+        zi = lfilter_void(b, a, xc, xc, zi, axis=1)
         if out is None:
             x[sl] = xc
         else:
@@ -716,7 +716,7 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
     for xc, sl in itr:
         if zi is None:
             zi = zii[zi_sl] * xc[xc_sl]
-        xc, zi = lfilter(b, a, xc, out=xc, axis=1, zi=zi)
+        zi = lfilter_void(b, a, xc, xc, zi, axis=1)
         # write out with negative step slices (buffer will correct the write order)
         if out is None:
             x[sl] = xc
