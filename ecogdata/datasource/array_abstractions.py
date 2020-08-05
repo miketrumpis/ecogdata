@@ -219,6 +219,7 @@ class BufferBase:
     def __init__(self):
         # This is a callable -- when called, a content manager is created and the state is toggled in-context
         self._transpose_state = ToggleState(init_state=False)
+        self._shared_mem_read = ToggleState(init_state=False)
         # A private output array that can be set using a context manager, allowing array reads in that context to be
         # placed in this array
         self._read_output = None
@@ -230,6 +231,13 @@ class BufferBase:
         slices in transpose.
         """
         return self._transpose_state
+
+    @property
+    def shared_memory(self):
+        """
+        This is a callable ToggleState that can control reads into plain memory (faster) rather than sharedmem.
+        """
+        return self._shared_mem_read
 
     @contextmanager
     def direct_read(self, slicer, output_array):
@@ -284,7 +292,10 @@ class BufferBase:
             return out_shape
         typecode = self.dtype.char
         if self._read_output is None:
-            return shared_ndarray(out_shape, typecode)
+            if self._shared_mem_read:
+                return shared_ndarray(out_shape, typecode)
+            else:
+                return np.empty(out_shape, typecode)
         else:
             return self._read_output
 

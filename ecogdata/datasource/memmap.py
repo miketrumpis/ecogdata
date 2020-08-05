@@ -419,10 +419,11 @@ class MappedSource(ElectrodeDataSource):
                             aligned_arrays=aligned, transpose=self._transpose,
                             raise_on_big_slice=self._raise_on_big_slice)
 
-    def cache_slice(self, slicer, **kwargs):
+    def cache_slice(self, slicer, sharedmem=False, **kwargs):
         slicer = self._slice_logic(slicer)
         self._check_slice_size(slicer)
-        with self.data_buffer.transpose_reads(self._transpose):
+        # TODO: not sure how plain memory will play with actual background reads?
+        with self.data_buffer.transpose_reads(self._transpose), self.data_buffer.shared_memory(sharedmem):
             output = self.data_buffer.get_output_array(slicer)
         # Sub-process issues on Windows and unaccountable lag on MacOS, so
         # make the slice in this main process
@@ -600,7 +601,7 @@ class MappedSource(ElectrodeDataSource):
                 # Create all new datasets as non-transposed
                 fw.create_dataset(self._electrode_field, shape=(C, T), dtype=new_dtype, chunks=True)
                 if copy_electrodes:
-                    for block, sl in self.iter_blocks(return_slice=True):
+                    for block, sl in self.iter_blocks(return_slice=True, sharedmem=False):
                         fw[self._electrode_field][sl] = block
                 for name in self.aligned_arrays:
                     arr = getattr(self, name)
@@ -630,7 +631,7 @@ class MappedSource(ElectrodeDataSource):
             else:
                 new_source = shared_ndarray((C, T), fp_dtype.char)
             if copy_electrodes:
-                for block, sl in self.iter_blocks(return_slice=True):
+                for block, sl in self.iter_blocks(return_slice=True, sharedmem=False):
                     new_source[sl] = block
             # Kind of tricky with aligned fields -- assume that transpose means the same thing for them?
             # But also un-transpose them on this mirroring step
@@ -685,7 +686,7 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
     xc_sl = tuple(xc_sl)
     # fir_size = len(b)
     zi = None
-    itr = x.iter_blocks(return_slice=True)
+    itr = x.iter_blocks(return_slice=True, sharedmem=False)
     # Disable verbose & tqdm -- garbage collection issue
     # verbose = False
     # if verbose:
@@ -708,9 +709,9 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
     # the ecogdata.filter.time.blocked_filter module
     zi = None
     if out is None:
-        itr = x.iter_blocks(return_slice=True, reverse=True)
+        itr = x.iter_blocks(return_slice=True, reverse=True, sharedmem=False)
     else:
-        itr = out.iter_blocks(return_slice=True, reverse=True)
+        itr = out.iter_blocks(return_slice=True, reverse=True, sharedmem=False)
     # if verbose:
     #     itr = tqdm(itr, desc='Blockwise filtering (reverse)', leave=True, total=len(itr))
     for xc, sl in itr:
