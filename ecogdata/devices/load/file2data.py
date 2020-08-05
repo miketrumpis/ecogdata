@@ -179,7 +179,7 @@ class FileLoader:
             if self.store_path:
                 search_dirs.insert(0, self.store_path)
             # if there is a stored file then use that and do not make a new file
-            if self.use_stored:
+            if self.save_downsamp or self.use_stored:
                 data_files = [os.path.join(d, new_downsamp_file + e)
                               for d in search_dirs
                               for e in self.permissible_types]
