@@ -369,7 +369,9 @@ class FileLoader:
             Datasource for reference channels. May be an empty list
 
         """
-        h5file = h5py.File(str(data_file), open_mode)
+        # Skip until SWMR issue resolved
+        # h5file = h5py.File(str(data_file), open_mode, libver='latest', swmr=True)
+        h5file = h5py.File(str(data_file), open_mode, libver='latest')
         if isinstance(data_file, TempFilePool):
             # need to register this to close since it will be left open
             data_file.register_to_close(h5file)

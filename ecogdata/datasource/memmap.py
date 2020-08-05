@@ -169,7 +169,12 @@ class MappedSource(ElectrodeDataSource):
         self._slice_channels_as_maps = ToggleState(init_state=False)
         # Allow for a subprocess that will cache buffer reads in the background
         # (disabled for now)
-        # self._caching_process = None
+        self._caching_process = None
+        self._can_cache = False  # can't find out SWMR status from the dataset (gh #1580)
+        # if data_buffer.subprocess_readable:
+        #     self._can_cache = True
+        # else:
+        #     self._can_cache = False
 
         # The other aux fields will be setattr'd like
         # setattr(self, field, source_file[field]) ??
@@ -217,18 +222,20 @@ class MappedSource(ElectrodeDataSource):
 
         # Set up underlying data buffer(s). Use a BufferBinder if there are multiple sources
         main_buffers = [HDF5Buffer(hdf[electrode_field], units_scale=units_scale) for hdf in source_files]
-        for b, hdf in zip(main_buffers, source_files):
-            if b.writeable and not hdf.swmr_mode:
-                try:
-                    hdf.swmr_mode = True
-                except ValueError as e:
-                    if str(e).startswith('Unable to convert file format'):
-                        print('Single-writer multiple-reader mode was not supported for this data file. ' 
-                              'Block iteration on this MappedSource may be crashy.')
-                        print('Original error:', str(e))
-                    else:
-                        # unknown error -- reraise it
-                        raise e
+        # Skip check for now -- SWMR issue pending
+        # for b, hdf in zip(main_buffers, source_files):
+        #     # if b.writeable and not hdf.swmr_mode:
+        #     if not hdf.swmr_mode:
+        #         try:
+        #             hdf.swmr_mode = True
+        #         except ValueError as e:
+        #             if str(e).startswith('Unable to convert file format'):
+        #                 print('Single-writer multiple-reader mode was not supported for this data file. '
+        #                       'Block iteration on this MappedSource may be crashy.')
+        #                 print('Original error:', str(e))
+        #             else:
+        #                 # unknown error -- reraise it
+        #                 raise e
 
         concat_axis = 0 if transpose else 1
         if len(main_buffers) > 1:
@@ -427,29 +434,35 @@ class MappedSource(ElectrodeDataSource):
             output = self.data_buffer.get_output_array(slicer)
         # Sub-process issues on Windows and unaccountable lag on MacOS, so
         # make the slice in this main process
-        # p = Process(target=slice_data_buffer, args=(self.data_buffer, slicer),
-        #             kwargs=dict(transpose=self._transpose, output=output))
-        # p.start()
-        # self._caching_process = p
-
-        # non-dispatched slicing
-        slice_data_buffer(self.data_buffer, slicer, transpose=self._transpose, output=output)
+        # print('can subprocess slice:', self._can_cache)
+        if self._can_cache:
+            p = BackgroundRead(self.data_buffer, slicer, transpose=self._transpose, output=output)
+            p.start()
+            self._caching_process = p
+        else:
+            # non-dispatched slicing
+            slice_data_buffer(self.data_buffer, slicer, transpose=self._transpose, output=output)
         self._cache_output = output
 
     def get_cached_slice(self):
         # Remove sub-process slice retrieval for now
-        # if self._caching_process == None:
-        #     print('There is no cached read pending')
-        #     return
-        # self._caching_process.join()
-        # self._caching_process = None
+        if self._can_cache:
+            if self._caching_process == None:
+                print('There is no cached read pending')
+                return
+            self._caching_process.join()
+            self._caching_process = None
         # try to release memory
-        if self._cache_output is None:
-            print('There is no slice available')
-            return
         out = self._cache_output
         self._cache_output = None
         return out
+
+        # if self._cache_output is None:
+        #     print('There is no slice available')
+        #     return
+        # out = self._cache_output
+        # self._cache_output = None
+        # return out
 
     def __getitem__(self, slicer):
         """Return the sub-series of samples selected by slicer on (possibly a subset of) all channels"""
@@ -613,7 +626,14 @@ class MappedSource(ElectrodeDataSource):
                     if copy_aligned:
                         aligned = getattr(self, name)[:]
                         fw[name][:] = aligned.T if self._transpose else aligned
-            f_mapped = h5py.File(str(filename), reopen_mode)
+                # set single write, multiple read mode AFTER datasets are created
+                # Skip for now -- SWMR issue pending
+                # fw.swmr_mode = True
+            print(str(filename), 'reopen mode', reopen_mode)
+            f_mapped = h5py.File(str(filename), reopen_mode, libver='latest')
+            # Skip for now -- SWMR issue pending
+            # if writeable:
+            #     f_mapped.swmr_mode = True
             if isinstance(filename, TempFilePool):
                 filename.register_to_close(f_mapped)
             return MappedSource.from_hdf_sources(f_mapped, self._electrode_field, units_scale=units_scale,
