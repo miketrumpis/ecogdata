@@ -355,34 +355,40 @@ class MappedSource(ElectrodeDataSource):
                             aligned_arrays=new_sources, transpose=self._transpose,
                             raise_on_big_slice=self._raise_on_big_slice)
 
-
     def set_channel_mask(self, channel_mask):
         """
-        Update the internal electrode channel mapping to exclude channel masked from an electrode vector binary mask.
+        Update the internal electrode channel mapping to exclude channel
+        masked from an electrode vector binary mask.
 
         Parameters
         ----------
         channel_mask: binary ndarray or None
-            A binary mask vector the same length of the number of electrode channels.
+            A binary mask vector which is 1) the same length of the number of electrode channels
+            or 2) the length of the number of currently active channels. If None, then the set
+            of active channels resets to the original channels.
 
         """
 
-        # currently this would not allow composite masking, such as
-        # data1 = data(mask1)  len(mask1) == num_electrodes
-        # data2 = data1(mask2)  len(mask2) == num_mask1_electrodes
-        #
-        # So mask resets will have to be stated in terms of the full electrode set
         n_electrodes = len(self._electrode_channels)
+        n_active_electrodes = len(self._active_channels)
         if channel_mask is None or not len(channel_mask):
             # (re)set to the full set of electrode channels
             self._active_channels = self._electrode_channels
-        elif len(channel_mask) != n_electrodes:
-            raise ValueError('channel_mask must be length {}'.format(n_electrodes))
-        else:
+        elif len(channel_mask) == n_electrodes:
+            # reset the entire active electrode set
             self._active_channels = list()
             for n, c in enumerate(self._electrode_channels):
                 if channel_mask[n]:
                     self._active_channels.append(c)
+        elif len(channel_mask) == n_active_electrodes:
+            # remove channels at the indices marked by the mask
+            removed_idx = np.where(~channel_mask)[0]
+            removed = [self._active_channels[i] for i in removed_idx]
+            active_set = set(self._active_channels) - set(removed)
+            self._active_channels = sorted(list(active_set))
+        else:
+            raise ValueError('channel_mask must be length {} (full map) '
+                             'or {} (active set)'.format(n_electrodes, n_active_electrodes))
 
     def _slice_logic(self, slicer):
         """Translate the slicing object to point to the correct data channels on disk"""
