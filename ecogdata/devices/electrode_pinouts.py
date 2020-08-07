@@ -15,7 +15,7 @@ NonSignalChannels = set(NonSignalChannels)
 
 def _rev(n, coords):
     """
-    Utility to "flip" array coordiantes (reverse grid columns)
+    Utility to "flip" array coordinates (reverse grid columns)
 
     Parameters
     ----------

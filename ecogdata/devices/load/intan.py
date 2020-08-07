@@ -91,8 +91,8 @@ class RHDLoader(FileLoader):
             samp_rate = -1
         return samp_rate
 
-    def create_downsample_file(self, data_file, resample_rate, downsamp_file):
-        new_file = super(RHDLoader, self).create_downsample_file(data_file, resample_rate, downsamp_file)
+    def create_downsample_file(self, data_file, resample_rate, downsamp_file, **kwargs):
+        new_file = super(RHDLoader, self).create_downsample_file(data_file, resample_rate, downsamp_file, **kwargs)
         with h5py.File(data_file, 'r') as h5file:
             header = json.loads(h5file.attrs['JSON_header'])
         with h5py.File(new_file, 'r+') as h5file:

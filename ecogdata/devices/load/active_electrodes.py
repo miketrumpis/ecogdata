@@ -175,12 +175,12 @@ class ActiveLoader(FileLoader):
                 self.aligned_arrays = [('bnc', bnc_channels)]
 
 
-    def create_downsample_file(self, data_file, resample_rate, downsamp_file):
+    def create_downsample_file(self, data_file, resample_rate, downsamp_file, **kwargs):
         # The parent method creates a channel-compatible source file with anti-aliased downsamples in the channel
         # array. For active electrode data with all external channels (e.g. logic levels) packed into the main data
         # array, a side effect is that the external channels will be anti-alias filtered as well.
         # However, the new source file will have a separate "bnc" array that is downsampled w/o filtering.
-        new_file = super(ActiveLoader, self).create_downsample_file(data_file, resample_rate, downsamp_file)
+        new_file = super(ActiveLoader, self).create_downsample_file(data_file, resample_rate, downsamp_file, **kwargs)
         # add in the other metadata -- note that this assumes that create_downsample creates a mapped file,
         # which may change
         with h5py.File(data_file, 'r') as f1, h5py.File(new_file, 'r+') as f2:
