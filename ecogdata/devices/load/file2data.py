@@ -386,13 +386,15 @@ class FileLoader:
                 aligned_arrays.append(name)
         datasource = MappedSource.from_hdf_sources(h5file, self.data_array, electrode_channels=electrode_chans,
                                                    aligned_arrays=aligned_arrays, units_scale=self.units_scale,
-                                                   transpose=self.transpose_array)
+                                                   real_slices=True, transpose=self.transpose_array)
         if ground_chans:
             ground_chans = MappedSource.from_hdf_sources(h5file, self.data_array, electrode_channels=ground_chans,
-                                                         units_scale=self.units_scale, transpose=self.transpose_array)
+                                                         units_scale=self.units_scale,
+                                                         real_slices=True, transpose=self.transpose_array)
         if ref_chans:
             ref_chans = MappedSource.from_hdf_sources(h5file, self.data_array, electrode_channels=ref_chans,
-                                                      units_scale=self.units_scale, transpose=self.transpose_array)
+                                                      units_scale=self.units_scale,
+                                                      real_slices=True, transpose=self.transpose_array)
         if downsample_ratio > 1:
             print('Downsampling straight to memory')
             datasource = downsample_and_load(datasource, downsample_ratio, aggregate_aligned=True, verbose=True)

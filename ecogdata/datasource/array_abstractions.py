@@ -210,6 +210,7 @@ class BufferBase:
     # Also these attributes related to the mapped data
     map_dtype = None  # a dtype or typecode character
     units_scale = None  # a scaling value or an (offset, scale) pair
+    real_slices = False  # return real (floating point) data even if no scale is needed
     writeable = False  # is the map read-only or read-write?
     file_array = None   # the underlying mapped array object
     filename = None  # File name of mapped data
@@ -309,7 +310,7 @@ class MappedBuffer(BufferBase):
     unit-ful values.
     """
 
-    def __init__(self, array, units_scale=None, raise_bad_write=False):
+    def __init__(self, array, units_scale=None, real_slices=False, raise_bad_write=True):
         """
 
         Parameters
@@ -340,10 +341,11 @@ class MappedBuffer(BufferBase):
             # Ignore the (0, 1) scaling to save cycles
             if np.iterable(units_scale):
                 self._raw_offset = units_scale[0] if units_scale[0] != 0 else None
-                self.units_scale = units_scale[1]
+                self.units_scale = float(units_scale[1])
             else:
-                self.units_scale = units_scale
-            if self.units_scale == 1:
+                self.units_scale = float(units_scale)
+            # Can set back to None if real slices aren't needed
+            if self.units_scale == 1 and not real_slices:
                 self.units_scale = None
         if self.units_scale is None:
             self.dtype = array.dtype
