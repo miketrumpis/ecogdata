@@ -186,7 +186,7 @@ class MappedSource(ElectrodeDataSource):
 
     @classmethod
     def from_hdf_sources(cls, source_files: Sequence[h5py.File], electrode_field, aligned_arrays=(), units_scale=None,
-                         transpose=False, **kwargs):
+                         transpose=False, real_slices=True, **kwargs):
         """
         Constructs a MappedSource from one or more h5py.File objects. This builder creates the appropriate
         MappedBuffer-like object first.
@@ -221,7 +221,8 @@ class MappedSource(ElectrodeDataSource):
             source_files = (source_files,)
 
         # Set up underlying data buffer(s). Use a BufferBinder if there are multiple sources
-        main_buffers = [HDF5Buffer(hdf[electrode_field], units_scale=units_scale) for hdf in source_files]
+        main_buffers = [HDF5Buffer(hdf[electrode_field], units_scale=units_scale, real_slices=real_slices)
+                        for hdf in source_files]
         # Skip check for now -- SWMR issue pending
         # for b, hdf in zip(main_buffers, source_files):
         #     # if b.writeable and not hdf.swmr_mode:
@@ -636,10 +637,12 @@ class MappedSource(ElectrodeDataSource):
             #     f_mapped.swmr_mode = True
             if isinstance(filename, TempFilePool):
                 filename.register_to_close(f_mapped)
+            # If the original buffer's unit scaling is 1.0 then we should keep real slices on
+            real_slices = units_scale == 1.0
             return MappedSource.from_hdf_sources(f_mapped, self._electrode_field, units_scale=units_scale,
-                                                 aligned_arrays=self.aligned_arrays, transpose=False,
-                                                 electrode_channels=electrode_channels, channel_mask=channel_mask,
-                                                 **map_args)
+                                                 real_slices=real_slices, aligned_arrays=self.aligned_arrays,
+                                                 transpose=False, electrode_channels=electrode_channels,
+                                                 channel_mask=channel_mask, **map_args)
             # return MappedSource(f_mapped, self._electrode_field, electrode_channels=electrode_channels,
             #                     channel_mask=channel_mask, aligned_arrays=self.aligned_arrays,
             #                     transpose=False, **map_args)
