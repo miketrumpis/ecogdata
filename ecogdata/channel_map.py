@@ -580,7 +580,7 @@ def channel_combinations(chan_map, scale=1.0, precision=4):
     ----------
     chan_map : ChannelMap
     scale : float or pair
-        The constant pitch or the (dx, dy) pitch between electrodes
+        The constant pitch or the (dy, dx) pitch between electrodes
         precision : number of decimals for distance calculation (it seems
         some distances are not uniquely determined in floating point).
 
@@ -608,7 +608,7 @@ def channel_combinations(chan_map, scale=1.0, precision=4):
     # Distances are measured between grid locations (i1,j1) to (i2,j2)
     # Define a (s1,s2) scaling to multiply these distances
     if np.iterable(scale):
-        s_ = np.array(scale[::-1])
+        s_ = np.array(scale)
     else:
         s_ = np.array([scale, scale])
 
