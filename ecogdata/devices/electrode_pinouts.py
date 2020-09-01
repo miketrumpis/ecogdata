@@ -1122,7 +1122,7 @@ electrode_maps = dict(
 
 
 # Specify a table of multi-arm electrodes: maps for these will be constructed with permutations of connectors
-multi_arms_electrodes = {
+multi_arm_electrodes = {
     'psv_244': {'arms': [passive_244_Q1_by_zif, passive_244_Q2_by_zif, passive_244_Q3_by_zif, passive_244_Q4_by_zif],
                 'default_daqs': ['intan64', 'intan64', 'intan64', 'intan64'],
                 'geometry': (16, 16),
@@ -1131,7 +1131,7 @@ multi_arms_electrodes = {
 
 
 def multi_arm_map(electrode, connectors=(), electrode_pins='zif'):
-    map_info = multi_arms_electrodes[electrode]
+    map_info = multi_arm_electrodes[electrode]
     if not len(connectors):
         connectors = map_info['default_daqs']
     # Only know about ZIF right now
