@@ -524,7 +524,8 @@ class FileLoader:
                 copy_mode = 'all'
             else:
                 copy_mode = 'aligned'
-            print('Creating writeable mirrored sources with copy mode: {}'.format(copy_mode))
+            source_type = 'writeable mapped' if self.mapped else 'RAM'
+            print('Creating {} sources with copy mode: {}'.format(source_type, copy_mode))
             datasource_w = datasource.mirror(mapped=self.mapped, writeable=True, copy=copy_mode)
             if ground_chans:
                 ground_chans_w = ground_chans.mirror(mapped=self.mapped, writeable=True, copy=copy_mode)
