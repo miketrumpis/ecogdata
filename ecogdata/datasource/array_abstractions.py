@@ -15,7 +15,7 @@ __all__ = ['slice_to_range', 'range_to_slice', 'unpack_ellipsis', 'tile_slices',
            'BackgroundRead']
 
 
-_integer_types = tuple(np.sctypes['int']) + (int,)
+_integer_types = tuple(np.sctypes['int']) + tuple(np.sctypes['uint']) + (int,)
 
 
 def slice_to_range(slicer, r_max):
