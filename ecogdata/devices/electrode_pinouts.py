@@ -186,10 +186,14 @@ def connect_passive_map(
         # cols.append( nc - site[1] - 1 if reverse_cols else site[1] )
         if site[1] in NonSignalChannels or not reverse_cols:
             cols.append(site[1])
-        else:
+        elif geometry == 'auto':
             cols.append(-site[1])
+        else:
+            cols.append(geometry[1] - 1 - site[1])
 
-    if reverse_cols:
+    # special case for coordinate based maps without a grid geometry:
+    # find the least value of the negated x-coords to subtract from all other x-coords
+    if geometry=='auto' and reverse_cols:
         mn_col = min(filter(lambda x: x not in NonSignalChannels, cols))
         cols = [c if c in NonSignalChannels else c - mn_col for c in cols]
     map_dict = {'geometry': geometry,
@@ -255,6 +259,38 @@ rat_v5_by_zif_rc = zip(*unzip_encoded(rat_v5_by_zif))
 # create a zif-to-grid lookup
 rat_v5_by_zif_lut = dict(zip(range(1, 62), rat_v5_by_zif_rc))
 
+# Passive 244 (4-arms specified separately)
+# Q1 rows by 61 pin ZIF order
+passive_244_Q1_r = [1, 0, 1, 2, 2, 1, 0, 3, 6, 6, 7, 4, 3, 0, 1, 2, 2, 1, 0, 3, 4, 5, 5, 4, 3, 0, 1, 2, 2, 1, 0, 3, 4,
+                    5, 5, 4, 3, 0, 1, 2, 2, 1, 0, 3, 4, 5, 6, 4, 3, 0, 1, 2, 2, 1, 0, 3, 2, 1, 0, 1, 0]
+# Q1 cols (face-up, will be reversed in connector method) by 61 pin ZIF order
+passive_244_Q1_c = [1, 2, 2, 2, 3, 3, 3, 3, 6, 7, 7, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7,
+                    7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 8, 10, 10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 13,
+                    13]
+# Q2 (row, col) LUT by zif pin
+passive_244_Q1_by_zif = dict(zip(range(1, 62), zip(passive_244_Q1_r, passive_244_Q1_c)))
+passive_244_Q2_r = [14, 13, 13, 13, 12, 12, 12, 12, 9, 8, 8, 11, 11, 11, 11, 11, 10, 10, 10, 10, 10, 10, 9, 9, 9, 9,
+                    9, 9, 8, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 7, 5, 5, 5, 5, 5, 4, 4, 4, 4, 3, 3,
+                    3, 2, 2]
+passive_244_Q2_c = [1, 0, 1, 2, 2, 1, 0, 3, 6, 6, 7, 4, 3, 0, 1, 2, 2, 1, 0, 3, 4, 5, 5, 4, 3, 0, 1, 2, 2, 1, 0, 3,
+                    4, 5, 5, 4, 3, 0, 1, 2, 2, 1, 0, 3, 4, 5, 6, 4, 3, 0, 1, 2, 2, 1, 0, 3, 2, 1, 0, 1, 0]
+# Q2 (row, col) LUT
+passive_244_Q2_by_zif = dict(zip(range(1, 62), zip(passive_244_Q2_r, passive_244_Q2_c)))
+passive_244_Q3_r = [14, 15, 14, 13, 13, 14, 15, 12, 9, 9, 8, 11, 12, 15, 14, 13, 13, 14, 15, 12, 11, 10, 10, 11, 
+                    12, 15, 14, 13, 13, 14, 15, 12, 11, 10, 10, 11, 12, 15, 14, 13, 13, 14, 15, 12, 11, 10, 9, 11,
+                    12, 15, 14, 13, 13, 14, 15, 12, 13, 14, 15, 14, 15]
+passive_244_Q3_c = [14, 13, 13, 13, 12, 12, 12, 12, 9, 8, 8, 11, 11, 11, 11, 11, 10, 10, 10, 10, 10, 10, 9, 9, 9, 9,
+                    9, 9, 8, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 7, 5, 5, 5, 5, 5, 4, 4, 4, 4, 3, 3,
+                    3, 2, 2]
+passive_244_Q3_by_zif = dict(zip(range(1, 62), zip(passive_244_Q3_r, passive_244_Q3_c)))
+passive_244_Q4_r = [1, 2, 2, 2, 3, 3, 3, 3, 6, 7, 7, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7,
+                    7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 8, 10, 10, 10, 10, 10, 11, 11, 11,
+                    11, 12, 12, 12, 13, 13]
+passive_244_Q4_c = [14, 15, 14, 13, 13, 14, 15, 12, 9, 9, 8, 11, 12, 15, 14, 13, 13, 14, 15, 12, 11, 10, 10, 11, 12,
+                    15, 14, 13, 13, 14, 15, 12, 11, 10, 10, 11, 12, 15, 14, 13, 13, 14, 15, 12, 11, 10, 9, 11, 12,
+                    15, 14, 13, 13, 14, 15, 12, 13, 14, 15, 14, 15]
+passive_244_Q4_by_zif = dict(zip(range(1, 62), zip(passive_244_Q4_r, passive_244_Q4_c)))
+
 
 # These are the present set of lookups by recording system
 # (these are the final pinout-to-data maps)
@@ -284,6 +320,16 @@ zif_by_intan64 = [32, None, 34, 48, 36, 50, 38, 52, 40, 54, 42, 56, 44, 58,
                   11, 19, 13, 17, 15, 16, 2, 18, 4, 20, 6, 22, 8, 24, 10,
                   26, 12, 28, 14, 30, None]
 
+zif_by_intan64_new = [32, 54, 36, 56, 40, 52, 42, 58, 38, 60, 48, None, 50, 59, 46, 61,
+                      57, 44, 47, 41, 45, 39, 43, 37, 49, 35, 51, 33, 53, 34, 55, None,
+                      31, 7, 28, 9, 29, 11, 27, 13, 25, 19, 23, 17, 21, 15, 18, 5,
+                      1, 16, 3, 12, None, 14, 2, 24, 4, 20, 10, 22, 6, 26, 8, 30]
+
+zif_by_daq_lut = {'mux6': zif_by_mux6,
+                  'mux6_15row': zif_by_mux6_15row,
+                  'stim4': zif_by_stim4,
+                  'intan64': zif_by_intan64,
+                  'intan64_new': zif_by_intan64_new}
 
 ## Human 256 v2 (direct map from grid to Intan RHD channels)
 h256_grid_by_channels = """J4, L4, G5, A8, D5, F7, C5, C8, F5, J8, D7, D9, H7, G8, H2, E9, H8, H4, K6, A5, E7, B5, 
@@ -490,6 +536,50 @@ psv_244_rhd = dict(
                     15,15,13,9,13,8,14,12,12,15,10,13,11,14,14,13,
                     14,13,14,11,GND,15,15,11,13,12,9,10,14,15,12,14])
 )
+
+# TODO: There are different channel-ZIF mappings for old & new Intan RHD chips. Channel
+#  maps need to be able to handle a combination of old & new chips in each slot
+#  for the 4-arm electrode
+psv_244_rhd = dict(
+    geometry=(16, 16),
+
+    pitch=0.75,
+
+    rows= [3,1,4,3,2,2,1,1,0,1,4,GND,0,0,5,0,
+            2,3,6,2,4,1,0,3,3,5,1,4,2,5,0,GND,
+            0,0,2,6,2,7,1,3,3,0,5,2,4,1,1,2,
+            1,2,1,4,GND,0,0,4,2,3,6,5,1,0,3,1,
+            8,GND,8,5,7,5,7,5,7,4,6,4,6,3,6,2,
+            7,5,6,5,6,4,6,4,7,3,7,3,7,2,8,GND,
+            8,14,8,13,9,12,9,12,9,9,10,8,10,11,10,11,
+            11,13,10,13,10,12,10,12,9,8,9,11,9,11,8,GND,
+            12,GND,10,11,11,15,15,13,13,14,14,12,12,14,10,14,
+            9,12,11,14,15,13,13,15,14,13,12,15,10,15,11,GND,
+            15,14,13,14,14,13,12,15,10,9,11,8,15,12,13,14,
+            13,15,14,13,12,14,10,12,11,9,15,11,13,15,14,GND,
+            7,11,8,11,8,10,9,12,8,13,10,GND,10,12,9,13,
+            12,9,8,9,9,8,9,8,10,8,10,7,11,7,11,GND,
+            7,3,6,6,7,7,6,4,6,5,6,5,5,4,5,3,
+            1,4,2,4,GND,4,2,6,2,5,7,5,3,6,3,7],
+
+    cols=_rev(16, [7,11,8,11,8,10,9,12,8,13,10,GND,10,12,9,13,
+                    12,9,8,9,9,8,9,8,10,8,10,7,11,7,11,GND,
+                    7,3,6,6,7,7,6,4,6,5,6,5,5,4,5,3,
+                    1,4,2,4,GND,4,2,6,2,5,7,5,3,6,3,7,
+                    3,GND,5,4,4,0,0,2,2,1,1,3,3,1,5,1,
+                    6,3,4,1,0,2,2,0,1,2,3,0,5,0,4,GND,
+                    0,1,2,1,1,2,3,0,5,6,4,7,0,3,2,1,
+                    2,0,1,2,3,1,5,3,4,6,0,4,2,0,1,GND,
+                    8,GND,8,5,7,5,7,5,7,4,6,4,6,3,6,2,
+                    7,5,6,5,6,4,6,4,7,3,7,3,7,2,8,GND,
+                    8,14,8,13,9,12,9,12,9,9,10,8,10,11,10,11,
+                    11,13,10,13,10,12,10,12,9,8,9,11,9,11,8,GND,
+                    12,14,11,12,13,13,14,14,15,14,11,GND,15,15,10,15,
+                    13,12,9,13,11,14,15,12,12,10,14,11,13,10,15,GND,
+                    15,15,13,9,13,8,14,12,12,15,10,13,11,14,14,13,
+                    14,13,14,11,GND,15,15,11,13,12,9,10,14,15,12,14])
+)
+
 
 psv_1024_rhd = dict(
     geometry=(46, 24),
@@ -961,6 +1051,7 @@ F6, G5, G7, G8, G6, H5, H7, H6"""
 rat_v3_by_zif_rc = zip(*unzip_encoded(rat_v3_by_zif))
 rat_v3_by_zif_lut = dict(zip(range(1, 62), rat_v3_by_zif_rc))
 
+
 electrode_maps = dict(
     # new passive map construction
     ratv5_intan=connect_passive_map((8, 8), rat_v5_by_zif_lut,
@@ -1030,11 +1121,44 @@ electrode_maps = dict(
 )
 
 
+# Specify a table of multi-arm electrodes: maps for these will be constructed with permutations of connectors
+multi_arms_electrodes = {
+    'psv_244': {'arms': [passive_244_Q1_by_zif, passive_244_Q2_by_zif, passive_244_Q3_by_zif, passive_244_Q4_by_zif],
+                'default_daqs': ['intan64', 'intan64', 'intan64', 'intan64'],
+                'geometry': (16, 16),
+                'pitch': 0.762}
+}
+
+
+def multi_arm_map(electrode, connectors=(), electrode_pins='zif'):
+    map_info = multi_arms_electrodes[electrode]
+    if not len(connectors):
+        connectors = map_info['default_daqs']
+    # Only know about ZIF right now
+    if electrode_pins.lower() == 'zif':
+        connectors = [zif_by_daq_lut[c] for c in connectors]
+    else:
+        raise ValueError('Electrode pins not understood: {}'.format(electrode_pins))
+    g = map_info['geometry']
+    dx = map_info['pitch']
+    map_parts = [connect_passive_map(g, arm, daq, pitch=dx)
+                 for arm, daq in zip(map_info['arms'], connectors)]
+    map_spec = map_parts[0]
+    for m in map_parts[1:]:
+        map_spec['rows'].extend(m['rows'])
+        map_spec['cols'].extend(m['cols'])
+    return map_spec
+
+
 def get_electrode_map(name, connectors=()):
     try:
         pinouts = electrode_maps[name]
     except KeyError:
-        raise ValueError('electrode name not found: ' + name)
+        try:
+            pinouts = multi_arm_map(name, connectors=connectors)
+            connectors = ()
+        except KeyError:
+            raise ValueError('electrode name not found: ' + name)
 
     if connectors:
         if not isinstance(connectors, (list, tuple)):

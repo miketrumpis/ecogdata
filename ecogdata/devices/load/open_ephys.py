@@ -393,7 +393,7 @@ class OpenEphysLoader(FileLoader):
         else:
             with h5py.File(self.data_file, 'r') as h5file:
                 n_data_channels = h5file[self.data_array].shape[0]
-        channel_map, grounded, reference = get_electrode_map(self.electrode)
+        channel_map, grounded, reference = get_electrode_map(self.electrode, self.electrode_connectors)
         electrode_chans = [n for n in range(n_data_channels) if n not in grounded + reference]
         return channel_map, electrode_chans, grounded, reference
 

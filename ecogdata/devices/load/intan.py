@@ -67,7 +67,8 @@ def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', b
                        use_stored=use_stored,
                        save_downsamp=save_downsamp,
                        store_path=store_path,
-                       raise_on_glitch=raise_on_glitches)
+                       raise_on_glitch=raise_on_glitches,
+                       **loader_kwargs)
     return loader.create_dataset()
 
 

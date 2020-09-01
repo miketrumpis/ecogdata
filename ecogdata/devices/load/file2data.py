@@ -60,7 +60,7 @@ class FileLoader:
 
     def __init__(self, experiment_path, recording, electrode, bandpass=None, notches=None, units='uV',
                  load_channels=None, trigger_idx=(), mapped=False, resample_rate=None, use_stored=True,
-                 save_downsamp=True, store_path=None, raise_on_glitch=False):
+                 save_downsamp=True, store_path=None, electrode_connectors=(), raise_on_glitch=False):
         """
         Data file mapping/loading. Supports downsampling.
 
@@ -92,13 +92,27 @@ class FileLoader:
             If True, save a new downsampled dataset
         store_path: str
             Save/load downsampled datasets at this path, rather than `experiment_path`
+        electrode_connectors: sequence
         raise_on_glitch: bool
             If True, raise exceptions on unexpected events. Otherwise try to proceed with warnings.
+
+        Notes
+        -----
+        "electrode" and "electrode_connectors" parameters:
+        Usually the "electrode" name uniquely specifies an electrode site-to-channel ChannelMap.
+        A ChannelMap may be constructed with a combination of electrode + connector(s) instead.
+        This is relevant for multi-arm electrodes (e.g. the 4-arm, 244-channel passive electrode)
+        that might be recorded with a mixture of amplifiers. For example, if the 4 arms of the
+        244-channel passive electrode is recorded, in order, with two new and two old Intan RHD
+        chips, then the correct map is created with electrode='psv_244' and
+        electrode_connectors=('intan64_new', 'intan64_new', 'intan64', 'intan64')
+
         """
 
         self.experiment_path = os.path.expanduser(experiment_path)
         self.recording = recording
         self.electrode = electrode
+        self.electrode_connectors = electrode_connectors
         self.bandpass = bandpass
         self.notches = notches
         self.units = units
@@ -221,7 +235,7 @@ class FileLoader:
 
         """
 
-        channel_map, grounded, reference = get_electrode_map(self.electrode)
+        channel_map, grounded, reference = get_electrode_map(self.electrode, connectors=self.electrode_connectors)
         with h5py.File(self.data_file, 'r') as h5file:
             n_data_channels = h5file[self.data_array].shape[int(self.transpose_array)]
         electrode_chans = [n for n in range(n_data_channels) if n not in grounded + reference]
