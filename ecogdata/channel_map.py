@@ -26,7 +26,7 @@ def map_intersection(maps):
 class ChannelMap(list):
     """A map of sample vector(s) to a matrix representing 2D sampling space."""
 
-    def __init__(self, chan_map, geometry, col_major=False, pitch=1.0):
+    def __init__(self, chan_map, geometry, col_major=False, pitch=1.0, pads_up=False):
         """
         A ChannelMap is a vector of grid locations in flat indexing that correspond to the electrode location of data
         channels in counting order. E.g. a channel map of [2, 0, 1] for 3 channels [a, b, c] with geometry (2,
@@ -48,6 +48,9 @@ class ChannelMap(list):
             Flat indexing is for column-major addressing. Default is False for row-major.
         pitch: float or tuple
             The electrode pitch, either as a single distance or as (dy, dx)
+        pads_up: bool
+            If the map positions the electrode pads "face up", set this to True.
+            Typically face down is used to match anatomical coordinates.
 
         """
         list.__init__(self)
@@ -67,19 +70,24 @@ class ChannelMap(list):
         # self._chan2site = dict([(x, (r, c)) for x, r, c in zip(chan_map, rows, cols)])
         self._chan2site = dict(enumerate(zip(rows, cols)))
         self._site2chan = dict([(v, k) for k, v in self._chan2site.items()])
+        self._pads_up = pads_up
+
+    @property
+    def pads_up(self):
+        return self._pads_up
 
     @classmethod
-    def from_index(cls, ij, shape, col_major=True, pitch=1.0):
+    def from_index(cls, ij, shape, col_major=True, pitch=1.0, pads_up=False):
         """Return a ChannelMap from a list of matrix index pairs (e.g. [(0, 3), (2, 1), ...])
         and a matrix shape (e.g. (5, 5)).
         """
 
         i, j = zip(*ij)
         map = mat_to_flat(shape, i, j, col_major=col_major)
-        return cls(map, shape, col_major=col_major, pitch=pitch)
+        return cls(map, shape, col_major=col_major, pitch=pitch, pads_up=pads_up)
 
     @classmethod
-    def from_mask(cls, mask, col_major=True, pitch=1.0):
+    def from_mask(cls, mask, col_major=True, pitch=1.0, pads_up=pads_up):
         """Create a ChannelMap from a binary grid. Note: the data channels must be aligned
         with the column-major or row-major raster order of this binary mask
         """
@@ -87,13 +95,33 @@ class ChannelMap(list):
         i, j = mask.nonzero()
         ij = zip(i, j)
         geo = mask.shape
-        return cls.from_index(ij, geo, col_major=col_major, pitch=pitch)
+        return cls.from_index(ij, geo, col_major=col_major, pitch=pitch, pads_up=pads_up)
 
     @property
     def site_combinations(self):
         if self._combs is None and len(self) > 1:
             self._combs = channel_combinations(self, scale=self.pitch)
         return self._combs
+
+    def flip_face(self):
+        rows, cols = self.to_mat()
+        num_cols = self.geometry[1]
+        cols = num_cols - 1 - cols
+        pads_up = not self.pads_up
+        return ChannelMap.from_index(list(zip(rows, cols)), self.geometry,
+                                     col_major=self.col_major, pitch=self.pitch, pads_up=pads_up)
+
+    def to_pads_up(self):
+        if not self.pads_up:
+            return self.flip_face()
+        else:
+            return self
+
+    def to_pads_down(self):
+        if self.pads_up:
+            return self.flip_face()
+        else:
+            return self
 
     def as_row_major(self):
         if self.col_major:
