@@ -50,7 +50,7 @@ class BoolOrNum(Parameter):
 
     def value(self):
         cmd = super(BoolOrNum, self).value().lower()
-        if cmd in ('true', 'false'):
+        if cmd in ('true', 'false', ''):
             return cmd == 'true'
         return float(self.command)
 
