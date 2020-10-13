@@ -542,7 +542,7 @@ class MappedSource(ElectrodeDataSource):
             If False, mirror to a PlainArraySource (in memory). Else mirror into a new MappedSource.
         channel_compatible: bool
             If True, preserve the same number of raw data channels in a MappedSource. Otherwise, reduce the channels
-            to just the set of active channels.
+            to just the set of active channels. Currently not supported for non-mapped mirrors.
         filename: str
             Name of the new MappedSource. If empty, use a self-destroying temporary file.
         copy: str
@@ -653,6 +653,8 @@ class MappedSource(ElectrodeDataSource):
             #                     channel_mask=channel_mask, aligned_arrays=self.aligned_arrays,
             #                     transpose=False, **map_args)
         else:
+            if channel_compatible:
+                print('RAM mirrors are not channel compatible--use mapped=True')
             self._check_slice_size(np.s_[:, :T])
             C = self.shape[0]
             if 'data_buffer' in new_sources:
