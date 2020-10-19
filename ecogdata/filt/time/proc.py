@@ -88,11 +88,20 @@ def filter_array(
         return arr
     else:
         # still use bfilter for memory efficiency
+        # Work in progress to use this syntax
+        # use_shm = hasattr(block_filter, 'uses_parallel') and block_filter.uses_parallel(b, a, arr)
+        foo = False
+        try:
+            use_shm = block_filter(b, a, arr, check_parallel=True)
+        except TypeError:
+            use_shm = False
         if def_args['out'] is None:
-            arr_f = shared_ndarray(arr.shape, arr.dtype.char)
+            if use_shm:
+                arr_f = shared_ndarray(arr.shape, arr.dtype.char)
+            else:
+                arr_f = np.empty_like(arr)
             def_args['out'] = arr_f
         block_filter(b, a, arr, **def_args)
-        # raise
         return def_args['out']
 
 def notch_all(

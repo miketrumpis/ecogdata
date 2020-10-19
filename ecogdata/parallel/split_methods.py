@@ -13,7 +13,7 @@ from ecogdata.parallel.sharedmem import shared_ndarray
 
 # redefine bfilter to be a void function (put output into y)
 def bfilter_void(b, a, x, y, **kwargs):
-    bfilter_serial(b, a, x, out=y, **kwargs)
+    return bfilter_serial(b, a, x, out=y, **kwargs)
 
 # parallelize bfilter_void
 bfilter_para = split_at(split_arg=(2, 3))(bfilter_void)
@@ -22,8 +22,11 @@ bfilter_para = split_at(split_arg=(2, 3))(bfilter_void)
 def bfilter(b, a, x, out=None, **kwargs):
     if out is None:
         out = x
-    bfilter_para(b, a, x, out, **kwargs)
+    return bfilter_para(b, a, x, out, **kwargs)
 
+# WIP
+# if hasattr(bfilter_para, 'uses_parallel'):
+#     bfilter.uses_parallel = bfilter_para.uses_parallel
 
 overlap_add = split_at()(overlap_add_serial)
 
@@ -44,12 +47,19 @@ lfilter_para = split_at(split_arg=(2, 3, 4), splice_at=(0,))(lfilter_void)
 
 def lfilter(b, a, x, out=None, **kwargs):
     if out is None:
-        out = shared_ndarray(x.shape, x.dtype.char)
+        # Can check parallel with the first split array
+        if lfilter_para(b, a, x, None, None, check_parallel=True):
+            out = shared_ndarray(x.shape, x.dtype.char)
+        else:
+            out = np.empty_like(x)
     zi = kwargs.pop('zi', None)
     if zi is None:
         zi = np.zeros((len(x), len(b) - 1))
     zi = lfilter_para(b, a, x, out, zi, **kwargs)
     return out, zi
+
+# if hasattr(lfilter_para, 'uses_parallel'):
+#     lfilter.uses_parallel = lfilter_para.uses_parallel
 
 # Convenience wrappers
 def filtfilt(arr, b, a, bsize=10000):
@@ -58,3 +68,6 @@ def filtfilt(arr, b, a, bsize=10000):
     """
     # needs to be axis=-1 for contiguity
     bfilter(b, a, arr, bsize=bsize, axis=-1, filtfilt=True)
+
+# if hasattr(bfilter, 'uses_parallel'):
+#     filtfilt.uses_parallel = bfilter.uses_parallel

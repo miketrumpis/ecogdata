@@ -50,6 +50,7 @@ def parallel_runner(method, static_args, split_arg, shared_split_arrays, shared_
 
     """
     split_shapes = [x.shape for x in shared_split_arrays]
+    n_jobs = min(n_jobs, split_shapes[0][0])
     init_args = (split_arg,
                  shared_split_arrays,
                  split_shapes,
@@ -116,18 +117,21 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
         splice_at = (splice_at,)
     if not np.iterable(split_arg):
         split_arg = (split_arg,)
-    if n_jobs < 0:
-        n_jobs = mp.cpu_count()
 
     splice_at = tuple(splice_at)
     split_arg = tuple(split_arg)
     shared_args = tuple(shared_args)
+    if n_jobs < 0:
+        n_jobs = mp.cpu_count()
 
-    @decorator
-    def inner_split_method(method, *args, **kwargs):
-        # This decorator scans the arguments to create shared memory wrappers of arrays
-        # and then calls the parallel runner for dispatch of the method
-
+    def check_parallel_usage(*args, **kwargs):
+        # check if there are even multiple rows in the array!!
+        arr = args[split_arg[0]]
+        if arr.ndim == 1 or arr.shape[0] == 1:
+            return False
+        # check if the parallel context is false
+        if not parallel_controller.state:
+            return False
         # check if the arrays are too small to bother with subprocesses
         if split_over is not None:
             mx_size = 0
@@ -137,9 +141,19 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
                 if size > mx_size:
                     mx_size = size
             if mx_size / 1024 / 1024 < split_over:
-                return method(*args, **kwargs)
-        # check if the parallel context is false
-        if not parallel_controller.state:
+                return False
+        return True
+
+    @decorator
+    def inner_split_method(method, *args, **kwargs):
+        # This decorator scans the arguments to create shared memory wrappers of arrays
+        # and then calls the parallel runner for dispatch of the method
+
+        only_check = kwargs.pop('check_parallel', False)
+        para = check_parallel_usage(*args, **kwargs)
+        if only_check:
+            return para
+        elif not para:
             return method(*args, **kwargs)
         pop_args = sorted(split_arg + shared_args)
         shared_array_shm = list()
@@ -167,6 +181,9 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
             )
         return parallel_runner(method, static_args, split_arg, split_array_shm, shared_args, shared_array_shm,
                                splice_at, kwargs, n_jobs, info)
+
+    # Work in progress -- figure out how to attach checker as an attribute
+    # inner_split_method.uses_parallel = check_parallel_usage
 
     return inner_split_method
 
