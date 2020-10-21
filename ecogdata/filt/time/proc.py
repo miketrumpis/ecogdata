@@ -64,10 +64,12 @@ def filter_array(
     
     """
     b, a = _get_poles_zeros(ftype, **design_kwargs)
+    check_shm = False
     if isinstance(block_filter, str):
         if block_filter.lower() == 'parallel':
             from ecogdata.parallel.split_methods import bfilter
             block_filter = bfilter
+            check_shm = True
         elif block_filter.lower() == 'serial':
             from .blocked_filter import bfilter
             block_filter = bfilter
@@ -90,13 +92,14 @@ def filter_array(
         # still use bfilter for memory efficiency
         # Work in progress to use this syntax
         # use_shm = hasattr(block_filter, 'uses_parallel') and block_filter.uses_parallel(b, a, arr)
-        foo = False
-        try:
-            use_shm = block_filter(b, a, arr, check_parallel=True)
-        except TypeError:
-            use_shm = False
+        if check_shm:
+            # signal shared memory usage if check_shm remains true
+            try:
+                check_shm = block_filter(b, a, arr, check_parallel=True, **def_args)
+            except TypeError:
+                check_shm = False
         if def_args['out'] is None:
-            if use_shm:
+            if check_shm:
                 arr_f = shared_ndarray(arr.shape, arr.dtype.char)
             else:
                 arr_f = np.empty_like(arr)
