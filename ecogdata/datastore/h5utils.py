@@ -9,11 +9,14 @@ from contextlib import closing
 from pickle import PickleError, PicklingError
 
 from ecogdata.util import Bunch
+from ecogdata.datasource.memmap import MappedSource
+from ecogdata.datasource.array_abstractions import BufferBase
+from ecogdata.devices.load.file2data import FileLoader
 from ecogdata.parallel.sharedmem import shared_ndarray
 
 
 _h5_seq_types = (type(1.0), type(1j), type(True), type([]))
-
+_not_pickled = (MappedSource, BufferBase)
 
 class HDF5Bunch(Bunch):
     
@@ -45,6 +48,10 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0, s
     naturally supported array types. Sub-Bunches are written
     recursively in sub-paths. The remaining Bunch elements are
     pickled, preserving their object classification.
+
+    MappedSource and BufferBase types are not saved, but can be reloaded
+    if the corresponding FileLoader is included in the Bunch. This is presently
+    limited to one FileLoader per HDF5 Group (or path level).
 
     Parameters
     ----------
@@ -96,9 +103,13 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0, s
     sub_bunches = list()
     items = iter(b.items())
     pickle_bunch = Bunch()
+    mapped_data = list()
+    loader_saved = False
 
     # 1) create arrays for suitable types
     for key, val in items:
+        if isinstance(val, FileLoader):
+            loader_saved = True
         if isinstance(val, np.ndarray) and len(val):
             atom = tables.Atom.from_dtype(val.dtype)
             if compress_arrays:
@@ -116,7 +127,8 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0, s
                 f.create_array(path, key, val)
             except (TypeError, ValueError) as e:
                 pickle_bunch[key] = val
-
+        elif isinstance(val, _not_pickled):
+            mapped_data.append(key)
         elif isinstance(val, Bunch):
             sub_bunches.append( (key, val) )
         else:
@@ -138,14 +150,23 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0, s
         save_bunch(
             f, subpath, b, compress_arrays=compress_arrays, skip_pickles=skip_pickles
             )
+
+    if mapped_data:
+        print('Mapped data was skipped: ' + ', '.join(mapped_data))
+        if loader_saved:
+            print('A data loader object was saved. Use "attempt_reload=True" with load_bunch to recover data.')
     return
 
 
-def load_bunch(f, path='/', shared_arrays=(), load=True, scan=False, skip_stale_pickles=True):
+def load_bunch(f, path='/', shared_arrays=(), load=True, scan=False, skip_stale_pickles=True, attempt_reload=False):
     """
     Load a saved bunch, or an arbitrary collection of arrays into a
     new Bunch object. Sub-paths are recursively loaded as Bunch attributes.
-    
+
+    You can attempt to reload MappedSource and BufferBase types if the corresponding
+    FileLoader is included in the Bunch. This is presently limited to one FileLoader
+    per HDF5 Group (or path level).
+
     Parameters
     ---------
     f: file name or fid
@@ -161,6 +182,10 @@ def load_bunch(f, path='/', shared_arrays=(), load=True, scan=False, skip_stale_
         a Bunch with the path structure, but the file is closed.
     skip_stale_pickles: bool (True)
         Option to pass on unpickling data from incompatible library versions.
+    attempt_reload: bool (False)
+        If a FileLoader was pickled, then attempt to recreate the dataset using that object. This option is meant to
+        recover datasets that were mapped from disk. NOTE that this process will potentially over-write data arrays,
+        if they were stored in this Bunch.
 
     Return
     ------
@@ -172,13 +197,13 @@ def load_bunch(f, path='/', shared_arrays=(), load=True, scan=False, skip_stale_
     shared_arrays = ['/'.join([path, a]) for a in shared_arrays]
     return traverse_table(
         f, path=path, shared_paths=shared_arrays, load=load, scan=scan,
-        skip_stale_pickles=skip_stale_pickles
+        skip_stale_pickles=skip_stale_pickles, attempt_reload=attempt_reload
         )
 
 
-def traverse_table(f, path='/', load=True, scan=False, shared_paths=(), skip_stale_pickles=True):
+def traverse_table(f, path='/', load=True, scan=False, shared_paths=(), skip_stale_pickles=True, attempt_reload=False):
     # Walk nodes and stuff arrays into the bunch.
-    # If we encouter a group, then loop back into this method
+    # If we encounter a group, then loop back into this method
     if not isinstance(f, tables.file.File):
         if load or scan:
             # technically there is no distinction between
@@ -188,17 +213,13 @@ def traverse_table(f, path='/', load=True, scan=False, shared_paths=(), skip_sta
             # If scan is True, then perhaps load should be
             # forced False here, e.g. load = not scan
             with closing(tables.open_file(f, mode='r')) as f:
-                return traverse_table(
-                    f, path=path, load=load, scan=scan,
-                    shared_paths=shared_paths
-                    )
+                return traverse_table(f, path=path, load=load, scan=scan, shared_paths=shared_paths,
+                                      skip_stale_pickles=skip_stale_pickles, attempt_reload=attempt_reload)
         else:
             f = tables.open_file(f, mode='r')
             try:
-                return traverse_table(
-                    f, path=path, load=load, scan=scan,
-                    shared_paths=shared_paths
-                    )
+                return traverse_table(f, path=path, load=load, scan=scan, shared_paths=shared_paths,
+                                      skip_stale_pickles=skip_stale_pickles, attempt_reload=attempt_reload)
             except:
                 f.close()
                 raise
@@ -257,9 +278,9 @@ def traverse_table(f, path='/', load=True, scan=False, shared_paths=(), skip_sta
                 continue
             if gname=='#refs#':
                 continue
-            subbunch = traverse_table(
-                f, path='/'.join([path, gname]), load=load
-                )
+            subbunch = traverse_table(f, path='/'.join([path, gname]), load=load, scan=scan,
+                                      shared_paths=shared_paths, skip_stale_pickles=skip_stale_pickles,
+                                      attempt_reload=attempt_reload)
             gbunch[gname] = subbunch
             
         else:
@@ -268,5 +289,13 @@ def traverse_table(f, path='/', load=True, scan=False, shared_paths=(), skip_sta
     this_node = f.get_node(path)
     for attr in this_node._v_attrs._f_list():
         gbunch[attr] = this_node._v_attrs[attr]
-            
+
+    loaders = [v for v in gbunch.values() if isinstance(v, FileLoader)]
+    if attempt_reload and loaders:
+        for loader in loaders:
+            print('Attempting load from {}'.format(loader.primary_data_file))
+            dataset = loader.create_dataset()
+            new_keys = set(dataset.keys()) - set(gbunch.keys())
+            for k in new_keys:
+                gbunch[k] = dataset.pop(k)
     return gbunch

@@ -592,4 +592,5 @@ class FileLoader:
         dataset.transient_snipped = False
         dataset.ground_chans = ground_chans
         dataset.ref_chans = ref_chans
+        dataset.loader = self
         return dataset
