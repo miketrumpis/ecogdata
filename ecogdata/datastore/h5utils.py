@@ -85,7 +85,7 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0, s
                 compress_arrays=compress_arrays,
                 skip_pickles=skip_pickles
                 )
-
+    from ecogdata.devices.load.file2data import FileLoader
     # If we want to overwrite a node, check to see that it exists.
     # If we want an exception when trying to overwrite, that will
     # be caught on f.create_group()
