@@ -263,9 +263,11 @@ class ChannelMap(list):
             raise ValueError('Data array does not have the correct number of channels')
         shape.pop(axis)
         shape.insert(axis, self.geometry[0] * self.geometry[1])
-        array = np.empty(shape, dtype=np.result_type(data, fill))
         if not isinstance(fill, str):
+            array = np.empty(shape, dtype=np.result_type(data, fill))
             array.fill(fill)
+        else:
+            array = np.empty(shape, dtype=data.dtype)
         slicing = [slice(None)] * len(shape)
         slicing[axis] = self.as_row_major()[:]
         array[tuple(slicing)] = data

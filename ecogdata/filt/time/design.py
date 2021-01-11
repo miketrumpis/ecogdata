@@ -143,8 +143,9 @@ def plot_filt(
     _, f = signal.freqz(b, a, worN=w * (2*np.pi/Fs))
     if ax:
         pp.sca(ax)
+        fig = ax.figure
     else:
-        pp.figure()
+        fig = pp.figure()
     if filtfilt:
         m = np.abs(f)**2
     else:
@@ -175,6 +176,8 @@ def plot_filt(
         ax2 = pp.gca().twinx()
         ax2.plot( w, np.angle(f), **plot_kws )
         ax2.set_ylabel('radians')
+    return fig
+
 
 def continuous_amplitude_linphase(ft_samps):
     """Given Fourier Transform samples of a linear phase system,

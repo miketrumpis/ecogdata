@@ -11,7 +11,6 @@ from pickle import PickleError, PicklingError
 from ecogdata.util import Bunch
 from ecogdata.datasource.memmap import MappedSource
 from ecogdata.datasource.array_abstractions import BufferBase
-from ecogdata.devices.load.file2data import FileLoader
 from ecogdata.parallel.sharedmem import shared_ndarray
 
 
@@ -204,6 +203,7 @@ def load_bunch(f, path='/', shared_arrays=(), load=True, scan=False, skip_stale_
 def traverse_table(f, path='/', load=True, scan=False, shared_paths=(), skip_stale_pickles=True, attempt_reload=False):
     # Walk nodes and stuff arrays into the bunch.
     # If we encounter a group, then loop back into this method
+    from ecogdata.devices.load.file2data import FileLoader
     if not isinstance(f, tables.file.File):
         if load or scan:
             # technically there is no distinction between
