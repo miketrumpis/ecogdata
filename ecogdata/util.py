@@ -247,7 +247,7 @@ def search_results(path, filter=''):
             return Bunch()
 
 
-def input_as_2d(in_arr=0, out_arr=-1):
+def input_as_2d(in_arr=0, out_arr=0):
     """
     A decorator to reshape input to be 2D and then bring output back
     to original size (possibly with loss of last dimension).
@@ -257,15 +257,18 @@ def input_as_2d(in_arr=0, out_arr=-1):
     ----------
     in_arr : int (sequence)
         position of argument(s) (input) to be reshaped
-    out_arr : int
-        Non-negative position of output to be reshaped.
-        If None, then no output is reshaped. If the method's
-        return type is not a tuple, this argument has no effect.
+    out_arr : int (sequence)
+        Non-negative position(s) of output to be reshaped.
+        If None, then no output is reshaped.
+        If "all", then all outputs are reshaped.
+        If the method has a single return value, it is reshaped.
 
     """
 
     if not np.iterable(in_arr):
         in_arr = (in_arr,)
+    if out_arr is not None and not isinstance(out_arr, str) and not np.iterable(out_arr):
+        out_arr = (out_arr,)
 
     @decorator
     def _wrap(fn, *args, **kwargs):
@@ -282,26 +285,36 @@ def input_as_2d(in_arr=0, out_arr=-1):
             args[p] = x
             shapes.append(shp)
         r = fn(*args, **kwargs)
-        if out_arr is None:
+        if out_arr is None or r is None:
             return r
-        if isinstance(r, tuple) and out_arr >= 0:
-            x = r[out_arr]
+        # Need to be avoid re-assigning the variable from another scope,
+        # so using _out_arr locally
+        if isinstance(out_arr, str) and out_arr.lower() == 'all':
+            _out_arr = tuple(range(len(r)))
         else:
-            x = r
-        # now relying on the 1st encountered shape to
-        # represent the output shape
-        shp = shapes[0]
-        n_out = len(x.shape)
-        # check to see if the function ate the last dimension
-        if n_out < 2:
-            shp = shp[:-1]
-        elif shp[-1] != x.shape[-1]:
-            shp = shp[:-1] + (x.shape[-1],)
-        x = x.reshape(shp)
-        if isinstance(r, tuple) and out_arr >= 0:
-            return r[:out_arr] + (x,) + r[out_arr + 1:]
-        else:
-            return x
+            _out_arr = out_arr
+        if not isinstance(r, tuple):
+            _out_array = (0,)
+            r = (r,)
+        returns = list()
+        for i in range(len(r)):
+            if i not in _out_arr:
+                returns.append(r[i])
+                continue
+            x = r[i]
+            n_out = len(x.shape)
+            # relying on the 1st encountered shape to represent the output shape
+            shp = shapes[0]
+            # check to see if the function ate the last dimension
+            if n_out < 2:
+                shp = shp[:-1]
+            elif shp[-1] != x.shape[-1]:
+                shp = shp[:-1] + (x.shape[-1],)
+            x = x.reshape(shp)
+            returns.append(x)
+        if len(returns) < 2:
+            return returns[0]
+        return tuple(returns)
     return _wrap
 
 
