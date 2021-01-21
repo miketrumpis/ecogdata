@@ -16,7 +16,7 @@ This config file should be found in ``~/.mjt_exp_conf.txt`` (where ``~/`` refers
 This location can be mysterious in Windows, so the ``config_tool.py`` is recommended.
 This is found in ``ecogdata/scripts/config_tool.py`` and should also be found on the command path after installing. 
 
-.. figure:: ../images/config_tool.png
+.. figure:: config_tool.png
    :scale: 50%
    :alt: confg_tool.py GUI
    :align: center
