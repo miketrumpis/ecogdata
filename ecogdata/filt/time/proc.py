@@ -107,6 +107,8 @@ def filter_array(
         block_filter(b, a, arr, **def_args)
         return def_args['out']
 
+
+@input_as_2d()
 def notch_all(
         arr, Fs, lines=60.0, nzo=3,
         nwid=3.0, inplace=True, nmax=None, **filt_kwargs
