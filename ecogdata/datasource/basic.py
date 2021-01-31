@@ -41,13 +41,13 @@ def calc_new_samples(N, rate_change):
 class DataSourceBlockIter(BlockSignalBase):
 
     def __init__(self, datasource, block_length=None, overlap=0, start_offset=0,
-                 axis=1, return_slice=False, reverse=False, **kwargs):
+                 axis=1, return_slice=False, reverse=False, partial_block=True, **kwargs):
         if block_length is None:
             L = datasource._auto_block_length
         else:
             L = block_length
         super(DataSourceBlockIter, self).__init__(datasource, L, overlap=overlap, axis=axis,
-                                                  start_offset=start_offset, partial_block=True,
+                                                  start_offset=start_offset, partial_block=partial_block,
                                                   reverse=reverse)
         self.datasource = datasource
         self._count = 0
@@ -164,7 +164,8 @@ class ElectrodeDataSource:
     def get_cached_slice(self):
         return self._cache_output
 
-    def iter_blocks(self, block_length=None, overlap=0, start_offset=0, return_slice=False, reverse=False, **kwargs):
+    def iter_blocks(self, block_length=None, overlap=0, start_offset=0, return_slice=False, reverse=False,
+                    partial_block=True, **kwargs):
         """
         Yield data blocks with given length (in samples)
 
@@ -182,13 +183,16 @@ class ElectrodeDataSource:
             to this datasource (if writeable).
         reverse: bool
             If True, yield the blocks in reverse sequence.
+        partial_block: bool
+            If False, yield every full length block. If True, yield data until the end of the series,
+            even if the last block is not full length.
         kwargs: dict
             Arguments for ElectrodeDataSource.cache_slice
 
         """
 
         return DataSourceBlockIter(self, axis=1, block_length=block_length, overlap=overlap, start_offset=start_offset,
-                                   return_slice=return_slice, reverse=reverse, **kwargs)
+                                   return_slice=return_slice, reverse=reverse, partial_block=partial_block, **kwargs)
 
     def iter_channels(self, chans_per_block=None, use_max_memory=False, return_slice=False, **kwargs):
         """
@@ -392,8 +396,9 @@ class ElectrodeDataSource:
             dtype = np.dtype('d')
         itr, dtype, out = self._setup_reduce_method(axis, dtype, out)
         for block in itr:
+            # TODO: just adding squares without mean subtraction??
             block **= 2
-            out += block
+            out += block.sum(axis=axis).astype(dtype, copy=False)
         if axis is None:
             n = self.shape[0] * self.shape[1] - ddof
         else:
