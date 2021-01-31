@@ -206,12 +206,8 @@ def traverse_table(f, path='/', load=True, scan=False, shared_paths=(), skip_sta
     from ecogdata.devices.load.file2data import FileLoader
     if not isinstance(f, tables.file.File):
         if load or scan:
-            # technically there is no distinction between
-            # a) load==True and scan==True
-            # b) load==True and scan==False
-            #
-            # If scan is True, then perhaps load should be
-            # forced False here, e.g. load = not scan
+            # If scan is True, load should be forced False here
+            load = not scan
             with closing(tables.open_file(f, mode='r')) as f:
                 return traverse_table(f, path=path, load=load, scan=scan, shared_paths=shared_paths,
                                       skip_stale_pickles=skip_stale_pickles, attempt_reload=attempt_reload)
