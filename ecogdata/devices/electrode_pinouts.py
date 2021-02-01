@@ -131,7 +131,7 @@ def unzip_encoded(coord_list, shift_index=True, skipchars='ioqs'):
 
 def connect_passive_map(
         geometry, electrode_map, daq_order,
-        interconnects=(), reverse_cols=True, pitch=1.0
+        interconnects=(), reverse_cols=True, pitch=1.0, array_pin_types='ZIF'
 ):
     """
     Make an end-to-end channel map. In the simplest scenario, only
@@ -159,6 +159,9 @@ def connect_passive_map(
         array columns should be flipped to anatomical (surgeon's) perspective
     pitch: float or (float, float)
         inter-electrode pitch
+    array_pin_types: str
+        This is used to code the acquisition based on array pin types. E.g. for ZIF,
+        channels will be coded if the ZIF is even or odd. (Only ZIF is supported for now.)
 
     Returns
     -------
@@ -196,12 +199,39 @@ def connect_passive_map(
     if geometry=='auto' and reverse_cols:
         mn_col = min(filter(lambda x: x not in NonSignalChannels, cols))
         cols = [c if c in NonSignalChannels else c - mn_col for c in cols]
+    if array_pin_types.lower() == 'zif':
+        code = zif_bank_code(daq_order)
+    else:
+        code = None
     map_dict = {'geometry': geometry,
                 'rows': rows,
                 'cols': cols,
-                'pitch': pitch}
+                'pitch': pitch,
+                'pin_code': code}
     return map_dict
 
+
+def zif_bank_code(zif_pinout: list):
+    """
+    Return a list encoding even/odd ZIF pins in the data acquisition order.
+    Empirically, this has been useful for finding differential offsets in array maps
+    (although the ZIF even-/odd-ness tends to overlap with other pin breakouts).
+
+    >>> print(zif_pintout(zif_by_intan64))
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1, ...]
+
+    Parameters
+    ----------
+    zif_pinout: list
+        The sequence numbering ZIF pins by data acquisition order.
+
+    Returns
+    -------
+    even_odd_zif: list
+        Even (+1) and odd (-1) ZIF pins in acquisition order
+
+    """
+    return [1 - 2 * (c % 2) for c in zif_pinout if c is not None]
 
 # New electrode-to-data tables are created by specifying
 # 1) electrode-site to initial pinout lookup
@@ -1140,16 +1170,21 @@ def multi_arm_map(electrode, connectors=(), electrode_pins='zif'):
         raise ValueError('Electrode pins not understood: {}'.format(electrode_pins))
     g = map_info['geometry']
     dx = map_info['pitch']
-    map_parts = [connect_passive_map(g, arm, daq, pitch=dx)
+    map_parts = [connect_passive_map(g, arm, daq, pitch=dx, array_pin_types=electrode_pins)
                  for arm, daq in zip(map_info['arms'], connectors)]
+    board_codes = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     map_spec = map_parts[0]
-    for m in map_parts[1:]:
+    map_spec['board_code'] = [board_codes[0]] * len(map_spec['rows'])
+    for i, m in enumerate(map_parts[1:]):
         map_spec['rows'].extend(m['rows'])
         map_spec['cols'].extend(m['cols'])
+        if map_spec['pin_code'] is not None:
+            map_spec['pin_code'].extend(m['pin_code'])
+        map_spec['board_code'].extend([board_codes[i + 1]] * len(m['rows']))
     return map_spec
 
 
-def get_electrode_map(name, connectors=()):
+def get_electrode_map(name, connectors=(), pin_codes=False):
     try:
         pinouts = electrode_maps[name]
     except KeyError:
@@ -1169,13 +1204,13 @@ def get_electrode_map(name, connectors=()):
     else:
         # you're getting the connectors in alphanumeric order
         keys = pinouts.keys()
-        connectors = set([k[4:] for k in keys
-                          if k not in ('geometry', 'pitch')])
-        connectors = sorted(connectors)
-        row_spec = ['rows' + con for con in connectors]
-        col_spec = ['cols' + con for con in connectors]
-        # row_spec = ('rows',)
-        # col_spec = ('cols',)
+        row_spec = list()
+        col_spec = list()
+        for k in keys:
+            if k.startswith('rows'):
+                row_spec.append(k)
+            if k.startswith('cols'):
+                col_spec.append(k)
 
     rows = list();
     cols = list()
@@ -1210,5 +1245,9 @@ def get_electrode_map(name, connectors=()):
         # use literal coordinates
         chan_map = CoordinateChannelMap(zip(sig_rows, sig_cols), geometry=geometry,
                                         pitch=pitch)
+    if pin_codes:
+        pin_code = pinouts.get('pin_code', None)
+        board_code = pinouts.get('board_code', None)
+        return chan_map, no_connection, reference, pin_code, board_code
     return chan_map, no_connection, reference
 
