@@ -15,3 +15,4 @@ Start at the "first steps" intro to see how to set up recording config file path
    mapped_sources
    joining_datasets
    ecog_data_loading
+   JobRunner-demo

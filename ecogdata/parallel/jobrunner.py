@@ -22,7 +22,8 @@ class ParallelWorker(Process):
         It returns (i, args, kwargs) where i is the task order number for keeping sequence in the Runner
 
         """
-        pass
+        i = job
+        return i, (i,), dict()
 
     def check_job(self, endtask=True):
         job = self.input_q.get()
@@ -61,13 +62,13 @@ class ParallelWorker(Process):
 
 class JobRunner:
 
-    def __init__(self, worker: callable, n_jobs: int=None,
+    def __init__(self, worker: callable, n_workers: int=None,
                  w_args: tuple=(), w_kwargs: dict=dict(),
                  single_job_in_thread: bool=False):
         self.input_q = JoinableQueue()
         self.output_q = Queue()
-        self.n_jobs = cpu_count() if n_jobs is None else n_jobs
-        self._threaded = self.n_jobs > 1 or single_job_in_thread
+        self.n_workers = cpu_count() if n_workers is None else n_workers
+        self._threaded = self.n_workers > 1 or single_job_in_thread
         self.workers = list()
         self._worker_constructor = worker
         self._w_args = w_args
@@ -78,34 +79,56 @@ class JobRunner:
 
     def _renew_workers(self):
         self.workers = list()
-        for _ in range(self.n_jobs):
+        for _ in range(self.n_workers):
             w = self._worker_constructor(*self._w_args, **self._w_kwargs)
             w.set_queues(self.input_q, self.output_q)
             self.workers.append(w)
         self._stale_workers = False
 
-    def run_jobs(self, inputs: np.ndarray, output_shape=(), output_dtype=None, timeout=20, loglevel='error'):
+    def run_jobs(self, inputs: np.ndarray=None, n_jobs: int=None, output_shape: tuple=(),
+                 output_dtype: np.dtype=None, timeout: float=20, loglevel: str='error'):
+        if inputs is None and n_jobs is None:
+            print("Can't do anything without inputs or the number of jobs.")
+            return
+        push_inputs = True
+        if inputs is None:
+            inputs = range(n_jobs)
+            push_inputs = False
         with make_stderr_logger(loglevel):
             if self._stale_workers:
                 self._renew_workers()
             if not output_shape:
-                output_shape = inputs.shape
+                if not isinstance(inputs, np.ndarray):
+                    output_shape = (len(inputs),)
+                else:
+                    output_shape = inputs.shape
             if not output_dtype:
-                output_dtype = inputs.dtype
+                if not isinstance(inputs, np.ndarray):
+                    output_dtype = np.object
+                else:
+                    output_dtype = inputs.dtype
             outputs = np.empty(output_shape, dtype=output_dtype)
             if self._threaded:
                 for w in self.workers:
                     w.start()
             self._stale_workers = True
+            info = get_logger().info
+            info('Queueing inputs')
             for i, x in enumerate(inputs):
-                self.input_q.put((i, x))
+                if push_inputs:
+                    self.input_q.put((i, x))
+                else:
+                    # just send which job the worker is supposed to do
+                    self.input_q.put(i)
             for _ in range(len(self.workers)):
                 self.input_q.put(None)
             if self._threaded:
+                info('Joining queue')
                 self.input_q.join()
             else:
                 if len(self.workers) > 1:
                     print('This clause should not happen for > 1 workers')
+                info('Running worker')
                 self.workers[0].run()
             for _ in range(len(inputs)):
                 i, y = self.output_q.get(True, timeout)
