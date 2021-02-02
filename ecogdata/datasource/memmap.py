@@ -59,7 +59,9 @@ class TempFilePool:
         if not os.path.exists(TempFilePool.pool_dir):
             os.makedirs(TempFilePool.pool_dir)
             with open(os.path.join(TempFilePool.pool_dir, 'README.txt'), 'w') as fw:
-                fw.write('This directory contains temporary files for memory mapped arrays. It should be deleted.\n')
+                fw.write('This directory contains temporary files for memory mapped arrays. '
+                         'Under normal circumstances, this will be deleted when the process ends. '
+                         'If you are reading this after a process has stopped, please delete!\n')
         self.tf = NamedTemporaryFile(*args, **kwargs)
 
     def __str__(self):
