@@ -28,7 +28,7 @@ If you are using `conda`_ or `pyenv`_ then activate environments and/or change t
 
 .. code-block:: bash
 
-    $ git clone git@github.com:miketrumpis/ecogdata.git
+    $ git clone https://github.com/miketrumpis/ecogdata.git
     $ cd ecogdata
     $ pip install -r requirements.txt
     $ pip install .
