@@ -82,7 +82,11 @@ class ChannelMap(list):
         and a matrix shape (e.g. (5, 5)).
         """
 
-        i, j = zip(*ij)
+        if isinstance(ij, np.ndarray) and ij.ndim == 2:
+            i = ij[:, 0]
+            j = ij[:, 1]
+        else:
+            i, j = zip(*ij)
         map = mat_to_flat(shape, i, j, col_major=col_major)
         return cls(map, shape, col_major=col_major, pitch=pitch, pads_up=pads_up)
 

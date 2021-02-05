@@ -1184,7 +1184,127 @@ def multi_arm_map(electrode, connectors=(), electrode_pins='zif'):
     return map_spec
 
 
-def get_electrode_map(name, connectors=(), pin_codes=False):
+def _replicate_board_code(base_code, n):
+    # hopefully not more than 26 codes needed
+    alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+    base_set = sorted(set(list(base_code)))
+    max_code = alpha.index(base_set[-1]) + 1
+    full_code = list(base_code)
+    for i in range(1, n):
+        change = dict(zip(base_set, [alpha[c] for c in range(i * max_code, (i + 1) * max_code)]))
+        full_code.extend([change[c] for c in base_code])
+    return(full_code)
+
+
+def tile_electrode_map(tiling, name, **kwargs):
+    """
+    Use "subplot" style tiling to repeat the same channel map over a larger grid.
+
+    The subplot code is three digits encoding # Rows, # Cols, position of subgrid in rasterized order.
+
+    For example: [211, 212]
+    This makes two electrode map grids side by side. The first set of channel on the left,
+    the second on the right.
+
+    The rasterized order counts left-right, then up-down. So [221, 222, 224] would put
+    sub-grids in the upper-left, upper-right, and lower-right positions of a 2x2 super-grid.
+
+    Parameters
+    ----------
+    tiling : sequence
+        Row-col-position coding to determine the layout and map ordering
+    name : str
+        Electrode map name
+    kwargs : dict
+        Other arguments to get_electrode_map
+
+    Returns
+    -------
+    channel_map: ChannelMap
+    grounded: list
+        Data channels with no electrode connection
+    references: list
+        Data channels that are reference electrodes
+    pin_code: list
+        Returned if pin_codes = True
+    board_code: list
+        Returned if pin_codes = True
+
+    """
+
+    code = tiling[0]
+    n_rows = code // 100
+    n_cols = (code - n_rows * 100) // 10
+    base_code = n_rows * 100 + n_cols * 10
+    print(kwargs)
+    r = get_electrode_map(name, **kwargs)
+    base_map, base_grounds, base_refs = r[:3]
+    num_channels = len(base_map) + len(base_grounds) + len(base_refs)
+    if len(r) > 3:
+        base_pins, base_boards = r[3:]
+    base_i, base_j = base_map.to_mat()
+    sub_rows, sub_cols = base_map.geometry
+    full_rows = sub_rows * n_rows
+    full_cols = sub_cols * n_cols
+    all_coords = np.array([[-1, -1]])  # throw out this row at the end
+    all_grounds = list()
+    all_refs = list()
+    if len(r) > 3:
+        all_pins = base_pins * len(tiling)
+        if base_boards:
+            all_boards = _replicate_board_code(base_boards, len(tiling))
+        else:
+            all_boards = None
+    for n, code in enumerate(tiling):
+        position = code - base_code - 1
+        row_offset = position // n_cols
+        col_offset = position % n_cols
+        i = base_i + row_offset * sub_rows
+        j = base_j + col_offset * sub_cols
+        all_coords = np.row_stack([all_coords, np.c_[i, j]])
+        all_grounds.extend([g + n * num_channels for g in base_grounds])
+        all_refs.extend([r + n * num_channels for r in base_refs])
+    # remove dummy row
+    all_coords = all_coords[1:]
+    full_map = ChannelMap.from_index(all_coords, (full_rows, full_cols), pitch=base_map.pitch)
+    print(len(r))
+    if len(r) > 3:
+        return full_map, all_grounds, all_refs, all_pins, all_boards
+    return full_map, all_grounds, all_refs
+
+
+
+def get_electrode_map(name, connectors=(), pin_codes=False, tiling=None):
+    """
+    Create a electrode channel map, and other channel designations.
+
+    Parameters
+    ----------
+    name : str
+        Electrode map name
+    connectors : sequence
+        Name of electrode connector(s) if applicable (e.g. ['intan64'] * 4 for 4-arm electrode)
+    pin_codes: bool
+        If True, return electrode pinout and board codes
+    tiling : sequence
+        Row-col-position coding to determine the layout and map ordering
+
+    Returns
+    -------
+    channel_map: ChannelMap
+    grounded: list
+        Data channels with no electrode connection
+    references: list
+        Data channels that are reference electrodes
+    pin_code: list
+        Returned if pin_codes = True
+    board_code: list
+        Returned if pin_codes = True
+
+    """
+    if tiling:
+        return tile_electrode_map(tiling, name, connectors=connectors, pin_codes=pin_codes)
     try:
         pinouts = electrode_maps[name]
     except KeyError:
