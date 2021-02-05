@@ -21,6 +21,11 @@ if __name__ == '__main__':
 _stderr_logger = None
 
 
+def timestamp():
+    from datetime import datetime
+    return datetime.now().strftime('%H-%M-%S-%f')
+
+
 @contextmanager
 def make_stderr_logger(level='info'):
     # if None, then use "NOTSET" level

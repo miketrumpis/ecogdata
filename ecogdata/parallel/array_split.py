@@ -8,9 +8,6 @@ from datetime import datetime
 
 from .sharedmem import SharedmemManager
 
-def timestamp():
-    return datetime.now().strftime('%H-%M-%S-%f')
-
 
 parallel_controller = ToggleState(name='Parallel Controller')
 
@@ -60,24 +57,24 @@ def parallel_runner(method, static_args, split_arg, shared_split_arrays, shared_
                  static_args,
                  kwargs)
     mp.freeze_support()
-    info_logger('{} Creating pool'.format(timestamp()))
+    info_logger('{} Creating pool'.format(mp.timestamp()))
     with closing(mp.Pool(processes=n_jobs, initializer=_init_globals, initargs=init_args)) as p:
         dim_size = shared_split_arrays[0].shape[0]
         # map the jobs
         job_slices = divy_slices(dim_size, len(p._pool))
-        info_logger('{} Mapping jobs'.format(timestamp()))
+        info_logger('{} Mapping jobs'.format(mp.timestamp()))
         res = p.map_async(_global_method_wrap, job_slices)
 
     p.join()
     if res.successful():
-        info_logger('{} Joining results'.format(timestamp()))
+        info_logger('{} Joining results'.format(mp.timestamp()))
         res = splice_results(res.get(), splice_args)
         # res = res.get()
     else:
         # raises exception ?
         res.get()
     # gc.collect()
-    info_logger('{} Wrap done'.format(timestamp()))
+    info_logger('{} Wrap done'.format(mp.timestamp()))
     return res
 
 
@@ -111,7 +108,7 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
 
     """
     info = mp.get_logger().info
-    info('{} Starting wrap'.format(timestamp()))
+    info('{} Starting wrap'.format(mp.timestamp()))
     # normalize inputs
     if not np.iterable(splice_at):
         splice_at = (splice_at,)
@@ -163,7 +160,7 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
         for pos in pop_args:
             pos = pos - n
             a = args.pop(pos)
-            info('{} Wrapping shared memory size {} MB'.format(timestamp(), a.size * a.dtype.itemsize / 1024. / 1000.))
+            info('{} Wrapping shared memory size {} MB'.format(mp.timestamp(), a.size * a.dtype.itemsize / 1024. / 1000.))
             x = SharedmemManager(a, use_lock=concurrent)
             if pos + n in split_arg:
                 split_array_shm.append(x)
@@ -302,7 +299,7 @@ def _init_globals(split_args, split_mem, split_arr_shape, shared_args, shared_me
     kwdict_ = kwdict
 
     info = mp.get_logger().info
-    info('{} Initialized globals'.format(timestamp()))
+    info('{} Initialized globals'.format(mp.timestamp()))
 
 
 def _global_method_wrap(aslice):
@@ -349,11 +346,11 @@ def _global_method_wrap(aslice):
     args.extend([spl[1] for spl in spliced_in])
     args = tuple(args)
     # time to drive the method
-    info('{} Applying method {} to slice {} at position {}'.format(timestamp(), method_, aslice, split_args_))
+    info('{} Applying method {} to slice {} at position {}'.format(mp.timestamp(), method_, aslice, split_args_))
     then = datetime.now()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         r = method_(*args, **kwdict_)
     time_lapse = (datetime.now() - then).total_seconds()
-    info('{} method {} slice {} elapsed time: {}'.format(timestamp(), method_, aslice, time_lapse))
+    info('{} method {} slice {} elapsed time: {}'.format(mp.timestamp(), method_, aslice, time_lapse))
     return r
