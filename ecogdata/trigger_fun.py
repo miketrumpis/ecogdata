@@ -60,6 +60,7 @@ def process_trigger(trig_chan, thresh=0.5, uniform=True, clean=False):
     """
     trig_chan = np.atleast_2d(trig_chan)
     if trig_chan.dtype.char != '?':
+        trig_chan = trig_chan - trig_chan.mean()
         thresh = thresh * _auto_level(trig_chan)
         trig_chan = trig_chan > thresh
     digital_trigger = np.any(trig_chan, axis=0).astype('i')
