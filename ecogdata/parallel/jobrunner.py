@@ -1,4 +1,7 @@
+from tblib import pickling_support
+pickling_support.install()
 from .mproc import Queue, JoinableQueue, Process, make_stderr_logger, cpu_count, get_logger
+import sys
 from contextlib import contextmanager
 import numpy as np
 
@@ -10,11 +13,13 @@ class Jobsdone(Exception):
 class ParallelWorker(Process):
     input_q: JoinableQueue
     output_q: Queue
+    error_q: Queue
     para_method: callable
 
-    def set_queues(self, input_q: JoinableQueue, output_q: Queue):
+    def set_queues(self, input_q: JoinableQueue, output_q: Queue, error_q: Queue):
         self.input_q = input_q
         self.output_q = output_q
+        self.error_q = error_q
 
     def map_job(self, job):
         """
@@ -54,6 +59,8 @@ class ParallelWorker(Process):
                 # print('doing error value for exception {}'.format(str(e)))
                 err = get_logger().error
                 err('Exception: {}'.format(repr(e)))
+                err_info = sys.exc_info()
+                self.error_q.put(err_info)
                 self.output_q.put((i, np.nan))
             finally:
                 # print('doing task done')
@@ -67,6 +74,7 @@ class JobRunner:
                  single_job_in_thread: bool=False):
         self.input_q = JoinableQueue()
         self.output_q = Queue()
+        self.error_q = Queue()
         self.n_workers = cpu_count() if n_workers is None else n_workers
         self._threaded = self.n_workers > 1 or single_job_in_thread
         self.workers = list()
@@ -79,14 +87,17 @@ class JobRunner:
 
     def _renew_workers(self):
         self.workers = list()
+        # refresh error queue
+        self.error_q = Queue()
         for _ in range(self.n_workers):
             w = self._worker_constructor(*self._w_args, **self._w_kwargs)
-            w.set_queues(self.input_q, self.output_q)
+            w.set_queues(self.input_q, self.output_q, self.error_q)
             self.workers.append(w)
         self._stale_workers = False
 
     def run_jobs(self, inputs: np.ndarray=None, n_jobs: int=None, output_shape: tuple=(),
-                 output_dtype: np.dtype=None, timeout: float=20, loglevel: str='error'):
+                 output_dtype: np.dtype=None, timeout: float=20, loglevel: str='error',
+                 return_exceptions: bool=False, reraise_exceptions: bool=True):
         if inputs is None and n_jobs is None:
             print("Can't do anything without inputs or the number of jobs.")
             return
@@ -133,6 +144,15 @@ class JobRunner:
             for _ in range(len(inputs)):
                 i, y = self.output_q.get(True, timeout)
                 outputs[i] = y
+            exceptions = []
+            if not self.error_q.empty():
+                while not self.error_q.empty():
+                    exceptions.append(self.error_q.get())
+        if exceptions and reraise_exceptions:
+            e = exceptions[0]
+            raise e[1].with_traceback(e[2])
+        if return_exceptions:
+            return outputs, exceptions
         return outputs
 
     @contextmanager
