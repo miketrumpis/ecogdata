@@ -74,8 +74,8 @@ class DataSourceBlockIter(BlockSignalBase):
         # this really should not happen
         # if start < 0 or start >= self.T:
         #     raise StopIteration
-        # self.T already compensated by start_offset
-        end = min(self.T, start + self.L)
+        # self.T already compensated by start_offset -- add back to find last valid index
+        end = min(self.T + self.start_offset, start + self.L)
         if self.L == 1:
             # assume that a dimension-eating slice is wanted if block size is 1
             sl = (slice(None), start)
