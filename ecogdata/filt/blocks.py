@@ -186,7 +186,7 @@ def block_apply(fn, bsize, args, block_arg=0, b_axis=-1, **kwargs):
     a_proc = np.empty_like(array)
     b_proc = BlockedSignal(a_proc, bsize, partial_block=True, axis=b_axis)
 
-    for b_in, b_out in zip(b_sig.fwd(), b_proc.fwd()):
+    for b_in, b_out in zip(b_sig, b_proc):
         a = _hotswap_block(b_in)
         b_out[:] = fn(*a, **kwargs)
     return a_proc
