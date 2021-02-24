@@ -40,7 +40,7 @@ class ParallelWorker(Process):
             raise Jobsdone
         return job
 
-    def run(self):
+    def run(self, raise_immediately=False):
         info = get_logger().info
         info('Starting jobs')
         while True:
@@ -56,6 +56,9 @@ class ParallelWorker(Process):
                 r = self.para_method(*args, **kwargs)
                 self.output_q.put((i, r))
             except Exception as e:
+                # This is helpful for debugging (in single-thread mode)
+                if raise_immediately:
+                    raise e
                 # print('doing error value for exception {}'.format(str(e)))
                 err = get_logger().error
                 err('Exception: {}'.format(repr(e)))
@@ -140,7 +143,7 @@ class JobRunner:
                 if len(self.workers) > 1:
                     print('This clause should not happen for > 1 workers')
                 info('Running worker')
-                self.workers[0].run()
+                self.workers[0].run(raise_immediately=reraise_exceptions)
             for _ in range(len(inputs)):
                 i, y = self.output_q.get(True, timeout)
                 outputs[i] = y
