@@ -94,11 +94,13 @@ class SharedmemTool(ABC):
     @contextmanager
     def get_ndarray(self):
         cls = type(self)
-        if self.use_lock.state:
-            with self.shm.get_lock():
-                yield cls.tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)
-        else:
+        try:
+            if self.use_lock:
+                self.shm.get_lock().acquire(block=False)
             yield cls.tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)
+        finally:
+            if self.use_lock:
+                self.shm.get_lock().release()
 
     @classmethod
     def tonumpyarray(cls, mp_arr, dtype=float, shape=None):
