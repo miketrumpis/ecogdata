@@ -129,15 +129,14 @@ def hdf5_open_ephys_channels(
         raise IOError('no channels found')
     from ecogdata.expconfig import params
     # load channel at a time to be able to downsample
-    bytes_per_channel = OE.get_channel_bytes(chan_names[0])
+    bytes_per_channel = OE.get_channel_bytes(os.path.join(rec_path, chan_names[0]))
     if not quantized:
         bytes_per_channel *= 4
 
     if load_chans is None:
         load_chans = int(float(params.memory_limit) // (2 * bytes_per_channel))
     # get test channel for shape info
-    ch_record = OE.loadContinuous(chan_names[0], dtype=np.int16, verbose=False)
-    chan_names = chan_names
+    ch_record = OE.loadContinuous(os.path.join(rec_path, chan_names[0]), dtype=np.int16, verbose=False)
     ch_data = ch_record['data']
     header = OE.get_header_from_folder(rec_path, source=rec_num[0])
     trueFs = get_robust_samplingrate(rec_path)

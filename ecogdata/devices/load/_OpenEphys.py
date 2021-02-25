@@ -739,8 +739,9 @@ def get_filelist(folderpath, source='100', ctype='CH', channels='all', recording
     else:
         filelist = ['%s_%s%d_%d.continuous' % (source, ctype, chan, recording)
             for chan in channels]    
-    
-    return filelist
+
+    return [os.path.split(f)[1] for f in filelist]
+
 
 def get_header_from_folder(folderpath, filelist=None, **kwargs):
     """Return the header info for all files in `folderpath`.
