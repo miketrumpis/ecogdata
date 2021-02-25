@@ -431,15 +431,15 @@ class OpenEphysLoader(FileLoader):
     def create_downsample_file(self, data_file, resample_rate, downsamp_file, antialias_aligned=False,
                                aggregate_aligned=True):
         if not downsamp_file:
-            with TempFilePool(mode='ab') as downsamp_file:
-                ds_filename = downsamp_file.name
+            ds_filename = TempFilePool(mode='ab')
         else:
             ds_filename = downsamp_file
         downsamp_ratio = self.raw_sample_rate() // resample_rate
         # here the TempFilePool does not remain open so do not need to register a closing callback
-        hdf5_open_ephys_channels(self.experiment_path, self.recording, ds_filename, data_chans='all',
+        hdf5_open_ephys_channels(self.experiment_path, self.recording, str(ds_filename), data_chans='all',
                                  downsamp=downsamp_ratio)
-        return ds_filename
+        # i.e. can return filename as a string?
+        return str(ds_filename)
 
     def map_raw_data(self, data_file, open_mode, electrode_chans, ground_chans, ref_chans, downsample_ratio):
         """
