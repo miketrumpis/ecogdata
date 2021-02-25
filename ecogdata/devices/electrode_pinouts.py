@@ -172,6 +172,8 @@ def connect_passive_map(
 
     rows = []
     cols = []
+    # use this list to track any extra channels that are not mapped (e.g. intentionally disconnected electrodes)
+    pin_code_info = daq_order[:]
     for n in range(len(daq_order)):
         if daq_order[n] is None:
             # if the DAQ readout has None on a channel,
@@ -185,6 +187,9 @@ def connect_passive_map(
             pin = xc[pin]
 
         site = electrode_map[pin]
+        if site[0] in NonSignalChannels:
+            # ensure this pin is marked
+            pin_code_info[n] = None
         rows.append(site[0])
         # cols.append( nc - site[1] - 1 if reverse_cols else site[1] )
         if site[1] in NonSignalChannels or not reverse_cols:
@@ -200,7 +205,7 @@ def connect_passive_map(
         mn_col = min(filter(lambda x: x not in NonSignalChannels, cols))
         cols = [c if c in NonSignalChannels else c - mn_col for c in cols]
     if array_pin_types.lower() == 'zif':
-        code = zif_bank_code(daq_order)
+        code = zif_bank_code(pin_code_info)
     else:
         code = None
     map_dict = {'geometry': geometry,
@@ -251,6 +256,22 @@ F6, F7, G6, F8, H6, H7, G7, G8"""
 rat_v4_by_zif_rc = zip(*unzip_encoded(rat_v4_by_zif))
 # step 3: build lookup table (LUT) from ZIF pin # to (row, column) pair
 rat_v4_by_zif_lut = dict(zip(range(1, 62), rat_v4_by_zif_rc))
+
+
+# Feb 24 2021 recorded with a modified "SEEG" electrode
+def _ratv4_to_seeg(encoding):
+    parts = encoding.split(', ')
+    keep = list()
+    for p in parts:
+        p = p.strip()
+        if (p[0] in 'EFGH') or (p[1] in '18'):
+            keep.append('~' + p)
+        else:
+            keep.append(p)
+    keep = ', '.join(keep)
+    rc = zip(*unzip_encoded(keep))
+    return dict(zip(range(1, 62), rc))
+
 
 # Example 2: Coordinate grid listed as (y, x) to mimic (row, column)
 rat_varspace_by_zif_rc = zip(
@@ -1093,6 +1114,7 @@ electrode_maps = dict(
                                          zif_by_mux6_15row, pitch=0.420),
     ratv4_intan=connect_passive_map((8, 8), rat_v4_by_zif_lut,
                                     zif_by_intan64, pitch=0.420),
+    ratv4_seeg_intan=connect_passive_map((4, 8), _ratv4_to_seeg(rat_v4_by_zif), zif_by_intan64, pitch=0.420),
 
     ratv3_stim4=connect_passive_map((8, 8), rat_v3_by_zif_lut,
                                     zif_by_stim4, pitch=0.420),
