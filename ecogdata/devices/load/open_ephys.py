@@ -370,19 +370,25 @@ class OpenEphysLoader(FileLoader):
 
     @property
     def primary_data_file(self):
+        # PREFER full resolution h5 if it exists
+        data_path = [osp.join(self.experiment_path, self.recording + ext) for ext in self.permissible_types]
+        exist = [osp.exists(p) for p in data_path]
+        if any(exist):
+            return data_path[exist.index(True)]
+        # OTHERWISE try the .continuous files
         try:
             data_path, _ = prepare_paths(self.experiment_path, self.recording, 'auto')
             return data_path
         except OSError as e:
-            # check for the plain directory first, or also possibly the
-            data_path = [osp.join(self.experiment_path, self.recording + ext) for ext in self.permissible_types]
-            exist = [osp.exists(p) for p in data_path]
-            if any(exist):
-                return data_path[exist.index(True)]
+            # not really sure what this returns, but seems to lead to DataPathError downstream
             return osp.splitext(data_path[0])[0]
 
     def raw_sample_rate(self):
-        return get_robust_samplingrate(self.primary_data_file)
+        if os.path.isdir(self.primary_data_file):
+            return get_robust_samplingrate(self.primary_data_file)
+        else:
+            with h5py.File(self.primary_data_file, 'r') as f:
+                return f['Fs'][()]
 
     def make_channel_map(self):
         if os.path.isdir(self.primary_data_file):
@@ -483,6 +489,12 @@ class OpenEphysLoader(FileLoader):
                 # Note: pass file "name" directly as a TempFilePool object so that file-closing can be registered
                 # downstream!!
                 data_file = mapped_file
+            else:
+                # the data_file is possibly an HDF file that should be treated as a read-only source
+                with h5py.File(data_file, 'r') as fw:
+                    if fw['chdata'].dtype in np.sctypes['float']:
+                        self.units_scale = convert_scale(1, 'uv', self.units)
+                open_mode = 'r'
             print('Calling super to map/load {} in mode {} scaling units {}'.format(data_file, open_mode,
                                                                                     self.units_scale))
             return super(OpenEphysLoader, self).map_raw_data(data_file, open_mode, electrode_chans,
