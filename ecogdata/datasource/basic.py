@@ -129,6 +129,12 @@ class ElectrodeDataSource:
     def __len__(self):
         return len(self.data_buffer)
 
+    def __getitem__(self, item):
+        return
+
+    def __setitem__(self, key, value):
+        return
+
     @property
     def shape(self):
         return self.data_buffer.shape
@@ -411,6 +417,23 @@ class ElectrodeDataSource:
         v = self.var(axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
         np.sqrt(v, v)
         return v
+
+    def rereference_array(self, reference):
+        if isinstance(reference, str):
+            if reference.lower() == 'regress':
+                self.regress_common_average()
+                return
+            elif reference == 'common':
+                reference = self.mean(axis=0)
+        for chans, sl in self.iter_channels(return_slice=True):
+            self[sl] = chans - reference
+
+    def regress_common_average(self):
+        reference = self.mean(axis=0)
+        r_sq = np.sum(reference ** 2)
+        for chans, sl in self.iter_channels(return_slice=True):
+            beta = np.dot(chans, reference) / r_sq
+            self[sl] = chans - beta[:, np.newaxis] * reference
 
     def filter_array(self, **kwargs):
         # Needs overload
