@@ -386,9 +386,11 @@ class OpenEphysLoader(FileLoader):
     def raw_sample_rate(self):
         if os.path.isdir(self.primary_data_file):
             return get_robust_samplingrate(self.primary_data_file)
-        else:
+        elif os.path.exists(self.primary_data_file):
             with h5py.File(self.primary_data_file, 'r') as f:
                 return f['Fs'][()]
+        else:
+            return -1
 
     def make_channel_map(self):
         if os.path.isdir(self.primary_data_file):
