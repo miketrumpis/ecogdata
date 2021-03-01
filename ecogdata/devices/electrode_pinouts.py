@@ -1196,13 +1196,17 @@ def multi_arm_map(electrode, connectors=(), electrode_pins='zif'):
                  for arm, daq in zip(map_info['arms'], connectors)]
     board_codes = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     map_spec = map_parts[0]
-    map_spec['board_code'] = [board_codes[0]] * len(map_spec['rows'])
+    if map_spec['pin_code'] is not None:
+        n_electrode_channels = len(map_spec['pin_code'])
+    else:
+        n_electrode_channels = len([r for r in map_spec['rows'] if r not in NonSignalChannels])
+    map_spec['board_code'] = [board_codes[0]] * n_electrode_channels
     for i, m in enumerate(map_parts[1:]):
         map_spec['rows'].extend(m['rows'])
         map_spec['cols'].extend(m['cols'])
         if map_spec['pin_code'] is not None:
             map_spec['pin_code'].extend(m['pin_code'])
-        map_spec['board_code'].extend([board_codes[i + 1]] * len(m['rows']))
+        map_spec['board_code'].extend([board_codes[i + 1]] * n_electrode_channels)
     return map_spec
 
 
@@ -1296,7 +1300,6 @@ def tile_electrode_map(tiling, name, **kwargs):
     return full_map, all_grounds, all_refs
 
 
-
 def get_electrode_map(name, connectors=(), pin_codes=False, tiling=None):
     """
     Create a electrode channel map, and other channel designations.
@@ -1387,9 +1390,58 @@ def get_electrode_map(name, connectors=(), pin_codes=False, tiling=None):
         # use literal coordinates
         chan_map = CoordinateChannelMap(zip(sig_rows, sig_cols), geometry=geometry,
                                         pitch=pitch)
+    # IMPORTANT! If any pin coding is included with the map specification, then these codes only pertain to mapped
+    # electrode channels and NOT the whole set of amplifier channels.
     if pin_codes:
         pin_code = pinouts.get('pin_code', None)
         board_code = pinouts.get('board_code', None)
         return chan_map, no_connection, reference, pin_code, board_code
     return chan_map, no_connection, reference
+
+
+def export_channel_map(name, mode='csv', connectors=(), tiling=None):
+    import pandas as pd
+
+    (channel_map,
+     grounded,
+     reference,
+     pin_code,
+     board_code) = get_electrode_map(name, connectors=connectors, tiling=tiling, pin_codes=True)
+
+    total_channels = len(channel_map) + len(grounded) + len(reference)
+    channel = np.arange(total_channels)
+    no_electrode = np.zeros(total_channels, '?')
+    no_electrode[grounded] = True
+    ref = np.zeros(total_channels, '?')
+    ref[reference] = True
+    electrode_data = np.ones(total_channels, '?')
+    electrode_data[no_electrode | ref] = False
+    r, c = channel_map.to_mat()
+    rows = np.empty(total_channels)
+    rows.fill(np.nan)
+    rows[electrode_data] = r
+    cols = np.empty(total_channels)
+    cols.fill(np.nan)
+    cols[electrode_data] = c
+    g = channel_map.geometry
+    file_name = 'map_{}_{}x{}.csv'.format(name, g[0], g[1])
+    df = pd.DataFrame(dict(channel=channel,
+                           electrode_data=electrode_data,
+                           no_electrode=no_electrode,
+                           reference=ref,
+                           row=rows,
+                           col=cols))
+    if pin_code is not None:
+        zif_code = np.empty(total_channels, dtype=np.object)
+        pin = np.array(['odd' if c < 0 else 'even' for c in pin_code], dtype=np.object)
+        zif_code[electrode_data] = pin
+        zif_code[~electrode_data] = 'na'
+        df['zif_code'] = zif_code
+    if board_code is not None:
+        amp = np.empty(total_channels, dtype=np.object)
+        amp[electrode_data] = np.array(board_code, dtype=np.object)
+        amp[~electrode_data] = 'na'
+        df['amplifier'] = amp
+    df.to_csv(file_name)
+    return df
 
