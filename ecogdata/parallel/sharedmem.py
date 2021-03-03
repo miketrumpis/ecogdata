@@ -17,7 +17,7 @@ to shared array pointer lookup cache is retained to prevent memory copies.
 from abc import ABC
 import ecogdata.parallel.mproc as mp
 import numpy as np
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from ecogdata.util import ToggleState
 
 
@@ -94,13 +94,10 @@ class SharedmemTool(ABC):
     @contextmanager
     def get_ndarray(self):
         cls = type(self)
-        try:
+        with ExitStack() as stack:
             if self.use_lock:
-                self.shm.get_lock().acquire(block=False)
+                stack.enter_context(self.shm.get_lock())
             yield cls.tonumpyarray(self.shm, dtype=self.dtype, shape=self.shape)
-        finally:
-            if self.use_lock:
-                self.shm.get_lock().release()
 
     @classmethod
     def tonumpyarray(cls, mp_arr, dtype=float, shape=None):
