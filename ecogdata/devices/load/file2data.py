@@ -58,9 +58,10 @@ class FileLoader:
     # allowed file extensions
     permissible_types = ['.h5', '.hdf']
 
-    def __init__(self, experiment_path, recording, electrode, bandpass=None, notches=None, units='uV',
-                 load_channels=None, trigger_idx=(), mapped=False, resample_rate=None, use_stored=True,
-                 save_downsamp=True, store_path=None, electrode_connectors=(), raise_on_glitch=False):
+    def __init__(self, experiment_path, recording, electrode, bandpass=None, notches=None,
+                 causal_filtering=False, units='uV', load_channels=None, trigger_idx=(), mapped=False,
+                 resample_rate=None, use_stored=True, save_downsamp=True, store_path=None, electrode_connectors=(),
+                 raise_on_glitch=False):
         """
         Data file mapping/loading. Supports downsampling.
 
@@ -114,6 +115,7 @@ class FileLoader:
         self.electrode = electrode
         self.electrode_connectors = electrode_connectors
         self.bandpass = bandpass
+        self.causal_filtering = causal_filtering
         self.notches = notches
         self.units = units
         self.load_channels = load_channels
@@ -551,7 +553,7 @@ class FileLoader:
             filter_kwargs = dict(ftype='butterworth',
                                  inplace=datasource_w is None,
                                  design_kwargs=dict(lo=self.bandpass[0], hi=self.bandpass[1], Fs=Fs),
-                                 filt_kwargs=dict(filtfilt=True))
+                                 filt_kwargs=dict(filtfilt=not self.causal_filtering))
             if self.mapped:
                 # make "verbose" filtering with progress bar if we're filtering a mapped source
                 filter_kwargs['filt_kwargs']['verbose'] = True
@@ -564,7 +566,7 @@ class FileLoader:
         if self.notches:
             print('Notch filtering')
             notch_kwargs = dict(inplace=datasource_w is None,
-                                lines=self.notches, filt_kwargs=dict(filtfilt=True))
+                                lines=self.notches, filt_kwargs=dict(filtfilt=not self.causal_filtering))
             if self.mapped:
                 notch_kwargs['filt_kwargs']['verbose'] = True
             datasource = datasource.notch_filter(Fs, out=datasource_w, **notch_kwargs)

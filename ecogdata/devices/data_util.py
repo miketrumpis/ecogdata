@@ -50,6 +50,7 @@ params_table = {
     'electrode': Parameter,
     # FileLoader args
     'bandpass': NSequence,
+    'causal_filtering': TypedParam.from_type(bool),
     'notches': NSequence,
     'units': Parameter,
     'load_channels': NSequence,
