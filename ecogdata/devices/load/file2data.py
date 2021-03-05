@@ -481,7 +481,7 @@ class FileLoader:
         elif needs_downsamp:
             # The "else" case now is that the master electrode source (and ref and ground channels)
             # needs downsampling to PlainArraySources
-            downsample_ratio = self.raw_sample_rate() / self.resample_rate
+            downsample_ratio = int(self.raw_sample_rate() / self.resample_rate)
         else:
             downsample_ratio = 1
 
@@ -576,7 +576,10 @@ class FileLoader:
                 ref_chans = ref_chans.notch_filter(Fs, out=ref_chans_w, **notch_kwargs)
 
         trigger_signal, pos_edge = self.find_trigger_signals(data_file)
-
+        if not needs_file and downsample_ratio > 1:
+            trigger_signal = trigger_signal[..., ::downsample_ratio]
+            pos_edge = np.round(pos_edge.astype('d') / downsample_ratio).astype('i')
+            
         # Viventi lab convention: stim signal would be on the next available ADC channel... skip explicitly loading
         # this, because the "board_adc_data" array is cojoined with the main datasource
 
