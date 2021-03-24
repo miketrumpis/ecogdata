@@ -5,6 +5,7 @@ import sys
 from contextlib import contextmanager
 import numpy as np
 from tqdm.auto import tqdm
+from tqdm.std import tqdm as tqdm_T
 from time import sleep
 import queue
 import inspect
@@ -166,7 +167,11 @@ class JobRunner:
             # Do not use timeout until a first output is cleared (??)
             wait_time = None
             if progress:
-                pbar = tqdm(total=len(inputs), desc='Jobs progress')
+                # make it possible to provide a pre-made progress bar -- helpful for inner-loops
+                if isinstance(progress, tqdm_T):
+                    pbar = progress
+                else:
+                    pbar = tqdm(total=len(inputs), desc='Jobs progress')
             n = 0
             while True:
                 try:
