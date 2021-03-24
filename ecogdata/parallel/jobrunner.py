@@ -25,7 +25,11 @@ def make_worker(func):
             "job" is of the form (i, job_spec) where i is a place keeper.
 
             """
-            i, arr = job
+            if np.iterable(job):
+                i, arr = job
+            else:
+                i = job
+                arr = i
             # Do some helpful logging
             info = get_logger().info
             info('Got job {}'.format(i))
@@ -185,20 +189,10 @@ class JobRunner:
             if not self.error_q.empty():
                 while not self.error_q.empty():
                     exceptions.append(self.error_q.get())
-        # try:
-        #     dtypes = set([o.dtype for o in outputs])
-        #     if len(dtypes) == 1:
-        #         try:
-        #             outputs = np.row_stack(outputs).squeeze()
-        #         except Exception as e:
-        #             print('Tried to astype: {}'.format(repr(e)))
-        # except AttributeError:
-        #     print("Can't simplify output array")
-        #     pass
         try:
             outputs = np.row_stack(outputs).squeeze()
-        except Exception as e:
-            print("Can't simplify output array: {}".format(repr(e)))
+        except ValueError as e:
+            info("Can't simplify output array: {}".format(repr(e)))
         if exceptions and reraise_exceptions:
             e = exceptions[0]
             raise e[1].with_traceback(e[2])
