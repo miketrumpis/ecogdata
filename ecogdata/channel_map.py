@@ -66,7 +66,7 @@ class ChannelMap(list):
         r, c = geometry
         self.boundary = (-dx / 2.0, (c - 0.5) * dx, -dy / 2.0, (r - 0.5) * dy)
         # use a hash table for lookups
-        rows, cols = flat_to_mat(geometry, np.array(chan_map), col_major=col_major)
+        rows, cols = flat_to_mat(geometry, np.array(chan_map, dtype='l'), col_major=col_major)
         # self._chan2site = dict([(x, (r, c)) for x, r, c in zip(chan_map, rows, cols)])
         self._chan2site = dict(enumerate(zip(rows, cols)))
         self._site2chan = dict([(v, k) for k, v in self._chan2site.items()])
@@ -83,6 +83,7 @@ class ChannelMap(list):
         """
 
         if isinstance(ij, np.ndarray) and ij.ndim == 2:
+            ij = ij.astype('l')
             i = ij[:, 0]
             j = ij[:, 1]
         else:

@@ -48,7 +48,7 @@ class Bunch(dict):
 
 # Matrix-indexing manipulations
 def flat_to_mat(mn, idx, col_major=True):
-    idx = np.asarray(idx)
+    idx = np.asarray(idx, dtype='l')
     # convert a flat matrix index into (i,j) style
     (m, n) = mn if col_major else mn[::-1]
     if (idx < 0).any() or (idx >= m * n).any():
@@ -61,11 +61,11 @@ def flat_to_mat(mn, idx, col_major=True):
 
 
 def mat_to_flat(mn, i, j, col_major=True):
-    i, j = list(map(np.asarray, (i, j)))
+    i = np.asarray(i, dtype='l')
+    j = np.asarray(j, dtype='l')
     if (i < 0).any() or (i >= mn[0]).any() \
             or (j < 0).any() or (j >= mn[1]).any():
         raise ValueError('The matrix index does not fit the geometry: ' + str(mn))
-    (i, j) = list(map(np.asarray, (i, j)))
     # covert matrix indexing to a flat (linear) indexing
     (fast, slow) = (i, j) if col_major else (j, i)
     block = mn[0] if col_major else mn[1]
