@@ -3,35 +3,38 @@ One-stop shopping for digital filtering of arrays
 """
 import numpy as np
 from .design import butter_bp, cheby1_bp, cheby2_bp, notch
-from ecogdata.util import get_default_args, input_as_2d
+from ecogdata.util import get_default_args, input_as_2d, nextpow2
+from ecogdata.datasource import ElectrodeDataSource, PlainArraySource
 from ecogdata.parallel.sharedmem import shared_ndarray, shared_copy
 import scipy.signal as signal
 from nitime.algorithms.autoregressive import AR_est_YW
 
-__all__ = [ 'filter_array', 'notch_all', 'downsample', 'ma_highpass',
-            'common_average_regression', 'ar_whiten_blocks',
-            'harmonic_projection' ]
+__all__ = ['filter_array', 'notch_all', 'downsample', 'ma_highpass',
+           'common_average_regression', 'ar_whiten_blocks',
+           'harmonic_projection', 'lowpass_envelope']
+
 
 def _get_poles_zeros(destype, **filt_args):
     if destype.lower().startswith('butter'):
         return butter_bp(**filt_args)
 
     des_lookup = dict(cheby1=cheby1_bp, cheby2=cheby2_bp, notch=notch)
-    desfun = des_lookup[destype]    
+    desfun = des_lookup[destype]
     def_args = get_default_args(desfun)
     extra_arg = [k for k in list(filt_args.keys()) if k not in list(def_args.keys())]
     # should only be one extra key
     if len(extra_arg) > 1:
         raise ValueError('too many arguments for filter type '+destype)
-    extra_arg = filt_args.pop( extra_arg.pop() )
+    extra_arg = filt_args.pop(extra_arg.pop())
 
     return desfun(extra_arg, **filt_args)
+
 
 @input_as_2d()
 def filter_array(
         arr, ftype='butterworth', inplace=True, out=None, block_filter='parallel',
         design_kwargs=dict(), filt_kwargs=dict()
-        ):
+):
     """
     Filter an ND array timeseries on the last dimension. For computational
     efficiency, the timeseries are blocked into partitions (10000 points
@@ -61,7 +64,7 @@ def filter_array(
     -------
     arr_f: ndarray
         Filtered timeseries, same shape as input.
-    
+
     """
     b, a = _get_poles_zeros(ftype, **design_kwargs)
     check_shm = False
@@ -112,7 +115,7 @@ def filter_array(
 def notch_all(
         arr, Fs, lines=60.0, nzo=3,
         nwid=3.0, inplace=True, nmax=None, **filt_kwargs
-        ):
+):
     """Apply notch filtering to a array timeseries.
 
     Parameters
@@ -127,7 +130,7 @@ def notch_all(
         Number of zeros for the notch filter (more zeros --> deeper notch).
     nwid : float (default 3)
         Affects distance of notch poles from zeros (smaller --> closer).
-        Zeros occur on the unit disk in the z-plane. Note that the 
+        Zeros occur on the unit disk in the z-plane. Note that the
         stability of a digital filter depends on poles being within
         the unit disk.
     nmax : float (optional)
@@ -136,7 +139,7 @@ def notch_all(
     Returns
     -------
     notched : ndarray
-    
+
     """
 
     if inplace:
@@ -168,6 +171,7 @@ def notch_all(
         notch_defs['fcut'] = nf
         arr_f = filter_array(arr, 'notch', inplace=False, design_kwargs=notch_defs, **filt_kwargs)
     return arr_f
+
 
 def downsample(x, fs, appx_fs=None, r=None, filter_inplace=False):
     """Integer downsampling with antialiasing.
@@ -214,15 +218,14 @@ def downsample(x, fs, appx_fs=None, r=None, filter_inplace=False):
     if appx_fs is not None:
         # new sampling interval must be a multiple of old sample interval,
         # so find the closest match that is >= appx_fs
-        r = int( np.ceil(fs / appx_fs) )
+        r = int(np.ceil(fs / appx_fs))
 
-    
     num_pts = x.shape[-1] // r
-    num_pts += int( ( x.shape[-1] - num_pts*r ) > 0 )
+    num_pts += int((x.shape[-1] - num_pts*r) > 0)
 
     new_fs = fs / r
 
-    # design a cheby-1 lowpass filter 
+    # design a cheby-1 lowpass filter
     # wp: 0.4 * new_fs
     # ws: 0.5 * new_fs
     # design specs with halved numbers, since filtfilt will be used
@@ -232,10 +235,11 @@ def downsample(x, fs, appx_fs=None, r=None, filter_inplace=False):
     fdesign = dict(ripple=0.25, hi=0.5 * wc * fs, Fs=fs, ord=ord)
     x_lp = filter_array(
         x, ftype='cheby1', inplace=filter_inplace, design_kwargs=fdesign
-        )
-    
+    )
+
     x_ds = x_lp[..., ::r].copy()
     return x_ds, new_fs
+
 
 def upsample(x, fs, appx_fs=None, r=None, interp='sinc'):
     if appx_fs is None and r is None:
@@ -246,7 +250,7 @@ def upsample(x, fs, appx_fs=None, r=None, interp='sinc'):
     if appx_fs is not None:
         # new sampling interval must be a multiple of old sample interval,
         # so find the closest match that is <= appx_fs
-        r = int( np.floor(appx_fs / fs) )
+        r = int(np.floor(appx_fs / fs))
 
     x_up = shared_ndarray(x.shape[:-1] + (r * x.shape[-1],), x.dtype.char)
     x_up[..., ::r] = x
@@ -279,8 +283,8 @@ def upsample(x, fs, appx_fs=None, r=None, interp='sinc'):
                           assume_sorted=True)
             block[:] = fn(t[:N])
         return x_up, new_fs
-    
-    # design a cheby-1 lowpass filter 
+
+    # design a cheby-1 lowpass filter
     # wp: 0.4 * new_fs
     # ws: 0.5 * new_fs
     # design specs with halved numbers, since filtfilt will be used
@@ -291,7 +295,8 @@ def upsample(x, fs, appx_fs=None, r=None, interp='sinc'):
     filter_array(x_up, ftype='cheby1', inplace=True, design_kwargs=fdesign)
     x_up *= r
     return x_up, new_fs
-    
+
+
 def ma_highpass(x, fc, progress=False, fir_filt=False):
     """
     Implement a stable FIR highpass filter using a moving average.
@@ -299,24 +304,25 @@ def ma_highpass(x, fc, progress=False, fir_filt=False):
 
     from ecogdata.parallel.split_methods import convolve1d
     n = int(round(fc ** -1.0))
-    if not n%2:
+    if not n % 2:
         n += 1
     h = np.empty(n)
-    h.fill( -1.0 / n )
+    h.fill(-1.0 / n)
     h[n//2] += 1
     return convolve1d(x, h)
     if fir_filt:
         return h
 
+
 @input_as_2d()
 def common_average_regression(data, mu=(), inplace=True):
     """
-    Return the residual of each channel after regressing a 
+    Return the residual of each channel after regressing a
     common signal (by default the channel-average).
     """
     if not len(mu):
         mu = data.mean(0)
-    beta = data.dot(mu) / np.sum( mu**2 )
+    beta = data.dot(mu) / np.sum(mu**2)
     data_r = data if inplace else data.copy()
     for chan, b in zip(data_r, beta):
         chan -= b * mu
@@ -332,6 +338,7 @@ def ar_whiten_blocks(blocks, p=50):
         b, _ = AR_est_YW(blocks[n], p)
         bw[n] = signal.lfilter(np.r_[1, -b], [1], blocks[n])
     return bw
+
 
 @input_as_2d()
 def harmonic_projection(data, f0, stdevs=2):
@@ -359,14 +366,68 @@ def harmonic_projection(data, f0, stdevs=2):
     This method is best applied to short-ish intervals.
 
     """
-    
+
     n = data.shape[-1]
     sigma = data.std(1)
-    m_2d = np.abs(data) > stdevs*sigma[:,None]
+    m_2d = np.abs(data) > stdevs*sigma[:, None]
     data = np.ma.masked_array(data, m_2d)
-    cs = np.cos(2*np.pi*f0*np.arange(n))
-    sn = np.sin(2*np.pi*f0*np.arange(n))
+    cs = np.cos(2 * np.pi * f0 * np.arange(n))
+    sn = np.sin(2 * np.pi * f0 * np.arange(n))
     alpha = data.dot(cs) / (0.5 * n)
     beta = data.dot(sn) / (0.5 * n)
-    h = alpha[:,None] * cs + beta[:,None] * sn
+    h = alpha[:, None] * cs + beta[:, None] * sn
     return data.data - h.data
+
+
+def lowpass_envelope(x: ElectrodeDataSource, n: int, lowpass: float, design_kws=None, filt_kws=None):
+    """
+    Compute the lowpass envelope of the timeseries rows in array x in blockwise fashion.
+
+    x : ndarray, n_chans x n_points
+
+    n : int
+        block size over which to compute Hilbert transform
+
+    lowpass : float, 0 < lowpass < 1
+        the corner frequency of the lowpass filter in unit frequency
+
+    design_kws : dict
+        any extra filter design arguments (sampling rate will be forced to 1)
+
+    filt_kws : dict
+        any extra filter processing arguments (e.g. "filtfilt" : {T/F} )
+
+    """
+    return_ndarray = False
+    if isinstance(x, np.ndarray):
+        return_ndarray = True
+        x = PlainArraySource(x)
+    if filt_kws is None:
+        filt_kws = dict()
+    n = nextpow2(n)
+    # do a little bit of overlap to avoid hilbert transform edge effects
+    overlap = int(0.1 * n)
+    for block, sl in x.iter_blocks(block_length=n, overlap=overlap, return_slice=True, partial_block=True):
+        chan_slice, time_slice = sl
+        start = time_slice.start
+        stop = time_slice.stop
+        new_sl = (chan_slice, slice(start + overlap, stop - overlap))
+        sl_length = stop - start - 2 * overlap
+        block_a = signal.hilbert(block, N=n)
+        x[new_sl] = np.abs(block_a[..., overlap:overlap + sl_length])
+
+    if lowpass == 1:
+        return x
+
+    if design_kws is None:
+        design_kws = dict()
+    if filt_kws is None:
+        filt_kws = dict()
+    filt_kws.setdefault('filtfilt', True)
+
+    # hope for the best
+    design_kws['Fs'] = 1.0
+    design_kws['hi'] = lowpass
+    design_kws.setdefault('ord', 5)
+    x = x.filter_array(inplace=True, design_kwargs=design_kws, filt_kwargs=filt_kws)
+    return x.data_buffer if return_ndarray else x
