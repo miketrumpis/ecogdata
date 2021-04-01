@@ -18,7 +18,6 @@ from ecogdata.expconfig import load_params
 from ecogdata.util import ToggleState
 from ecogdata.parallel.sharedmem import shared_ndarray
 from ecogdata.parallel.split_methods import lfilter_void
-from ecogdata.filt.time import filter_array, notch_all
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
 from .array_abstractions import HDF5Buffer, BufferBinder, slice_to_range, slice_data_buffer, BackgroundRead
@@ -511,6 +510,7 @@ class MappedSource(ElectrodeDataSource):
                                                        use_max_memory=use_max_memory, return_slice=return_slice)
 
     def filter_array(self, **kwargs):
+        from ecogdata.filt.time import filter_array
         kwargs['block_filter'] = bfilter
         # kwargs['inplace'] = True
         filter_array(self, **kwargs)
@@ -519,6 +519,7 @@ class MappedSource(ElectrodeDataSource):
         return self
 
     def notch_filter(self, *args, **kwargs):
+        from ecogdata.filt.time import notch_all
         kwargs['block_filter'] = bfilter
         # kwargs['inplace'] = True
         notch_all(self, *args, **kwargs)

@@ -5,7 +5,6 @@ import h5py
 
 from ecogdata.expconfig import load_params
 from ecogdata.parallel.sharedmem import shared_copy, shared_ndarray
-from ecogdata.filt.time import downsample, filter_array, notch_all
 from ecogdata.filt.blocks import BlockSignalBase
 
 
@@ -259,6 +258,7 @@ class ElectrodeDataSource:
         -------
 
         """
+        from ecogdata.filt.time import downsample
         new_rate_ratio = int(new_rate_ratio)
         if new_source.shape[0] != self.shape[0]:
             raise ValueError('Output source has the wrong number of channels: {}'.format(new_source.shape[0]))
@@ -494,6 +494,8 @@ class PlainArraySource(ElectrodeDataSource):
 
     def set_channel_mask(self, channel_mask):
         """Apply the binary channel mask to the current data matrix"""
+        if channel_mask is None:
+            return
         if self._shm:
             data_buffer = shared_ndarray((channel_mask.sum(), self.shape[1]))
             data_buffer[:] = self.data_buffer[channel_mask]
@@ -536,7 +538,7 @@ class PlainArraySource(ElectrodeDataSource):
         data: PlainArraySource
 
         """
-
+        from ecogdata.filt.time import filter_array
         inplace = kwargs.get('inplace', True)
         f_arr = filter_array(self.data_buffer, **kwargs)
         if inplace:
@@ -559,7 +561,7 @@ class PlainArraySource(ElectrodeDataSource):
         data: PlainArraySource
 
         """
-
+        from ecogdata.filt.time import notch_all
         inplace = kwargs.get('inplace', True)
         f_arr = notch_all(self.data_buffer, *args, **kwargs)
         if inplace:
