@@ -285,7 +285,9 @@ class BufferBase:
         # 2) create an output array for slice caching
         # **NOTE** that the output needs to respect `transpose_state`
         slicer = _abs_slicer(slicer, self.shape)
-        out_shape = select(self.shape, slicer, 0).mshape
+        # patch inter-operability from 2.10 to 3.x
+        _null_dataset = None if h5py.version.version_tuple.major >= 3 else 0
+        out_shape = select(self.shape, slicer, _null_dataset).mshape
         # if the output will be transposed, then pre-create the array in the right order
         if self._transpose_state:
             out_shape = out_shape[::-1]
