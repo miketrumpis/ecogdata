@@ -1,5 +1,3 @@
-from nose.tools import assert_true
- 
 import numpy as np
 from scipy.signal import lfilter, lfilter_zi, filtfilt
 
@@ -17,11 +15,11 @@ def test_filt_1d():
     f2 = r.copy()
     # test w/o blocking
     bfilter(b, a, f2)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
     # test w/ blocking
     f2 = r.copy()
     bfilter(b, a, f2, bsize=234)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
 
 
 def test_filt_nd():
@@ -33,11 +31,11 @@ def test_filt_nd():
     f2 = r.copy()
     # test w/o blocking
     bfilter(b, a, f2, axis=0)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
     # test w/ blocking
     f2 = r.copy()
     bfilter(b, a, f2, bsize=234, axis=0)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
 
 
 def test_filtfilt_1d():
@@ -48,11 +46,11 @@ def test_filtfilt_1d():
     f2 = r.copy()
     # test w/o blocking
     bfilter(b, a, f2, filtfilt=True)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
     # test w/ blocking
     f2 = r.copy()
     bfilter(b, a, f2, bsize=234, filtfilt=True)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
 
 
 def test_filtfilt_nd():
@@ -63,11 +61,11 @@ def test_filtfilt_nd():
     f2 = r.copy()
     # test w/o blocking
     bfilter(b, a, f2, axis=0, filtfilt=True)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
     # test w/ blocking
     f2 = r.copy()
     bfilter(b, a, f2, bsize=234, axis=0, filtfilt=True)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
 
 
 @with_start_methods
@@ -82,11 +80,11 @@ def test_parfilt():
     f2 = shm.shared_copy(r)
     # test w/o blocking
     bfilter_p(b, a, f2, axis=1)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
     # test w/ blocking
     f2 = shm.shared_copy(r)
     bfilter_p(b, a, f2, bsize=234, axis=1)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
 
 
 @with_start_methods
@@ -102,11 +100,11 @@ def test_parfilt2():
     f3 = shm.shared_ndarray(f2.shape, f2.dtype.char)
     # test w/o blocking
     bfilter_p(b, a, f2, out=f3, axis=1)
-    assert_true((f1 == f3).all())
+    assert (f1 == f3).all()
     # test w/ blocking
     f2 = shm.shared_copy(r)
     bfilter_p(b, a, f2, out=f3, bsize=234, axis=1)
-    assert_true((f1 == f3).all())
+    assert (f1 == f3).all()
 
 
 @with_start_methods
@@ -120,9 +118,9 @@ def test_parfiltfilt():
     f2 = shm.shared_copy(r)
     # test w/o blocking
     filtfilt_p(f2, b, a, bsize=0)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
     # test w/ blocking
     f2 = shm.shared_copy(r)
     filtfilt_p(f2, b, a, bsize=234)
-    assert_true((f1 == f2).all())
+    assert (f1 == f2).all()
 

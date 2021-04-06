@@ -1,4 +1,3 @@
-from nose.tools import assert_true
 import numpy as np
 
 from ecogdata.channel_map import ChannelMap, map_intersection
@@ -17,23 +16,23 @@ def test_intersection():
 
     ix = map_intersection((cm, cm2))
     subset = cm2.embed(np.ones(len(cm2), dtype='?'), fill=False)
-    assert_true((subset == ix).all())
+    assert (subset == ix).all()
 
 
 def test_slicing():
     cm = get_chan_map((5, 5), pitch=0.5)
     # should be 2nd row
     cm_sliced = cm[5:10]
-    assert_true(list(cm_sliced) == list(range(5, 10)))
-    assert_true(cm_sliced.pitch == cm.pitch)
-    assert_true(cm_sliced.rlookup(0) == (1, 0))    
-    assert_true(cm_sliced.rlookup(3) == (1, 3))
+    assert list(cm_sliced) == list(range(5, 10))
+    assert cm_sliced.pitch == cm.pitch
+    assert cm_sliced.rlookup(0) == (1, 0)    
+    assert cm_sliced.rlookup(3) == (1, 3)
 
 
 def test_subset_pitch():
     cm = get_chan_map((5, 5), pitch=0.5, scrambled=True)
     sub_list = [1, 4, 10, 3, 18]
-    assert_true(cm.subset(sub_list).pitch == cm.pitch)
+    assert cm.subset(sub_list).pitch == cm.pitch
     
 
 def test_intersection_subset():
@@ -43,12 +42,12 @@ def test_intersection_subset():
 
     cm_sub = cm.subset(cm2)
 
-    assert_true(len(cm_sub) == len(cm2))
-    assert_true(cm_sub.pitch == cm.pitch)
+    assert len(cm_sub) == len(cm2)
+    assert cm_sub.pitch == cm.pitch
 
     cm2_sites = list(zip(*cm2.to_mat()))
     sub_sites = list(zip(*cm_sub.to_mat()))
-    assert_true(set(cm2_sites) == set(sub_sites))
+    assert set(cm2_sites) == set(sub_sites)
     
 
 def test_1D_subset():
@@ -60,11 +59,11 @@ def test_1D_subset():
 
     # ordered subset selection with different sequence types
     cm_sub = cm.subset(sub_list)
-    assert_true(list(cm_sub) == targets)
+    assert list(cm_sub) == targets
     cm_sub = cm.subset(tuple(sub_list))
-    assert_true(list(cm_sub) == targets)
+    assert list(cm_sub) == targets
     cm_sub = cm.subset(np.array(sub_list))
-    assert_true(list(cm_sub) == targets)
+    assert list(cm_sub) == targets
     
     # now with masks
     sub_list = [1, 3, 4, 10, 18]
@@ -73,7 +72,7 @@ def test_1D_subset():
     mask = np.zeros(25, '?')
     mask[sub_list] = True
     cm_sub = cm.subset(mask)
-    assert_true(list(cm_sub) == targets)
+    assert list(cm_sub) == targets
 
     mask = np.zeros(cm.geometry, '?')
     mask[:] = True
@@ -81,4 +80,4 @@ def test_1D_subset():
     cm_sub = cm.subset(mask)
 
     cm_sub_sites = list(zip(*cm_sub.to_mat()))
-    assert_true(set(cm_sub_sites) == set(hot_sites))
+    assert set(cm_sub_sites) == set(hot_sites)

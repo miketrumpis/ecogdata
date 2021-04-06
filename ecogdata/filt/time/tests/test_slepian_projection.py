@@ -1,5 +1,3 @@
-from nose.tools import assert_true, assert_equal
-
 from numpy.testing import assert_almost_equal
 import numpy as np
 
@@ -36,7 +34,7 @@ def test_baseband_recon():
     # check within interior of signal
     err = recon[150:-150] - baseband[150:-150]
     rel_error = np.sum(err ** 2) / np.sum(baseband[150:-150] ** 2)
-    assert_true(rel_error < 1e-3)
+    assert rel_error < 1e-3
 
 
 def test_narrowband_recon():
@@ -47,7 +45,7 @@ def test_narrowband_recon():
     # check within interior of signal
     err = nb_est[150:-150] - nb[150:-150]
     rel_error = np.sum(err ** 2) / np.sum(nb[150:-150] ** 2)
-    assert_true(rel_error < 1e-3)
+    assert rel_error < 1e-3
 
 
 def test_narrowband_rejection():
@@ -58,7 +56,7 @@ def test_narrowband_rejection():
     # should reject the narrow-band signal reasonably well
     nb_est = slepian_projection(nb, 50, 1000.0, w0=150)
     rel_leak = np.sum(nb_est[150:-150] ** 2) / np.sum(nb[150:-150] ** 2)
-    assert_true(rel_leak < 1e-3)
+    assert rel_leak < 1e-3
 
 
 def test_bandpass_power():
@@ -81,9 +79,9 @@ def test_shapes():
     sg_2d = np.random.randn(3, 200)
     sg_3d = np.random.randn(2, 2, 200)
 
-    assert_equal(slepian_projection(sg_1d, 20, 1000.0).shape, sg_1d.shape)
-    assert_equal(slepian_projection(sg_2d, 20, 1000.0).shape, sg_2d.shape)
-    assert_equal(slepian_projection(sg_3d, 20, 1000.0).shape, sg_3d.shape)
+    assert slepian_projection(sg_1d, 20, 1000.0).shape == sg_1d.shape
+    assert slepian_projection(sg_2d, 20, 1000.0).shape == sg_2d.shape
+    assert slepian_projection(sg_3d, 20, 1000.0).shape == sg_3d.shape
 
 
 def test_projection_return_types():
@@ -92,23 +90,23 @@ def test_projection_return_types():
 
     # basic lowpass
     y1 = slepian_projection(x, 100, 1e3)
-    assert_true(y1.dtype not in np.sctypes['complex'])
+    assert y1.dtype not in np.sctypes['complex']
 
     # basic bandpass twosided
     y1 = slepian_projection(x, 100, 1e3, w0=150)
-    assert_true(y1.dtype not in np.sctypes['complex'])
+    assert y1.dtype not in np.sctypes['complex']
 
     # bandpass onesided
     y1 = slepian_projection(x, 100, 1e3, w0=150, onesided=True)
-    assert_true(y1.dtype in np.sctypes['complex'])
+    assert y1.dtype in np.sctypes['complex']
 
     # bandpass demodulated
     y1 = slepian_projection(x, 100, 1e3, w0=150, baseband=True)
-    assert_true(y1.dtype not in np.sctypes['complex'])
+    assert y1.dtype not in np.sctypes['complex']
 
     # bandpass onesided
     y1 = slepian_projection(x, 100, 1e3, w0=150, baseband=True, onesided=True)
-    assert_true(y1.dtype in np.sctypes['complex'])
+    assert y1.dtype in np.sctypes['complex']
 
 
 def test_moving_projection_recon():
@@ -120,7 +118,7 @@ def test_moving_projection_recon():
     # check within interior of signal
     err = nb_est[N:-N] - nb[N:-N]
     rel_error = np.sum(err ** 2) / np.sum(nb[N:-N] ** 2)
-    assert_true(rel_error < 1e-3)
+    assert rel_error < 1e-3
 
 
 def test_moving_projection_sizes():
@@ -131,9 +129,9 @@ def test_moving_projection_sizes():
                 continue
             try:
                 y = moving_projection(x, N, 0.1)
-                assert_true(len(y) == len(x))
+                assert len(y) == len(x)
             except:
-                assert_true(False, 'shapes failed: M={0}, N={1}'.format(M, N))
+                assert False, 'shapes failed: M={0}, N={1}'.format(M, N)
 
 
 def test_twodim_moving_projection():
@@ -144,7 +142,7 @@ def test_twodim_moving_projection():
     y = moving_projection(x, 200, 5/200.)
 
     err = y - y[0]
-    assert_true(np.sum(err ** 2) < 1e-8)
+    assert np.sum(err ** 2) < 1e-8
 
 
 def test_multidim_moving_projection():
@@ -157,7 +155,7 @@ def test_multidim_moving_projection():
     y = moving_projection(x, 200, 5/200.)
 
     err = y - y[0, 0]
-    assert_true(np.sum(err ** 2) < 1e-8)
+    assert np.sum(err ** 2) < 1e-8
 
 
 def test_consistency():
@@ -169,7 +167,7 @@ def test_consistency():
     y2 = _moving_projection_preserve(x, 200, 5/200.)
     # return y1, y2
     err = y1 - y2
-    assert_true(np.sum(err ** 2) < 1e-8)
+    assert np.sum(err ** 2) < 1e-8
 
 
 def test_return_types():
@@ -177,7 +175,7 @@ def test_return_types():
     x = np.random.randn(2000)
 
     y1 = moving_projection(x, 200, 5/200., f0=6/200., baseband=False)
-    assert_true(y1.dtype not in np.sctypes['complex'])
+    assert y1.dtype not in np.sctypes['complex']
 
     y2 = moving_projection(x, 200, 5/200., f0=6/200., baseband=True)
-    assert_true(y2.dtype in np.sctypes['complex'])
+    assert y2.dtype in np.sctypes['complex']
