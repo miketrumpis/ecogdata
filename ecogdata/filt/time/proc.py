@@ -4,8 +4,10 @@ One-stop shopping for digital filtering of arrays
 import numpy as np
 from .design import butter_bp, cheby1_bp, cheby2_bp, notch
 from ecogdata.util import get_default_args, input_as_2d, nextpow2
-from ecogdata.datasource import ElectrodeDataSource, PlainArraySource
-from ecogdata.parallel.sharedmem import shared_ndarray, shared_copy
+import typing
+if typing.TYPE_CHECKING:
+    from ecogdata.datasource import ElectrodeDataSource
+import ecogdata.parallel.sharedmem as shm
 import scipy.signal as signal
 from nitime.algorithms.autoregressive import AR_est_YW
 
@@ -103,7 +105,7 @@ def filter_array(
                 check_shm = False
         if def_args['out'] is None:
             if check_shm:
-                arr_f = shared_ndarray(arr.shape, arr.dtype.char)
+                arr_f = shm.shared_ndarray(arr.shape, arr.dtype.char)
             else:
                 arr_f = np.empty_like(arr)
             def_args['out'] = arr_f
@@ -148,7 +150,7 @@ def notch_all(
     elif filt_kwargs.get('out', None) is None:
         # If inplace is False and no output array is set,
         # then make the array copy here and do inplace filtering on the copy
-        arr_f = shared_copy(arr)
+        arr_f = shm.shared_copy(arr)
         arr = arr_f
         filt_kwargs['out'] = arr
     # otherwise an output array is set
@@ -252,7 +254,7 @@ def upsample(x, fs, appx_fs=None, r=None, interp='sinc'):
         # so find the closest match that is <= appx_fs
         r = int(np.floor(appx_fs / fs))
 
-    x_up = shared_ndarray(x.shape[:-1] + (r * x.shape[-1],), x.dtype.char)
+    x_up = shm.shared_ndarray(x.shape[:-1] + (r * x.shape[-1],), x.dtype.char)
     x_up[..., ::r] = x
 
     new_fs = fs * r
@@ -379,7 +381,7 @@ def harmonic_projection(data, f0, stdevs=2):
     return data.data - h.data
 
 
-def lowpass_envelope(x: ElectrodeDataSource, n: int, lowpass: float, design_kws=None, filt_kws=None):
+def lowpass_envelope(x: 'ElectrodeDataSource', n: int, lowpass: float, design_kws=None, filt_kws=None):
     """
     Compute the lowpass envelope of the timeseries rows in array x in blockwise fashion.
 
@@ -401,6 +403,7 @@ def lowpass_envelope(x: ElectrodeDataSource, n: int, lowpass: float, design_kws=
     return_ndarray = False
     if isinstance(x, np.ndarray):
         return_ndarray = True
+        from ecogdata.datasource import PlainArraySource
         x = PlainArraySource(x)
     if filt_kws is None:
         filt_kws = dict()
