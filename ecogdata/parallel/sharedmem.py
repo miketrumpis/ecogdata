@@ -15,7 +15,9 @@ to shared array pointer lookup cache is retained to prevent memory copies.
 
 """
 from abc import ABC
-import ecogdata.parallel.mproc as mp
+import sys
+from ecogdata.parallel.mproc import parallel_context as pctx
+from multiprocessing.sharedctypes import synchronized
 import numpy as np
 from contextlib import contextmanager, ExitStack
 from ecogdata.util import ToggleState
@@ -75,7 +77,7 @@ class SharedmemTool(ABC):
         else:
             ctypecode = typecode
 
-        shm = mp.Array(ctypecode, N)
+        shm = pctx.Array(ctypecode, N)
         return shm
 
     @classmethod
@@ -115,11 +117,11 @@ class ForkSharedmemManager(SharedmemTool):
         shape = np_array.shape
         if dtype in dtype_ctype:
             ctype_view = dtype_ctype[dtype]
-            shm = mp.sharedctypes.synchronized(
+            shm = synchronized(
                 np.ctypeslib.as_ctypes(np_array.view(ctype_view))
             )
         else:
-            shm = mp.sharedctypes.synchronized(
+            shm = synchronized(
                 np.ctypeslib.as_ctypes(np_array)
             )
         super(ForkSharedmemManager, self).__init__(shm, shape, dtype, use_lock=use_lock)
@@ -127,7 +129,7 @@ class ForkSharedmemManager(SharedmemTool):
 
 _spawning_mem_cache = dict()
 
-
+# TODO: the timing of creating a large shared array is ridic!
 class SpawnSharedmemManager(SharedmemTool):
     """
     Basically the same but we have to hold shared mem as a plain sharedctypes.Array
@@ -168,9 +170,25 @@ class SpawnSharedmemManager(SharedmemTool):
         return ndarray
 
 
-if mp.get_start_method() in ('spawn', 'forkserver'):
-    SharedmemManager = SpawnSharedmemManager
-else:
-    SharedmemManager = ForkSharedmemManager
-shared_ndarray = SharedmemManager.shared_ndarray
-shared_copy = SharedmemManager.shared_copy
+# register these to change with the parallel context namespace
+pctx.register_context_dependent_namespace('spawn', SpawnSharedmemManager, altname='SharedmemManager')
+pctx.register_context_dependent_namespace('spawn', SpawnSharedmemManager.shared_ndarray)
+pctx.register_context_dependent_namespace('spawn', SpawnSharedmemManager.shared_copy)
+pctx.register_context_dependent_namespace('fork', ForkSharedmemManager, altname='SharedmemManager')
+pctx.register_context_dependent_namespace('fork', ForkSharedmemManager.shared_ndarray)
+pctx.register_context_dependent_namespace('fork', ForkSharedmemManager.shared_copy)
+
+
+# dynamic (context-dependent) lookup of the previous items
+def __getattr__(name):
+    if name in __all__:
+        return getattr(pctx.ctx, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# nice tool to backport the __getattr__ trick to earlier Python
+# https://github.com/facelessuser/pep562
+PY37 = sys.version_info >= (3, 7)
+if not PY37:
+    from .pep562 import Pep562
+    Pep562(__name__)

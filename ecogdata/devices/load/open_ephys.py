@@ -14,7 +14,7 @@ from ecogdata.trigger_fun import process_trigger
 from ecogdata.filt.time import cheby2_bp, downsample
 from ecogdata.util import Bunch, mkdir_p
 from ecogdata.datastore import load_bunch, save_bunch
-from ecogdata.parallel.sharedmem import shared_ndarray
+import ecogdata.parallel.sharedmem as shm
 from ecogdata.parallel.split_methods import filtfilt
 
 from . import DataPathError, _OpenEphys as OE
@@ -287,10 +287,10 @@ def load_open_ephys_channels(
         sub_len = d_len // downsamp
         if sub_len * downsamp < d_len:
             sub_len += 1
-        proc_block = shared_ndarray((page_size, d_len), typecode=dtype)
+        proc_block = shm.shared_ndarray((page_size, d_len), typecode=dtype)
         proc_block[0] = ch_record['data'].astype('d')
         if shared_array:
-            saved_array = shared_ndarray((len(files), sub_len), typecode=dtype)
+            saved_array = shm.shared_ndarray((len(files), sub_len), typecode=dtype)
         else:
             saved_array = np.zeros((len(files), sub_len), dtype=dtype)
 
@@ -508,7 +508,7 @@ class OpenEphysLoader(FileLoader):
                                           downsamp=downsample_ratio, save_downsamp=False, use_stored=False,
                                           quantized=False)
         chdata = loaded.chdata
-        electrode_data = shared_ndarray((len(electrode_chans), chdata.shape[1]), chdata.dtype.char)
+        electrode_data = shm.shared_ndarray((len(electrode_chans), chdata.shape[1]), chdata.dtype.char)
         np.take(chdata, electrode_chans, axis=0, out=electrode_data)
         datasource = PlainArraySource(electrode_data, use_shared_mem=False, adc=loaded.adc, aux=loaded.aux)
         if ground_chans:

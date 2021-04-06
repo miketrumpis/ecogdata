@@ -4,7 +4,7 @@ import ecogdata.filt.time as ft
 import ecogdata.util as ut
 from ecogdata.datastore import load_bunch, save_bunch
 from ecogdata.trigger_fun import process_trigger
-from ecogdata.parallel.sharedmem import shared_ndarray, shared_copy
+import ecogdata.parallel.sharedmem as shm
 from ecogdata.parallel.array_split import parallel_controller
 from ecogdata.parallel.split_methods import filtfilt
 import ecogdata.devices.electrode_pinouts as epins
@@ -182,7 +182,7 @@ def load_mux(
     # if any pre-processing of multiplexed channels, do it here first
     if mux_notches:
         
-        mux_chans = shared_ndarray( (ncol_data, channels.shape[-1], nrow) )
+        mux_chans = shm.shared_ndarray( (ncol_data, channels.shape[-1], nrow) )
         mux_chans[:] = channels[:ncol_data].transpose(0, 2, 1)
         mux_chans.shape = (ncol_data, -1)
         ft.notch_all(
@@ -201,7 +201,7 @@ def load_mux(
     r_chans = reference
     d_chans = np.setdiff1d(np.arange(ncol_data*nrow), np.union1d(g_chans, r_chans))
 
-    data_chans = shared_copy(rec_chans[d_chans])
+    data_chans = shm.shared_copy(rec_chans[d_chans])
     if len(g_chans):
         gnd_data = rec_chans[g_chans]
     else:

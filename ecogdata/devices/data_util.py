@@ -11,7 +11,7 @@ from ecogdata.expconfig.exp_descr import join_experiments
 from .load import *
 from .load.util import convert_tdms
 
-from ecogdata.parallel.sharedmem import shared_ndarray
+import ecogdata.parallel.sharedmem as shm
 from ecogdata.expconfig.config_decode import Parameter, TypedParam, BoolOrNum, NSequence, NoneOrStr, uniform_bunch_case
 from ecogdata.datasource import ElectrodeDataSource, MappedSource, PlainArraySource
 
@@ -422,7 +422,7 @@ def join_datasets(all_sets, popdata=True, shared_mem=True, source_type=''):
         # * place channels into memory
         new_data = dict()
         if shared_mem:
-            array_create = shared_ndarray
+            array_create = shm.shared_ndarray
         else:
             array_create = np.empty
         new_data['data_buffer'] = array_create((nchan, d_len))

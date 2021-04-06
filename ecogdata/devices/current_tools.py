@@ -6,7 +6,7 @@ import scipy.signal as signal
 from ecogdata.util import Bunch
 from ecogdata.channel_map import ChannelMap
 from ecogdata.datastore.h5utils import load_bunch
-from ecogdata.parallel.sharedmem import shared_ndarray
+import ecogdata.parallel.sharedmem as shm
 from .units import convert_scale
 
 
@@ -112,7 +112,7 @@ def _convert(
         rec_data = rec.pop('data')
         conv = rec.deepcopy()
         rec.data = rec_data
-        conv_data = shared_ndarray(rec_data.shape, rec_data.dtype.char)
+        conv_data = shm.shared_ndarray(rec_data.shape, rec_data.dtype.char)
         conv_data[:] = rec_data
         b = tfs.bb
         a = tfs.aa

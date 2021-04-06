@@ -1,4 +1,5 @@
-import ecogdata.parallel.mproc as mp
+from .mproc import timestamp
+from .mproc import parallel_context as pctx
 from contextlib import closing
 import warnings
 from decorator import decorator
@@ -6,7 +7,7 @@ import numpy as np
 from ecogdata.util import ToggleState
 from datetime import datetime
 
-from .sharedmem import SharedmemManager
+# from .sharedmem import SharedmemManager
 
 
 parallel_controller = ToggleState(name='Parallel Controller')
@@ -56,25 +57,26 @@ def parallel_runner(method, static_args, split_arg, shared_split_arrays, shared_
                  method,
                  static_args,
                  kwargs)
-    mp.freeze_support()
-    info_logger('{} Creating pool'.format(mp.timestamp()))
-    with closing(mp.Pool(processes=n_jobs, initializer=_init_globals, initargs=init_args)) as p:
+    ctx = pctx.ctx
+    ctx.freeze_support()
+    info_logger('{} Creating pool'.format(timestamp()))
+    with closing(ctx.Pool(processes=n_jobs, initializer=_init_globals, initargs=init_args)) as p:
         dim_size = shared_split_arrays[0].shape[0]
         # map the jobs
         job_slices = divy_slices(dim_size, len(p._pool))
-        info_logger('{} Mapping jobs'.format(mp.timestamp()))
+        info_logger('{} Mapping jobs'.format(timestamp()))
         res = p.map_async(_global_method_wrap, job_slices)
 
     p.join()
     if res.successful():
-        info_logger('{} Joining results'.format(mp.timestamp()))
+        info_logger('{} Joining results'.format(timestamp()))
         res = splice_results(res.get(), splice_args)
         # res = res.get()
     else:
         # raises exception ?
         res.get()
     # gc.collect()
-    info_logger('{} Wrap done'.format(mp.timestamp()))
+    info_logger('{} Wrap done'.format(timestamp()))
     return res
 
 
@@ -107,8 +109,8 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
         If True, then the shared memory (indexed by shared_args) will be accessed with with thread locks.
 
     """
-    info = mp.get_logger().info
-    info('{} Starting wrap'.format(mp.timestamp()))
+    info = pctx.get_logger().info
+    info('{} Starting wrap'.format(timestamp()))
     # normalize inputs
     if not np.iterable(splice_at):
         splice_at = (splice_at,)
@@ -119,7 +121,7 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
     split_arg = tuple(split_arg)
     shared_args = tuple(shared_args)
     if n_jobs < 0:
-        n_jobs = mp.cpu_count()
+        n_jobs = pctx.cpu_count()
 
     def check_parallel_usage(*args, **kwargs):
         # check if there are even multiple rows in the array!!
@@ -160,8 +162,8 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
         for pos in pop_args:
             pos = pos - n
             a = args.pop(pos)
-            info('{} Wrapping shared memory size {} MB'.format(mp.timestamp(), a.size * a.dtype.itemsize / 1024. / 1000.))
-            x = SharedmemManager(a, use_lock=concurrent)
+            info('{} Wrapping shared memory size {} MB'.format(timestamp(), a.size * a.dtype.itemsize / 1024. / 1000.))
+            x = pctx.SharedmemManager(a, use_lock=concurrent)
             if pos + n in split_arg:
                 split_array_shm.append(x)
             else:
@@ -298,8 +300,8 @@ def _init_globals(split_args, split_mem, split_arr_shape, shared_args, shared_me
     global kwdict_
     kwdict_ = kwdict
 
-    info = mp.get_logger().info
-    info('{} Initialized globals'.format(mp.timestamp()))
+    info = pctx.get_logger().info
+    info('{} Initialized globals'.format(timestamp()))
 
 
 def _global_method_wrap(aslice):
@@ -321,7 +323,7 @@ def _global_method_wrap(aslice):
     for arr_ in shared_arr_:
         with arr_.get_ndarray() as array:
             arrs.append(array)
-    info = mp.get_logger().info
+    info = pctx.get_logger().info
 
     # create (arg_idx, arr) pairs for all split arrays (now properly sliced) and all shared arrays
     spliced_in = list(zip(
@@ -346,11 +348,11 @@ def _global_method_wrap(aslice):
     args.extend([spl[1] for spl in spliced_in])
     args = tuple(args)
     # time to drive the method
-    info('{} Applying method {} to slice {} at position {}'.format(mp.timestamp(), method_, aslice, split_args_))
+    info('{} Applying method {} to slice {} at position {}'.format(timestamp(), method_, aslice, split_args_))
     then = datetime.now()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         r = method_(*args, **kwdict_)
     time_lapse = (datetime.now() - then).total_seconds()
-    info('{} method {} slice {} elapsed time: {}'.format(mp.timestamp(), method_, aslice, time_lapse))
+    info('{} method {} slice {} elapsed time: {}'.format(timestamp(), method_, aslice, time_lapse))
     return r

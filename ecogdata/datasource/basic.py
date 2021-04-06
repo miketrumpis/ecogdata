@@ -4,7 +4,7 @@ import h5py
 # from tqdm import tqdm
 
 from ecogdata.expconfig import load_params
-from ecogdata.parallel.sharedmem import shared_copy, shared_ndarray
+import ecogdata.parallel.sharedmem as shm
 from ecogdata.filt.blocks import BlockSignalBase
 
 
@@ -157,7 +157,7 @@ class ElectrodeDataSource:
 
         """
         if sharedmem:
-            self._cache_output = shared_copy(self[slicer])
+            self._cache_output = shm.shared_copy(self[slicer])
         elif not_strided:
             output = self[slicer]
             if output.__array_interface__['strides']:
@@ -497,7 +497,7 @@ class PlainArraySource(ElectrodeDataSource):
         if channel_mask is None:
             return
         if self._shm:
-            data_buffer = shared_ndarray((channel_mask.sum(), self.shape[1]))
+            data_buffer = shm.shm.shared_ndarray((channel_mask.sum(), self.shape[1]))
             data_buffer[:] = self.data_buffer[channel_mask]
             self.data_buffer = data_buffer
         else:

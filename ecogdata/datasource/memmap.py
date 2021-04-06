@@ -16,7 +16,7 @@ from numpy.linalg import LinAlgError
 
 from ecogdata.expconfig import load_params
 from ecogdata.util import ToggleState
-from ecogdata.parallel.sharedmem import shared_ndarray
+import ecogdata.parallel.sharedmem as shm
 from ecogdata.parallel.split_methods import lfilter_void
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
@@ -663,7 +663,7 @@ class MappedSource(ElectrodeDataSource):
             if 'data_buffer' in new_sources:
                 new_source = new_sources['data_buffer']
             else:
-                new_source = shared_ndarray((C, T), fp_dtype.char)
+                new_source = shm.shared_ndarray((C, T), fp_dtype.char)
             if copy_electrodes:
                 for block, sl in self.iter_blocks(return_slice=True, sharedmem=False):
                     new_source[sl] = block
@@ -679,7 +679,7 @@ class MappedSource(ElectrodeDataSource):
                 if name in new_sources:
                     aligned_arrays[name] = new_sources[name]
                 else:
-                    aligned_arrays[name] = shared_ndarray(dims, fp_dtype.char)
+                    aligned_arrays[name] = shm.shared_ndarray(dims, fp_dtype.char)
                 if copy_aligned:
                     aligned = getattr(self, name)[:]
                     aligned_arrays[name][:] = aligned.T if self._transpose else aligned

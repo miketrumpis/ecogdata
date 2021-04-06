@@ -11,7 +11,7 @@ from pickle import PickleError, PicklingError
 from ecogdata.util import Bunch
 from ecogdata.datasource.memmap import MappedSource
 from ecogdata.datasource.array_abstractions import BufferBase
-from ecogdata.parallel.sharedmem import shared_ndarray
+import ecogdata.parallel.sharedmem as shm
 
 
 _h5_seq_types = (type(1.0), type(1j), type(True), type([]))
@@ -234,7 +234,7 @@ def traverse_table(f, path='/', load=True, scan=False, shared_paths=(), skip_sta
                 if n.dtype.char == 'O':
                     arr = 'Not loaded: ' + n.name
                 elif '/'.join([path, n.name]) in shared_paths:
-                    arr = shared_ndarray(n.shape)
+                    arr = shm.shared_ndarray(n.shape)
                     arr[:] = n.read()
                 else:
                     arr = n.read()

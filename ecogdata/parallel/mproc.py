@@ -1,23 +1,65 @@
-"""Safely set numexpr.set_num_threads(1) before attempting multiprocessing"""
-
-import numexpr
-numexpr.set_num_threads(1)
-
 from contextlib import contextmanager
+from collections import defaultdict
 import platform
-from multiprocessing import *
-import multiprocessing.sharedctypes
-sharedctypes = multiprocessing.sharedctypes
+from multiprocessing import get_context, log_to_stderr
 
 
-if __name__ == '__main__':
-    if platform.system() == 'Darwin':
+class _pcontext:
+    # could potentially screen for win32 and limit to spawn, but
+    # maybe better not to cover for bad choices here.
+    contexts = ('fork', 'spawn', 'forkserver')
+
+    def __init__(self, default_starter='fork'):
+        if platform.system() == 'Windows':
+            default_starter = 'spawn'
+        self._registry = defaultdict(list)
+        self.ctx = default_starter
+
+    def __getattribute__(self, attr):
         try:
-            set_start_method('fork')
-        except RuntimeError:
-            # already set, perhaps by parent process
-            pass
+            return super().__getattribute__(attr)
+        except AttributeError:
+            return getattr(self.ctx, attr)
 
+    def register_context_dependent_namespace(self, context, object, altname=None, reload_context=True):
+        if context not in self.contexts:
+            raise ValueError('not a context: {}'.format(context))
+        self._registry[context].append((object, altname))
+        if reload_context:
+            self.ctx = self.context_name
+
+    @property
+    def ctx(self):
+        return self._ctx
+
+    @ctx.setter
+    def ctx(self, starter):
+        self._ctx = get_context(starter)
+        self._ctxname = starter
+        registered_objects = self._registry[starter]
+        for obj, name in registered_objects:
+            if name is None:
+                name = obj.__name__
+            setattr(self._ctx, name, obj)
+
+    @property
+    def context_name(self):
+        return self._ctxname
+
+    @contextmanager
+    def switch_context(self, starter):
+        oldstarter = self.context_name
+        self.ctx = starter
+        # TODO: delete this when finished testing para-dev-2 branch
+        # if starter == 'spawn':  # and __name__ == '__main__':
+        #     self.ctx.freeze_support()
+        try:
+            yield
+        finally:
+            self.ctx = oldstarter
+
+
+parallel_context = _pcontext()
 _stderr_logger = None
 
 

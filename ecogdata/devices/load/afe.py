@@ -5,7 +5,7 @@ import os
 from ecogdata.util import mkdir_p, Bunch
 import ecogdata.filt.time as ft
 import ecogdata.devices.electrode_pinouts as epins
-from ecogdata.parallel.sharedmem import shared_ndarray
+import ecogdata.parallel.sharedmem as shm
 from ecogdata.parallel.split_methods import filtfilt
 
 from ..units import convert_dyn_range, convert_scale
@@ -106,7 +106,7 @@ def load_afe_aug21(
     
     full_data = h5.root.data[:].reshape(n_col, n_row, -1)
 
-    #data_chans = shared_ndarray( (32*n_data_col, full_data.shape[-1]) )
+    #data_chans = shm.shared_ndarray( (32*n_data_col, full_data.shape[-1]) )
     data_chans = full_data[:n_data_col, data_rows].reshape(-1, full_data.shape[-1])
     trig_chans = full_data[-10:, -1]
     del full_data
@@ -133,7 +133,7 @@ def load_afe_aug21(
     connected = np.setdiff1d(np.arange(n_data), disconnected)
     disconnected = disconnected[ disconnected < n_data ]
         
-    data = shared_ndarray( (len(connected), data_chans.shape[-1]) )
+    data = shm.shared_ndarray( (len(connected), data_chans.shape[-1]) )
     data[:, :] = data_chans[connected]
     ground_chans = data_chans[disconnected]
 
@@ -227,7 +227,7 @@ def load_afe(
     
     chan_map = chan_map.subset(list(range(len(connected))))
     
-    data = shared_ndarray( (len(connected), data_chans.shape[-1]) )
+    data = shm.shared_ndarray( (len(connected), data_chans.shape[-1]) )
     data[:,:] = data_chans[connected]
     ground_chans = data_chans[disconnected].copy()
     del data_chans

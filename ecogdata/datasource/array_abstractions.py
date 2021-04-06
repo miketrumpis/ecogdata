@@ -5,8 +5,9 @@ import numpy as np
 import h5py
 from h5py._hl.selections import select
 from ecogdata.util import ToggleState
-from ecogdata.parallel.sharedmem import shared_ndarray, SharedmemManager
-from ecogdata.parallel.mproc import Process
+# from ecogdata.parallel.sharedmem import shm.shared_ndarray, SharedmemManager
+import ecogdata.parallel.sharedmem as shm
+from ecogdata.parallel.mproc import parallel_context
 from ecogdata.expconfig import load_params
 
 
@@ -303,7 +304,7 @@ class BufferBase:
         typecode = self.dtype.char
         if self._read_output is None:
             if self._shared_mem_read:
-                return shared_ndarray(out_shape, typecode)
+                return shm.shared_ndarray(out_shape, typecode)
             else:
                 return np.empty(out_shape, typecode)
         else:
@@ -824,7 +825,7 @@ class BufferBinder(BufferBase):
             buffer[sl] = sub_arr
 
 
-class BackgroundRead(Process):
+class BackgroundRead(parallel_context.Process):
     """
     A Process that can re-open mapped files in read-only mode and slice out some data in the background
     """
@@ -835,7 +836,7 @@ class BackgroundRead(Process):
         self.transpose = transpose
         if output is None:
             output = buffer.get_output_array(slicer)
-        self.output = SharedmemManager(output)
+        self.output = shm.SharedmemManager(output)
         self.buffer_type = type(buffer)
         self.buffer_info = buffer.describe()
 

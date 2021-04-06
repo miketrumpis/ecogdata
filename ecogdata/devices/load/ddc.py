@@ -4,7 +4,7 @@ import scipy.io as sio
 from ecogdata.channel_map import ChannelMap
 from ecogdata.util import Bunch, mat_to_flat
 
-from ecogdata.parallel.sharedmem import shared_copy
+import ecogdata.parallel.sharedmem as shm
 from ecogdata.parallel.split_methods import filtfilt
 import ecogdata.filt.time as ft
 
@@ -51,7 +51,7 @@ def _load_cooked_pre_august_2014(pth, test, dyn_range, Fs):
     #chans = (chans_int * ( Fs * (dr_hi - dr_lo) * 2**-20 )) + dr_lo*Fs
     chans = convert_dyn_range(chans_int, 2**20, (dr_lo, dr_hi))
 
-    data = shared_copy(chans[electrode_chans])
+    data = shm.shared_copy(chans[electrode_chans])
     disconnected = chans[~electrode_chans]
 
     binary_trig = (np.any( trigs==1, axis=0 )).astype('i')
@@ -97,7 +97,7 @@ def _load_cooked(pth, test, half=False, avg=False):
         chans = chans[:, 1::2]
         trigs = trigs[:, 1::2]
 
-    data = shared_copy(chans[electrode_chans])
+    data = shm.shared_copy(chans[electrode_chans])
     disconnected = chans[~electrode_chans]
 
     binary_trig = (np.any( trigs==1, axis=0 )).astype('i')
@@ -189,7 +189,7 @@ def load_openephys_ddc(
     dr_lo, dr_hi = _dyn_range_lookup[drange] # drange 0 3 or 7
     ch_data = convert_dyn_range(ch_data, (-2**15, 2**15), (dr_lo, dr_hi))
     
-    data = shared_copy(ch_data[electrode_chans])
+    data = shm.shared_copy(ch_data[electrode_chans])
     disconnected = ch_data[~electrode_chans]
 
     trigger -= trigger.mean()

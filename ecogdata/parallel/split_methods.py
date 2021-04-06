@@ -6,7 +6,7 @@ from nitime.algorithms import multi_taper_psd as multi_taper_psd_serial
 from ecogdata.filt.time.blocked_filter import bfilter as bfilter_serial
 from ecogdata.filt.time.blocked_filter import overlap_add as overlap_add_serial
 from ecogdata.parallel.array_split import split_at
-from ecogdata.parallel.sharedmem import shared_ndarray
+import ecogdata.parallel.sharedmem as shm
 
 
 # Parallelized re-definitions
@@ -49,7 +49,7 @@ def lfilter(b, a, x, out=None, **kwargs):
     if out is None:
         # Can check parallel with the first split array
         if lfilter_para(b, a, x, None, None, check_parallel=True):
-            out = shared_ndarray(x.shape, x.dtype.char)
+            out = shm.shared_ndarray(x.shape, x.dtype.char)
         else:
             out = np.empty_like(x)
     zi = kwargs.pop('zi', None)
