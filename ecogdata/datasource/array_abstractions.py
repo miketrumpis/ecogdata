@@ -286,8 +286,15 @@ class BufferBase:
         # **NOTE** that the output needs to respect `transpose_state`
         slicer = _abs_slicer(slicer, self.shape)
         # patch inter-operability from 2.10 to 3.x
-        _null_dataset = None if h5py.version.version_tuple.major >= 3 else 0
-        out_shape = select(self.shape, slicer, _null_dataset).mshape
+        if h5py.version.version_tuple.major >= 3:
+            _null_dataset = None
+            shape_attr = 'array_shape'
+        else:
+            _null_dataset = 0
+            shape_attr = 'mshape'
+
+        selection = select(self.shape, slicer, _null_dataset)
+        out_shape = getattr(selection, shape_attr)
         # if the output will be transposed, then pre-create the array in the right order
         if self._transpose_state:
             out_shape = out_shape[::-1]
