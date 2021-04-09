@@ -1,4 +1,4 @@
-import multiprocessing as mp
+import multiprocess as mp
 import numpy as np
 from ecogdata.parallel.sharedmem import ForkSharedmemManager, SpawnSharedmemManager, SharedmemTool
 from . import skip_win

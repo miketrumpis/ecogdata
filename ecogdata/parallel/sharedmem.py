@@ -17,7 +17,7 @@ to shared array pointer lookup cache is retained to prevent memory copies.
 from abc import ABC
 import sys
 from ecogdata.parallel.mproc import parallel_context as pctx
-from multiprocessing.sharedctypes import synchronized
+from multiprocess.sharedctypes import synchronized
 import numpy as np
 from contextlib import contextmanager, ExitStack
 from ecogdata.util import ToggleState

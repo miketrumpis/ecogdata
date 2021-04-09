@@ -1,6 +1,6 @@
 import pytest
 import sys
-import multiprocessing.context as mpc
+import multiprocess.context as mpc
 from ecogdata.parallel.mproc import parallel_context
 
 

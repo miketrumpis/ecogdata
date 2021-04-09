@@ -1,7 +1,14 @@
 from contextlib import contextmanager
 from collections import defaultdict
 import platform
-from multiprocessing import get_context, log_to_stderr
+from multiprocess import get_context, log_to_stderr
+from ecogdata.util import ToggleState
+
+
+__all__ = ['parallel_controller', 'parallel_context', 'make_stderr_logger', 'timestamp']
+
+
+parallel_controller = ToggleState(name='Parallel Controller')
 
 
 class _pcontext:

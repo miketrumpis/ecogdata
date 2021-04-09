@@ -1,16 +1,11 @@
 from .mproc import timestamp
-from .mproc import parallel_context as pctx
+from .mproc import parallel_controller, parallel_context as pctx
 from contextlib import closing
 import warnings
-from decorator import decorator
+from functools import wraps
 import numpy as np
-from ecogdata.util import ToggleState
+from ecogdata.util import get_default_args
 from datetime import datetime
-
-# from .sharedmem import SharedmemManager
-
-
-parallel_controller = ToggleState(name='Parallel Controller')
 
 
 def parallel_runner(method, static_args, split_arg, shared_split_arrays, shared_args, shared_full_arrays,
@@ -80,7 +75,8 @@ def parallel_runner(method, static_args, split_arg, shared_split_arrays, shared_
     return res
 
 
-def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_jobs=-1, concurrent=False):
+def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_kwargs=(),
+             split_over=None, n_jobs=-1, concurrent=False):
     """
     Returns a decorator that enables parallel dispatch over multiple blocks of input ndarrays.
 
@@ -101,6 +97,8 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
         Position(s) of any return arguments that should be combined for output
     shared_args: tuple
         Position of any array arguments that should be available to all workers as shared memory
+    split_kwargs: tuple
+        Position of potential arrays to split, if they are present in the keyword arguments
     split_over: int
         If not None, only split the array(s) if they're over this many MBs
     n_jobs: int
@@ -120,6 +118,8 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
     splice_at = tuple(splice_at)
     split_arg = tuple(split_arg)
     shared_args = tuple(shared_args)
+    if not isinstance(split_kwargs, tuple):
+        split_kwargs = (split_kwargs,)
     if n_jobs < 0:
         n_jobs = pctx.cpu_count()
 
@@ -143,48 +143,331 @@ def split_at(split_arg=(0,), splice_at=(0,), shared_args=(), split_over=None, n_
                 return False
         return True
 
-    @decorator
-    def inner_split_method(method, *args, **kwargs):
-        # This decorator scans the arguments to create shared memory wrappers of arrays
-        # and then calls the parallel runner for dispatch of the method
+    #@decorator
+    #def inner_split_method(method, *args, **kwargs):
 
-        only_check = kwargs.pop('check_parallel', False)
-        para = check_parallel_usage(*args, **kwargs)
-        if only_check:
-            return para
-        elif not para:
-            return method(*args, **kwargs)
-        pop_args = sorted(split_arg + shared_args)
-        shared_array_shm = list()
-        n = 0
-        args = list(args)
-        split_array_shm = list()
-        for pos in pop_args:
-            pos = pos - n
-            a = args.pop(pos)
-            info('{} Wrapping shared memory size {} MB'.format(timestamp(), a.size * a.dtype.itemsize / 1024. / 1000.))
-            x = pctx.SharedmemManager(a, use_lock=concurrent)
-            if pos + n in split_arg:
-                split_array_shm.append(x)
+    def run_parallel(method):
+
+        @wraps(method)
+        def inner_split_method(*args, **kwargs):
+
+            # This decorator scans the arguments to create shared memory wrappers of arrays
+            # and then calls the parallel runner for dispatch of the method
+
+            only_check = kwargs.pop('check_parallel', False)
+            para = check_parallel_usage(*args, **kwargs)
+            if only_check:
+                return para
+            elif not para:
+                return method(*args, **kwargs)
+            # Check if there are arrays present in the split_kwargs potential splits
+            # Filter split_kwargs for actually present data
+            really_split = tuple([k for k in split_kwargs if isinstance(kwargs.get(k, None), np.ndarray)])
+            if really_split:
+                # modify method to enable splitting
+                run_method = fix_signature_for_split(*really_split, cancel_output=False)(method)
+                # global split_arg
+                full_split_arg = split_arg + tuple([len(args) + i for i in range(len(really_split))])
+                # split_arg = new_split_arg
+                args = args + tuple([kwargs.pop(k) for k in really_split])
             else:
-                shared_array_shm.append(x)
-            n += 1
-        static_args = tuple(args)
-        shared_array_shm = tuple(shared_array_shm)
+                full_split_arg = split_arg
+                run_method = method
+            # print('kwargs:', list(kwargs.keys()))
+            # print('split_kwargs:', split_kwargs)
+            # print('really splitting:', really_split)
+            # print('number of args', len(args), full_split_arg)
+            pop_args = sorted(full_split_arg + shared_args)
+            shared_array_shm = list()
+            n = 0
+            args = list(args)
+            split_array_shm = list()
+            for pos in pop_args:
+                pos = pos - n
+                a = args.pop(pos)
+                info('{} Wrapping shared memory size {} MB'.format(timestamp(), a.size * a.dtype.itemsize / 1024. / 1000.))
+                x = pctx.SharedmemManager(a, use_lock=concurrent)
+                if pos + n in full_split_arg:
+                    split_array_shm.append(x)
+                else:
+                    shared_array_shm.append(x)
+                n += 1
+            static_args = tuple(args)
+            shared_array_shm = tuple(shared_array_shm)
 
-        split_lens = set([x.shape[0] for x in split_array_shm])
-        if len(split_lens) > 1:
-            raise ValueError(
-                'all of the arrays to split must have the same length '
-                'on the first axis'
-            )
-        return parallel_runner(method, static_args, split_arg, split_array_shm, shared_args, shared_array_shm,
-                               splice_at, kwargs, n_jobs, info)
+            split_lens = set([x.shape[0] for x in split_array_shm])
+            if len(split_lens) > 1:
+                raise ValueError(
+                    'all of the arrays to split must have the same length '
+                    'on the first axis'
+                )
+            return parallel_runner(run_method, static_args, full_split_arg, split_array_shm, shared_args,
+                                   shared_array_shm, splice_at, kwargs, n_jobs, info)
+
+        return inner_split_method
 
     # Work in progress -- figure out how to attach checker as an attribute
     # inner_split_method.uses_parallel = check_parallel_usage
 
-    return inner_split_method
+    return run_parallel
+
+
+def to_void(method, clear_position=0):
+    """
+    Turn a single-output method into a void method by appending a positional argument
+    to hold output. Now input & output arrays can be split shared memory.
+
+    """
+
+    @wraps(method)
+    def void_method(*args, **kwargs):
+        output = args[-1]
+        method_args = args[:-1]
+        r = method(*method_args, **kwargs)
+        # gobble cleared output position, return others if applicable
+        if isinstance(r, tuple):
+            output[:] = r[clear_position]
+            return r[:clear_position] + r[clear_position + 1:]
+        output[:] = r
+
+    return void_method
+
+
+def fix_signature_for_split(*kwargs_to_args, cancel_output=False):
+    """
+    Create a decorator that returns a method that puts selected kwargs
+    into positional arg slots. For n original args, the new call looks like this:
+
+    method_expand(arg_1, ..., arg_n, arg_n+1, ..., **new_kwargs)
+
+    For the common case where the optional argument is an output buffer,
+    then it also makes sense to cancel output values that would need to be
+    serialized in multiprocessing.
+
+    Parameters
+    ----------
+    kwargs_to_args :
+    cancel_output :
+
+    """
+    # print(kwargs_to_args, isinstance(kwargs_to_args, tuple))
+    if not isinstance(kwargs_to_args, tuple):
+        kwargs_to_args = (kwargs_to_args,)
+    # print(kwargs_to_args)
+    def expands_signature(method):
+        if not len(kwargs_to_args):
+            return method
+
+        @wraps(method)
+        def expanded(*args, **kwargs):
+            n_expanded = len(kwargs_to_args)
+            n_orig = len(args) - n_expanded
+            # print('expanded args:', n_expanded, 'orig args:', n_orig)
+            orig_args = args[:n_orig]
+            # print('kw to replace:', kwargs_to_args)
+            for i, kw in enumerate(kwargs_to_args):
+                kwargs[kw] = args[n_orig + i]
+            # print('kw:', len(kwargs), kwargs[kw].shape)
+            # print('args:', len(orig_args), [o.shape for o in orig_args])
+            r = method(*orig_args, **kwargs)
+            if cancel_output:
+                # if multiple outputs, assume that first output should be hidden
+                if isinstance(r, tuple):
+                    r = r[1:]
+                else:
+                    r = None
+            return r
+        return expanded
+
+    return expands_signature
+
+
+def allocate_output(call_args: tuple, call_kwargs: dict, split_kwargs: dict,
+                    inplace: bool=False, shared: bool=True, same_shape: bool=True, calc_shape: callable=None):
+    """
+    Allocate memory for output from parallel jobs
+
+    """
+    if not (same_shape or calc_shape):
+        raise ValueError
+    default_args = get_default_args(split_at)
+    split_input = call_args[split_kwargs.get('split_arg', default_args['split_arg'])[0]]
+    if same_shape:
+        shape = split_input.shape
+        dtype = split_input.dtype
+    else:
+        shape, dtype = calc_shape(call_args, call_kwargs)
+    if inplace:
+        # print('using input for output')
+        # the output will be placed in the split arg
+        # (or the first split arg, if that makes sense?)
+        out = split_input
+    elif shared:
+        # print('creating shared output')
+        out = pctx.shared_ndarray(shape, typecode=dtype.char)
+    else:
+        # print('creating plain output')
+        # don't bother with shared
+        out = np.empty(shape, dtype=dtype)
+    return out
+
+
+def fix_output(canceled_output, other_output):
+    """
+    Restore the full output when the main output was blocked in processes
+
+    """
+    if other_output is None:
+        return canceled_output
+    if isinstance(other_output, tuple):
+        return (canceled_output,) + other_output
+    return (canceled_output, other_output)
+
+
+def split_optional_output(output_kwarg, runs_inplace=False, same_shape: bool=True, calc_shape: callable=None,
+                          **split_kwargs):
+    """
+
+    Parameters
+    ----------
+    output_kwarg : basestring
+        Name of the optional output argument
+    runs_inplace : bool
+        If the method changes input data inplace under the default output, set runs_inplace=True.
+    split_kwargs : dict
+        Parameters for the split_at function
+
+    """
+    # split_arg = split_kwargs.pop('split_arg', (0,))
+
+    def run_para_method(method):
+        @wraps(method)
+        def run_as_void(*args, **kwargs):
+            # method_has_output_arg = True
+            default_args = get_default_args(method)
+            default_out = default_args[output_kwarg]
+            out = kwargs.pop(output_kwarg, default_out)
+            inplace = kwargs.pop('inplace', False)
+            void_method = fix_signature_for_split(output_kwarg, cancel_output=True)(method)
+            # print('out was', type(out))
+            # If the method normally runs inplace and the output arg is None,
+            # then run the void wrapped method with just the normal array splitting.
+            # In all other cases, split the output variable
+            if runs_inplace and out is default_out:
+                para_method = split_at(**split_kwargs)(method)
+                full_args = args
+            else:
+                void_split_args = split_kwargs.copy()
+                # split the last arg that is added by to_void()
+                split_arg = split_kwargs.get('split_arg', get_default_args(split_at)['split_arg'])
+                full_split_arg = split_arg + (len(args),)
+                void_split_args['split_arg'] = full_split_arg
+                # split and run as void, then return the output
+                para_method = split_at(**void_split_args)(void_method)
+                if out is default_out:
+                    use_shared = para_method(*args, None, check_parallel=True)
+                    try:
+                        out = allocate_output(args, kwargs, void_split_args, inplace=inplace, shared=use_shared,
+                                              same_shape=same_shape, calc_shape=calc_shape)
+                    except ValueError:
+                        raise ValueError('output argument "out" is required')
+
+                # if out is default_out:
+                #     split_input = args[split_arg[0]]
+                #     if para_method(*args, None, check_parallel=True):
+                #         print('creating shared output')
+                #         shape = split_input.shape
+                #         tcode = split_input.dtype.char
+                #         out = pctx.shared_ndarray(shape, typecode=tcode)
+                #     else:
+                #         print('creating plain output')
+                #         # don't bother with shared
+                #         out = np.empty_like(split_input)
+                full_args = args + (out,)
+            # Run the method and return the output (or None, if output was not set)
+            r = para_method(*full_args, **kwargs)
+            return fix_output(out, r)
+
+        return run_as_void
+
+    return run_para_method
+
+
+def split_output(position=0, same_shape: bool=True, calc_shape: callable=None, **split_kwargs):
+    """
+    Split a single-output method by turning it into a void method and splitting
+    the input-output arrays. The wrapped method also supports new keyword arguments:
+
+    * out: output shared array
+    * inplace (bool): use the input shared array in place of out
+
+    If same_shape==True, then shared output will be created if out is None.
+    Otherwise, out is considered required and a ValueError will be raised if out is None.
+
+    Parameters
+    ----------
+    position: int
+        Position of output to disable
+    split_kwargs : dict
+        Parameters for the split_at function
+
+    """
+    # split_arg = split_kwargs.pop('split_arg', (0,))
+
+    def para_void_method(method):
+        @wraps(method)
+        def run_para_void(*args, **kwargs):
+            out = kwargs.pop('out', None)
+            void_method = to_void(method, clear_position=position)
+            # print('out was', type(out))
+            inplace = kwargs.pop('inplace', False)
+
+            void_split_args = split_kwargs.copy()
+            # split the last arg that is added by to_void()
+            split_arg = split_kwargs.get('split_arg', get_default_args(split_at)['split_arg'])
+            full_split_arg = split_arg + (len(args),)
+            void_split_args['split_arg'] = full_split_arg
+            # split and run as void, then return the output
+            para_method = split_at(**void_split_args)(void_method)
+            if out is None:
+                use_shared = para_method(*args, None, check_parallel=True)
+                try:
+                    out = allocate_output(args, kwargs, split_kwargs, inplace=inplace, shared=use_shared,
+                                          same_shape=same_shape, calc_shape=calc_shape)
+                except ValueError:
+                    raise ValueError('output argument "out" is required')
+                #
+                # print('out is None')
+                # if not (same_shape or calc_shape):
+                #     raise ValueError('output argument "out" is required')
+                # split_input = args[split_arg[0]]
+                # if same_shape:
+                #     shape = split_input.shape
+                #     dtype = split_input.dtype
+                # else:
+                #     shape, dtype = calc_shape(*args, **kwargs)
+                # if inplace:
+                #     print('using input for output')
+                #     # the output will be placed in the split arg
+                #     # (or the first split arg, if that makes sense?)
+                #     out = split_input
+                # elif para_method(*args, None, check_parallel=True):
+                #     print('creating shared output')
+                #     out = pctx.shared_ndarray(shape, typecode=dtype.char)
+                # else:
+                #     print('creating plain output')
+                #     # don't bother with shared
+                #     out = np.empty(shape, dtype=dtype)
+            full_args = args + (out,)
+            r = para_method(*full_args, **kwargs)
+            return fix_output(out, r)
+
+        return run_para_void
+
+    return para_void_method
+
+
+
 
 
 def divy_slices(dim_size, n_div):
@@ -244,7 +527,7 @@ class shared_readonly:
     """
 
     # TODO: only has array like *access*, not any shape or dtype (etc) info
-    def __init__(self, mem_mgr):
+    def __init__(self, mem_mgr: pctx.SharedmemManager):
         self.mem_mgr = mem_mgr
 
     def __getitem__(self, idx):
@@ -306,7 +589,8 @@ def _init_globals(split_args, split_mem, split_arr_shape, shared_args, shared_me
 
 def _global_method_wrap(aslice):
     """
-    Wrapper method depending on this job's slice. The method and all inputs are in global namespace.
+    Wrapper method depending on this job's slice. This is the target of Pool.map.
+    The method and all inputs are in global namespace.
 
     Parameters
     ----------
@@ -320,6 +604,8 @@ def _global_method_wrap(aslice):
     """
     arrs = []
     # cycle through split arrays and translate to ndarray (possibly in a locking context)
+    # TODO: to truly lock, the method should be called under an ExitStack that stacks
+    #  array locking contexts
     for arr_ in shared_arr_:
         with arr_.get_ndarray() as array:
             arrs.append(array)

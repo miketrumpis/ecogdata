@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-import multiprocessing as mp
+import multiprocess as mp
 from ecogdata.parallel.jobrunner import JobRunner, ParallelWorker
 from ecogdata.parallel.mproc import parallel_context
 from . import with_start_methods

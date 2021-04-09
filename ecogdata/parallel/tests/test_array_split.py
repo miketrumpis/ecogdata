@@ -2,8 +2,97 @@ import random
 import numpy as np
 
 from ecogdata.parallel.mproc import parallel_context
-from ecogdata.parallel.array_split import split_at, divy_slices
+from ecogdata.parallel.array_split import split_at, divy_slices, split_output, split_optional_output
 from . import with_start_methods
+
+
+def affine_computation(x, offset=None):
+    """
+    Test method with optional input that must be split, and also optional output
+
+    x: m x n
+    offset: m x 1
+
+    """
+    if offset is not None:
+        new_offset = x.mean(axis=1)
+    y = 2 * x
+    if offset is not None:
+        y = y + offset[:, None]
+        return y, new_offset
+    return y
+
+
+@with_start_methods
+def test_kwarg_split():
+    x = parallel_context.shared_ndarray((50, 100))
+    x[:] = 1
+    split_affine = split_at(split_arg=(0,), splice_at=(0, 1), split_kwargs='offset', n_jobs=3)(affine_computation)
+    assert (split_affine(x) == 2).all()
+
+    y, offset = split_affine(x, offset=np.ones(50))
+    assert (y == 3).all()
+    assert (offset == x.mean(axis=1)).all()
+
+
+@with_start_methods
+def test_output_split():
+    x = parallel_context.shared_ndarray((50, 100))
+    x[:] = 1
+    # splice_at should not affect anything now
+    split_affine = split_output(same_shape=True, split_arg=(0,), splice_at=(0,), n_jobs=3)(affine_computation)
+    assert (split_affine(x) == 2).all()
+
+    # now splice_at should apply to the non-void return "new_offset" (if applicable)
+    split_affine = split_output(same_shape=True, split_arg=(0,), split_kwargs='offset',
+                                splice_at=(0,), n_jobs=3)(affine_computation)
+
+    y, offset = split_affine(x, offset=np.ones(50))
+    assert (y == 3).all()
+    assert (offset == x.mean(axis=1)).all()
+
+    # can also specify output buffer
+    y = parallel_context.shared_ndarray((50, 100))
+    split_affine(x, out=y)
+    assert (y == 2).all(), 'provided buffer does not hold result'
+
+    # can also do this inplace
+    split_affine(x, inplace=True)
+    assert (x == 2).all(), 'inplace computation failed'
+
+
+def affine_with_output(x, offset=None, output=None):
+    # very contrived example of using an output buffer
+    r = affine_computation(x, offset=offset)
+    if output is None:
+        return r
+    if isinstance(r, tuple):
+        output[:] = r[0]
+        return output, r[1]
+    output[:] = r
+    return output
+
+
+@with_start_methods
+def test_optional_output_split():
+    x = parallel_context.shared_ndarray((50, 100))
+    x[:] = 1
+    split_kwargs = dict(split_arg=(0,), splice_at=(0,), split_kwargs='offset', n_jobs=3)
+    split_affine = split_optional_output(output_kwarg='output', **split_kwargs)(affine_with_output)
+
+    assert(split_affine(x) == 2).all(), 'default result wrong'
+    y, offset = split_affine(x, offset=np.ones(50))
+    assert (y == 3).all(), 'result using split optional arg wrong'
+    assert (offset == x.mean(axis=1)).all(), 'optional return value wrong'
+
+    # can also specify output buffer
+    y = parallel_context.shared_ndarray((50, 100))
+    split_affine(x, output=y)
+    assert (y == 2).all(), 'provided buffer does not hold result'
+
+    # can also do this inplace
+    split_affine(x, inplace=True)
+    assert (x == 2).all(), 'inplace computation failed'
 
 
 def sum_columns(x):
@@ -40,7 +129,7 @@ def test_ro_split():
     array = np.arange(20 * 30).reshape(20, 30)
     sh_array = parallel_context.shared_copy(array)
 
-    split_fn = split_at()(sum_columns)
+    split_fn = split_at(n_jobs=3)(sum_columns)
 
     # this method should work equally for read-only and shared access
     res_1 = split_fn(array)
@@ -61,7 +150,7 @@ def test_rw_split():
     out = np.zeros(20)
     sh_out = parallel_context.shared_copy(out)
 
-    split_fn = split_at(split_arg=(0, 1))(sum_columns_and_write)
+    split_fn = split_at(split_arg=(0, 1), n_jobs=3)(sum_columns_and_write)
 
     # this call should not touch out
     split_fn(array, out)
@@ -98,11 +187,10 @@ def test_complex_input_output_pattern():
     split_arg[:] = np.arange(20 * 50).reshape(50, 20)
     test_arg = split_arg.copy()
 
-    split_fn = split_at(split_arg=(1,), splice_at=(1,), shared_args=(0,), concurrent=True)(very_weird_fun)
+    split_fn = split_at(split_arg=(1,), splice_at=(1,), shared_args=(0,), concurrent=True, n_jobs=3)(very_weird_fun)
 
     size, sum = split_fn(shared_arg, split_arg)
 
     assert size == shared_arg.size, 'single return value wrong'
     assert np.all(sum == split_arg.sum(axis=1))
     assert np.all(split_arg == test_arg + shared_arg.var())
-

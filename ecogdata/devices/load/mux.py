@@ -5,7 +5,7 @@ import ecogdata.util as ut
 from ecogdata.datastore import load_bunch, save_bunch
 from ecogdata.trigger_fun import process_trigger
 import ecogdata.parallel.sharedmem as shm
-from ecogdata.parallel.array_split import parallel_controller
+from ecogdata.parallel.mproc import parallel_controller
 from ecogdata.parallel.split_methods import filtfilt
 import ecogdata.devices.electrode_pinouts as epins
 
