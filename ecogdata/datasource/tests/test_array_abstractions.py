@@ -441,6 +441,7 @@ def test_multidim_binder():
     assert np.all(d_out == data[sl]), 'multidim direct-read binder failed with dimension eating'
 
 
+@pytest.mark.skipif(True, reason='Not implemented now')
 def test_subprocess_caching():
     buf, data = _create_binder(n_rows=10, n_cols=100, axis=1, dtype='i')
     # 1) test a slice into a single buffer
@@ -463,6 +464,7 @@ def test_subprocess_caching():
     assert np.all(output == data[sl]), 'Subprocess slicing failed across buffers'
 
 
+@pytest.mark.skipif(True, reason='Not implemented now')
 def test_subprocess_cachingT():
     buf, data = _create_binder(n_rows=10, n_cols=100, axis=1, dtype='i')
     # 1) test a slice into a single buffer
