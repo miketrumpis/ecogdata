@@ -10,14 +10,13 @@ from tempfile import NamedTemporaryFile
 # from ecogdata.parallel.mproc import Process
 import numpy as np
 import h5py
-from scipy.signal import lfilter_zi
+from scipy.signal import lfilter_zi, lfilter
 from numpy.linalg import LinAlgError
 # from tqdm import tqdm
 
 from ecogdata.expconfig import load_params
 from ecogdata.util import ToggleState
 import ecogdata.parallel.sharedmem as shm
-from ecogdata.parallel.split_methods import lfilter_void
 
 from .basic import ElectrodeDataSource, calc_new_samples, PlainArraySource
 from .array_abstractions import HDF5Buffer, BufferBinder, slice_to_range, slice_data_buffer, BackgroundRead
@@ -729,7 +728,8 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
         if zi is None:
             zi = zii[zi_sl] * xc[xc_sl]
         # treat xc as mutable, since it is sliced from a mapped source
-        zi = lfilter_void(b, a, xc, xc, zi, axis=1)
+        # zi = lfilter_void(b, a, xc, xc, zi, axis=1)
+        xc, zi = lfilter(b, a, xc, zi=zi, axis=1)
         if out is None:
             x[sl] = xc
         else:
@@ -751,7 +751,8 @@ def bfilter(b, a, x, out=None, filtfilt=False, verbose=False, **extra):
     for xc, sl in itr:
         if zi is None:
             zi = zii[zi_sl] * xc[xc_sl]
-        zi = lfilter_void(b, a, xc, xc, zi, axis=1)
+        # zi = lfilter_void(b, a, xc, xc, zi, axis=1)
+        xc, zi = lfilter(b, a, xc, zi=zi, axis=1)
         # write out with negative step slices (buffer will correct the write order)
         if out is None:
             x[sl] = xc
