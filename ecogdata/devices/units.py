@@ -5,9 +5,9 @@ _nice_units = dict([
     ('fa', 'fA'), ('fc', 'fC'), ('fv', 'fV'), ('ff', 'fF'),
     ('pa', 'pA'), ('pc', 'pC'), ('pv', 'pV'), ('pf', 'pF'),
     ('na', 'nA'), ('nc', 'nC'), ('nv', 'nV'), ('nf', 'nF'),
-    ('ua', r'$\mu A$'), ('uv', r'$\mu V$'), ('uc', r'$\mu C$'), ('uf', r'$\mu F$'),
+    ('ua', u'\u03BCA'), ('uv', u'\u03BCV'), ('uc', u'\u03BCC'), ('uf', u'\u03BCF'),
     ('ma', 'mA'), ('mc', 'mC'), ('mv', 'mV'), ('mf', 'mF'),
-    ('sigma', r'$\sigma$')
+    ('sigma', u'\u03C3')
 ])
 
 
@@ -96,7 +96,7 @@ def best_scaling_step(x, unit_scale, allow_up=False):
             print('scale smaller than femto')
             return (x, scaling, mag_scale)
 
-    scale_range = np.array([1, 5, 10, 50, 100])
+    scale_range = np.array([1, 2, 5, 10, 20, 50, 100, 200, 500])
     if np.any(x == scale_range):
         step_size = int(x)
     else:
