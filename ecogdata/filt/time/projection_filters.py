@@ -14,7 +14,8 @@ def slepian_projection(
     """
     Perform bandpass filtering by projection onto the bandpass space
     supported by "discrete prolate spheroidal sequences" (i.e. Slepian
-    functions).
+    functions). Output amplitude is scaled by 2x for all bandpass modes
+    (whether single-sided or not).
 
     Parameters
     ----------
@@ -31,7 +32,8 @@ def slepian_projection(
     w0 : float
         Center frequency of the bandpass (defaut is lowpass)
     baseband : bool
-        Reconstruct bandpass signal in baseband
+        Reconstruct bandpass signal in baseband (normally done as a single
+        side band, with onesided=True).
     onesided : bool
         If making a centered bandpass projection, do one-sided or not.
         For example, a one-sided baseband reconstruction is similar
@@ -41,17 +43,28 @@ def slepian_projection(
     save_dpss : bool
         Return the Slepian functions for current time-bandwidth product
         along with the filtered timeseries
-    """
+    min_conc : float
+        Only keep DPSS filters with spectral concentration (eigenvalues)
+        above this minimum. No check is made that there will be a usable
+        number of surviving DPSS.
 
+    Returns
+    -------
+    y : np.ndarray
+        Filtered signal(s)
+    dpss : np.ndarray
+        DPSS filters, if save_dpss is True
+
+    """
     nchan, npts = data.shape
     if dpss is None:
         # find NW which is also TW
         T = npts / Fs
         # round to the nearest multiple of 1/2
-        TW = int(round(2 * T * BW) / 2.0)
-        K = 2 * TW
+        TW = round(2 * T * BW) / 2.0
+        K = int(2 * TW) - 1
         if K < 1:
-            min_bw = 0.5 / T
+            min_bw = 1 / T
             err = 'BW is too small for the window size: ' \
                 'minimum BW={0}'.format(min_bw)
             raise ValueError(err)
@@ -69,21 +82,13 @@ def slepian_projection(
         bp = w.dot(dpss)
     else:
         t = np.arange(npts)
-        dpss_pf = np.exp(2j * np.pi * w0 * t / Fs) * dpss
         # this really should already be normalized
-        nrm = np.sqrt((dpss_pf * dpss_pf.conj()).sum(-1))
-        #dpss_nf = np.exp(-2j * np.pi * w0 * t / Fs) * dpss
-        #nrm = np.sqrt( ( dpss_nf * dpss_nf.conj() ).sum(-1) )
-        #dpss_nf /= nrm[:, None]
-        dpss_pf /= nrm[:, None]
+        dpss_pf = np.exp(2j * np.pi * w0 * t / Fs) * dpss
         wp = data.dot(dpss_pf.conj().T)
-        #wn = data.dot( dpss_nf.conj().T )
         if baseband:
-            #bp = ( wp.dot( dpss ) + wn.dot( dpss ) ).real.copy()
             bp = 2 * wp.dot(dpss)
         else:
             bp = 2 * wp.dot(dpss_pf)
-            #bp = ( wp.dot( dpss_pf ) + wn.dot( dpss_nf ) ).real.copy()
         if not onesided:
             bp = bp.real
     if save_dpss:
@@ -171,7 +176,7 @@ def _moving_projection_preserve(
     TW = int(round(2 * T * BW) / 2.0)
     K = 2 * TW - 1
     if K < 1:
-        min_bw = 0.5 / T
+        min_bw = 1 / T
         err = 'BW is too small for the window size: ' \
             'minimum BW={0}'.format(min_bw)
         raise ValueError(err)
@@ -224,7 +229,7 @@ try:
     @input_as_2d(out_arr=0)
     def moving_projection_serial(
             x, N, BW, Fs=1.0, f0=0, Kmax=None, baseband=True,
-            weight_eigen=True, window=np.hanning,
+            weight_eigen=True, window=np.hanning, min_conc=None,
             dpss=None, save_dpss=False
     ):
         """
@@ -237,7 +242,7 @@ try:
         sum of these estimates. 
 
         Parameters
-        ==========
+        ----------
         x : ndarray 
             Signal to filter.
         N : int
@@ -261,14 +266,23 @@ try:
         window : callable, optional
             The method, if given, returns a window the length of its argument.
             This window will be used to weight the projection values.
+        min_conc : float
+            Only keep DPSS filters with spectral concentration (eigenvalues)
+            above this minimum. No check is made that there will be a usable
+            number of surviving DPSS.
+        dpss : ndarray
+            Pre-computed Slepian functions for given time-bandwidth product
+        save_dpss : bool
+            Return the Slepian functions for current time-bandwidth product
+            along with the filtered timeseries
 
         Returns
-        =======
+        -------
         y : ndarray
             Lowpass projection of x.
 
         Notes
-        =====
+        -----
         Since this method depends on projections of staggered blocks of 
         length N, expect poorer reconstruction accuracy within N samples
         of the beginning and end of the signal window.
@@ -276,6 +290,7 @@ try:
         Method from "Projection Filters for Data Analysis", D.J. Thomson, 1996
 
         MT: moving_projection_test.py demos various projections
+
         """
 
         M = x.shape[-1]
@@ -283,7 +298,7 @@ try:
         TW = int(round(2 * T * BW) / 2.0)
         K = 2 * TW - 1
         if K < 1:
-            min_bw = 0.5 / T
+            min_bw = 1 / T
             err = 'BW is too small for the window size: minimum BW={0}'.format(min_bw)
             raise ValueError(err)
 
@@ -299,6 +314,10 @@ try:
             dpss, eigs = dpss
         else:
             dpss, eigs = dpss_windows(N, TW, K)
+            if min_conc is not None:
+                keep = eigs > min_conc
+                dpss = dpss[keep]
+
 
         if weight_eigen:
             wf = K * eigs / eigs.sum()
