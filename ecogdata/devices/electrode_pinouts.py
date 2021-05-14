@@ -293,6 +293,24 @@ rat_varspace_by_zif_rc = zip(
 )
 rat_varspace_by_zif_lut = dict(zip(range(1, 62), rat_varspace_by_zif_rc))
 
+
+# Updated V4 layout
+rat_varspaceV4_by_zif_rc = zip(
+    [43.2502, 43.1002, 43.2502, 43.2502, 43.0502, 43.1002, 43.0502, 42.9502, 42.9502,
+     42.8002, 42.9502, 42.8002, 42.9502, 42.8002, 42.8002, 42.5002, 42.3502, 42.0502, 42.2002, 42.5002, 42.3502,
+     42.0502, 42.2502, 42.2502, 42.0502, 42.3502, 42.5002, 42.2002, 42.0502, 42.3502, 42.5002, 42.5002, 42.3502,
+     42.0502, 42.2002, 42.5002, 42.3502, 42.0502, 42.2502, 42.2502, 42.0502, 42.3502, 42.5002, 42.2002, 42.3502,
+     42.5002, 42.8002, 42.8002, 42.9502, 42.8002, 42.9502, 42.8002, 42.9502, 42.9502, 43.0502, 43.1002, 43.0502,
+     43.2502, 43.2502, 43.1002, 43.2502],
+    [9.2846, 9.2846, 9.4846, 9.6846, 9.5346, 9.8846, 9.6346, 9.8846, 9.6346, 9.8846, 9.5346, 9.6846, 9.2846, 9.4846,
+     9.2846, 9.8846, 9.8846, 9.8846, 9.8846, 9.6846, 9.6346, 9.6846, 9.6346, 9.5346, 9.4846, 9.5346, 9.4846, 9.2846,
+     9.2846, 9.2846, 9.2846, 8.9846, 8.9846, 8.9846, 8.9846, 8.7846, 8.7346, 8.7846, 8.7346, 8.6346, 8.5846, 8.6346,
+     8.5846, 8.3846, 8.3846, 8.3846, 8.9846, 8.7846, 8.9846, 8.5846, 8.7346, 8.3846, 8.6346, 8.3846, 8.6346, 8.3846,
+     8.7346, 8.5846, 8.7846, 8.9846, 8.9846]
+)
+rat_varspaceV4_by_zif_lut = dict(zip(range(1, 62), rat_varspaceV4_by_zif_rc))
+
+
 # for reference electrodes
 rat_refelectrode_by_zif = """REF, H3, H4, G3, G1, G2, G4, F3, F1, F2, F4, E3, E1, E2, E4, D1, B1, A1, C1, D2, B2, A2, 
 C2, D3, B3, A3, C3, D4, B4, A4, C4, C5, A5, B5, D5, C6, A6, B6, D6, C7, A7, B7, D7, C8, B8, D8, E5, E7, E8, E6, F5, 
@@ -1104,29 +1122,19 @@ rat_v3_by_zif_lut = dict(zip(range(1, 62), rat_v3_by_zif_rc))
 
 electrode_maps = dict(
     # new passive map construction
-    ratv5_intan=connect_passive_map((8, 8), rat_v5_by_zif_lut,
-                                    zif_by_intan64, pitch=0.420),
-    ratv4_stim4=connect_passive_map((8, 8), rat_v4_by_zif_lut,
-                                    zif_by_stim4, pitch=0.420),
-    ratv4_mux6=connect_passive_map((8, 8), rat_v4_by_zif_lut,
-                                   zif_by_mux6, pitch=0.406),
-    ratv4_mux6_15row=connect_passive_map((8, 8), rat_v4_by_zif_lut,
-                                         zif_by_mux6_15row, pitch=0.420),
-    ratv4_intan=connect_passive_map((8, 8), rat_v4_by_zif_lut,
-                                    zif_by_intan64, pitch=0.420),
+    ratv5_intan=connect_passive_map((8, 8), rat_v5_by_zif_lut, zif_by_intan64, pitch=0.420),
+    ratv4_stim4=connect_passive_map((8, 8), rat_v4_by_zif_lut, zif_by_stim4, pitch=0.420),
+    ratv4_mux6=connect_passive_map((8, 8), rat_v4_by_zif_lut, zif_by_mux6, pitch=0.406),
+    ratv4_mux6_15row=connect_passive_map((8, 8), rat_v4_by_zif_lut, zif_by_mux6_15row, pitch=0.420),
+    ratv4_intan=connect_passive_map((8, 8), rat_v4_by_zif_lut, zif_by_intan64, pitch=0.420),
     ratv4_seeg_intan=connect_passive_map((4, 8), _ratv4_to_seeg(rat_v4_by_zif), zif_by_intan64, pitch=0.420),
 
-    ratv3_stim4=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                    zif_by_stim4, pitch=0.420),
-    ratv3_mux6=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                   zif_by_mux6, pitch=0.420),
-    ratv3_mux6_15row=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                         zif_by_mux6_15row, pitch=0.420),
-    ratv3_intan=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                    zif_by_intan64, pitch=0.420),
-    rat_varspace_intan=connect_passive_map(
-        'auto', rat_varspace_by_zif_lut, zif_by_intan64
-    ),
+    ratv3_stim4=connect_passive_map((8, 8), rat_v3_by_zif_lut, zif_by_stim4, pitch=0.420),
+    ratv3_mux6=connect_passive_map((8, 8), rat_v3_by_zif_lut, zif_by_mux6, pitch=0.420),
+    ratv3_mux6_15row=connect_passive_map((8, 8), rat_v3_by_zif_lut, zif_by_mux6_15row, pitch=0.420),
+    ratv3_intan=connect_passive_map((8, 8), rat_v3_by_zif_lut, zif_by_intan64, pitch=0.420),
+    rat_varspace_intan=connect_passive_map('auto', rat_varspace_by_zif_lut, zif_by_intan64),
+    rat_varspaceV4_intan=connect_passive_map('auto', rat_varspaceV4_by_zif_lut, zif_by_intan64),
     rat_refelectrode_intan=connect_passive_map((8, 8), rat_refelectrode_by_zif_lut,
                                                zif_by_intan64, pitch=0.406),
 
@@ -1135,10 +1143,9 @@ electrode_maps = dict(
     mux_16_passthru=mux_16_passthru,
 
     # old names
-    psv_61_intan=connect_passive_map((8, 8), rat_v3_by_zif_lut,
-                                     zif_by_intan64, pitch=0.420),
-    psv_61_intan2=connect_passive_map((8, 8), rat_v4_by_zif_lut,
-                                      zif_by_intan64, pitch=0.420),
+    psv_61_intan=connect_passive_map((8, 8), rat_v3_by_zif_lut, zif_by_intan64, pitch=0.420),
+    psv_61_intan2=connect_passive_map((8, 8), rat_v4_by_zif_lut, zif_by_intan64, pitch=0.420),
+
     # direct maps
     psv_256_rhd=psv_256_rhd,
     psv_1024_rhd=psv_1024_rhd,
@@ -1208,6 +1215,14 @@ def multi_arm_map(electrode, connectors=(), electrode_pins='zif'):
             map_spec['pin_code'].extend(m['pin_code'])
         map_spec['board_code'].extend([board_codes[i + 1]] * n_electrode_channels)
     return map_spec
+
+
+# TODO: method to print electrode maps with:
+#  * hard-coded maps
+#  * connector-based maps (electrode-to-zif names, zif-to-daq names)
+#  * multi-arm combos
+#  There should also probably be a separate lookup or mechanism to a) make connector-based maps on the fly; and b)
+#  have pre-set named combos (listed separately than hard-coded)
 
 
 def _replicate_board_code(base_code, n):
