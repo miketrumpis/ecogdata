@@ -457,18 +457,31 @@ class CoordinateChannelMap(ChannelMap):
         self[:] = coordinates
         yy, xx = zip(*self)
         self.boundary = (min(xx), max(xx), min(yy), max(yy))
-        self.pitch = pitch
+        self.pitch = pitch  # This probably is not accurate
+        self._combs = None
         if len(self) > 1:
-            self._combs = channel_combinations(self, scale=pitch)
-            self.min_pitch = self._combs.dist.min()
+            # self._combs = channel_combinations(self, scale=pitch)
+            # self.grid_pitch = self._combs.dist.min()
+            diffs = np.abs(np.diff(np.c_[xx, yy], axis=0))
+            self.grid_pitch = diffs[diffs > 0].min()
         else:
-            self.min_pitch = pitch
+            self.grid_pitch = pitch
         if isinstance(geometry, str) and geometry.lower() == 'auto':
             y_gap = max(yy) - min(yy)
             x_gap = max(xx) - min(xx)
-            self.geometry = int(np.round(y_gap / self.min_pitch)), int(np.round(x_gap / self.min_pitch))
+            # gap / min_pitch describes maximum grid position...
+            # to be compatible with a grid-like layout, add one to the grid size (include [0, max])
+            self.geometry = int(np.round(y_gap / self.grid_pitch)) + 1, int(np.round(x_gap / self.grid_pitch)) + 1
+            # self.geometry = int(np.round(y_gap / self.grid_pitch)), int(np.round(x_gap / self.grid_pitch))
         else:
             self.geometry = geometry
+        grid_coords = np.c_[yy, xx]
+        grid_coords = (grid_coords - grid_coords.min(axis=0)) / self.grid_pitch
+        if np.allclose(grid_coords, np.round(grid_coords).astype('l'), rtol=5):
+            self._gridded = ChannelMap.from_index(np.round(grid_coords).astype('l'),
+                                                  self.geometry, pitch=self.grid_pitch)
+        else:
+            self._gridded = None
         # this is nonsense, but to satisfy parent class
         self.col_major = col_major
 
