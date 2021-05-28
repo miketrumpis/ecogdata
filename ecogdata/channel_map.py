@@ -329,7 +329,8 @@ class ChannelMap(list):
             image[_slice(i, j, 0)] = fill
         return image
 
-    def image(self, arr=None, cbar=True, nan='//', fill=np.nan, ax=None, show_channels=False, **kwargs):
+    def image(self, arr=None, cbar=True, nan='//', fill=np.nan, ax=None, show_channels=False,
+              discretemap=False, **kwargs):
         """
         Plot an array-space image of a data-space vector, or a binary map of channels.
 
@@ -378,6 +379,11 @@ class ChannelMap(list):
             self_map = True
         else:
             self_map = False
+            if discretemap:
+                uvalues = np.sort(np.unique(arr))
+                kwargs.setdefault('clim', (uvalues.min(), uvalues.max()))
+                bounds = uvalues
+                kwargs.setdefault('norm', BoundaryNorm(bounds, 256))
 
         if arr.shape != self.geometry:
             arr = self.embed(arr, fill=fill)
@@ -520,8 +526,8 @@ class CoordinateChannelMap(ChannelMap):
 
     def image(
             self, arr=None, cbar=True, ax=None, interpolate=None,
-            grid_pts=None, norm=None, clim=None, cmap='viridis',
-            scatter_kw={}, contour_kw={}, **passthru
+            grid_pts=None, norm=None, clim=None, discretemap=False, cmap='viridis',
+            scatter_kw=None, contour_kw=None, **passthru
     ):
         y, x = self.to_mat()
         if ax is None:
@@ -536,8 +542,15 @@ class CoordinateChannelMap(ChannelMap):
             norm = BoundaryNorm([0, 0.5, 1.0], 256)
             cmap = 'binary_r'
             interpolate = False
+        elif discretemap:
+            uvalues = np.sort(np.unique(arr))
+            clim = (uvalues.min(), uvalues.max())
+            dc = np.diff(uvalues).min() * 0.05
+            bounds = np.r_[uvalues - dc, uvalues[-1] + dc]
+            norm = BoundaryNorm(bounds, 256)
 
-        if not clim:
+
+        if clim is None:
             clim = arr.min(), arr.max()
         if not norm:
             norm = Normalize(*clim)
@@ -551,12 +564,15 @@ class CoordinateChannelMap(ChannelMap):
             if cbar:
                 cb = f.colorbar(CS, ax=ax, use_gridspec=True)
                 cb.solids.set_edgecolor('face')
-
+        if scatter_kw is None:
+            scatter_kw = dict()
+        if contour_kw is None:
+            contour_kw = dict()
         scatter_kw.setdefault('edgecolors', 'k')
         scatter_kw.setdefault('linewidths', 1.0)
         # set default point size to be 90% of the minimum pitch (and square it to get correct area size)
         # (DOES NOT WORK WELL IF AXES GETS RESIZED AT DRAW TIME)
-        # pts_per_pitch = ax.transData.transform((0, self.min_pitch))[1] - ax.transData.transform((0, 0))[1]
+        # pts_per_pitch = ax.transData.transform((0, self.grid_pitch))[1] - ax.transData.transform((0, 0))[1]
         # scatter_kw.setdefault('s', (0.9 * pts_per_pitch) ** 2)
         scatter_kw.setdefault('s', 100)
         if 'c' in scatter_kw:
@@ -568,6 +584,10 @@ class CoordinateChannelMap(ChannelMap):
             if not interpolate:
                 cb = f.colorbar(sct, ax=ax, use_gridspec=True)
                 cb.solids.set_edgecolor('face')
+                if discretemap:
+                    mid = 0.5 * (bounds[:-1] + bounds[1:])
+                    cb.set_ticks(mid)
+                    cb.set_ticklabels(['{:.3f}'.format(v) for v in uvalues])
             return f, cb
         return f
 
@@ -579,6 +599,8 @@ class CoordinateChannelMap(ChannelMap):
         Interpolates sample vector(s) in data onto a grid using Delauney
         triangulation. Interpolation modes may be "linear" or "cubic"
         """
+        if interpolate == None and self._gridded is not None:
+            return self._gridded.embed(data, axis=axis)
         y, x = self.to_mat()
         triang = Triangulation(x, y)
         g = self.boundary
