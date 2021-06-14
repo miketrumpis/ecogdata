@@ -20,7 +20,7 @@ If using pip, install numpy (and scipy why not) manually before batch installing
 **Skip this if using conda.**
 
 ```bash
-$ pip install numpy<=1.16.0
+$ pip install numpy
 $ pip install scipy
 ```
 
@@ -52,7 +52,7 @@ $ pip install -e ./ecogdata
 Run tests to check install:
 
 ```bash
-$ nosetests ecogdata
+$ python -m pytest ecogdata
 ```
 
 ## Docs & demo notebooks
