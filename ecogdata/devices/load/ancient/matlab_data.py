@@ -4,7 +4,7 @@ import tables
 from contextlib import closing
 
 from ecogdata.channel_map import ChannelMap
-from .h5utils import traverse_table
+from ecogdata.datastore.h5utils import traverse_table
 
 def load_preproc(f, load=True, sharedmem=True):
     shared_paths = ('/data',) if sharedmem else ()
