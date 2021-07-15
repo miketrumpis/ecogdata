@@ -234,7 +234,8 @@ class ChannelMap(list):
         # Keep the pre-computed combinations IFF the entire map is copied
         i = index.start if index.start else 0
         j = index.stop if index.stop else len(self)
-        if i == 0 and j == len(self) and self._combs is not None:
+        s = index.step if index.step else 1
+        if s == 1 and i == 0 and j == len(self) and self._combs is not None:
             new_map._combs = self._combs.copy()
         return new_map
 
@@ -413,11 +414,12 @@ class ChannelMap(list):
         # need to make channel text after colorbar in case pixel size changes
         f.tight_layout()
         if show_channels:
-            max_tx_wd = int(np.log2(len(self))) + 1
-            pix_size_pts = ax.transData.get_matrix()[0, 0]
+            max_tx_wd = int(np.log10(len(self))) + 1
+            pix_size_pts_h = abs(ax.transData.get_matrix()[0, 0])
+            pix_size_pts_v = abs(ax.transData.get_matrix()[1, 1])
             # fontsize will accomodate either 75% height or 75% width (assume 60% W/H aspect ratio)
-            max_width = 0.75 * pix_size_pts / max_tx_wd / 0.6
-            max_height = 0.75 * pix_size_pts
+            max_width = 0.9 * pix_size_pts_h / max_tx_wd  # / 0.6
+            max_height = 0.9 * pix_size_pts_v
             fontsize = min(max_width, max_height)
             im_rgb = im.get_cmap()(im.norm(im.get_array()))[..., :3]
             # "linearize" rgb values
