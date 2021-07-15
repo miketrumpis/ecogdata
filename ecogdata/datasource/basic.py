@@ -29,8 +29,8 @@ def calc_new_samples(N, rate_change):
 
     """
 
-    if int(rate_change) != rate_change:
-        raise ValueError('Rate change ratio is not an integer')
+    if rate_change <= 1 or int(rate_change) != rate_change:
+        raise ValueError('Rate change ratio is not an integer > 1')
     rate_change = int(rate_change)
     num_pts = N // rate_change
     num_pts += int((N - num_pts * rate_change) > 0)
