@@ -476,8 +476,12 @@ def integrate_roc(roc_pts):
     x = x[~same_x]
     y = y[~same_x]
     # append end points for some kind of interpolation
-    x = np.r_[0, x, 1]
-    y = np.r_[0, y, 1]
+    if x[0] > 0:
+        x = np.r_[0, x]
+        y = np.r_[0, y]
+    if x[1] < 1:
+        x = np.r_[x, 1]
+        y = np.r_[y, 1]
     cp = simps(y, x=x, even='avg')
     return cp
 
