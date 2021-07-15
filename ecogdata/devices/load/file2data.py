@@ -317,6 +317,11 @@ class FileLoader:
 
         Fs = self.raw_sample_rate()
         downsamp_ratio = int(Fs / resample_rate)
+        if not 0.9 < downsamp_ratio * resample_rate / Fs < 1.1:
+            msg = 'Resample rate {} Hz not close to a divisor of the raw sample rate {} Hz'.format(resample_rate, Fs)
+            raise ValueError(msg)
+        else:
+            print(downsamp_ratio * resample_rate / Fs)
         with h5py.File(data_file, 'r') as h5file:
             # *Always* downsample at micro-volts scaling
             print('Creating mapped primary source {}'.format(data_file))
