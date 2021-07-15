@@ -1323,7 +1323,7 @@ def tile_electrode_map(tiling, name, **kwargs):
     return full_map, all_grounds, all_refs
 
 
-def get_electrode_map(name, connectors=(), pin_codes=False, tiling=None):
+def get_electrode_map(name, pinout_dict=None, connectors=(), pin_codes=False, tiling=None):
     """
     Create a electrode channel map, and other channel designations.
 
@@ -1353,14 +1353,17 @@ def get_electrode_map(name, connectors=(), pin_codes=False, tiling=None):
     """
     if tiling:
         return tile_electrode_map(tiling, name, connectors=connectors, pin_codes=pin_codes)
-    try:
-        pinouts = electrode_maps[name]
-    except KeyError:
+    if pinout_dict:
+        pinouts = pinout_dict
+    else:
         try:
-            pinouts = multi_arm_map(name, connectors=connectors)
-            connectors = ()
+            pinouts = electrode_maps[name]
         except KeyError:
-            raise ValueError('electrode name not found: ' + name)
+            try:
+                pinouts = multi_arm_map(name, connectors=connectors)
+                connectors = ()
+            except KeyError:
+                raise ValueError('electrode name not found: ' + name)
 
     if connectors:
         if not isinstance(connectors, (list, tuple)):
