@@ -3,6 +3,7 @@ from shutil import rmtree
 import random
 import string
 import atexit
+import warnings
 from typing import Union, Sequence
 from collections import OrderedDict
 from tempfile import NamedTemporaryFile
@@ -102,7 +103,6 @@ class MemoryBlowOutError(Exception):
 
 class MappedSource(ElectrodeDataSource):
     # TODO:
-    #  1. need to allow multiple source_files so that different recordings can be joined.
     #  2. a mapped source should have a start/stop index that only exposes data inside a range
 
     def __init__(self, data_buffer: Union[HDF5Buffer, BufferBinder], electrode_field='data', electrode_channels=None,
@@ -142,8 +142,6 @@ class MappedSource(ElectrodeDataSource):
         """
 
         self._electrode_field = electrode_field
-        # TODO: unclear what value this has?
-        self.channel_mask = channel_mask
         # The data buffer object is an array slicing cache with possible units conversion.
         # This class uses mapping logic to expose only (active) electrode channels, depending on the
         # electrode_channels list and the current channel mask
@@ -316,10 +314,19 @@ class MappedSource(ElectrodeDataSource):
             chunks = self.data_buffer.chunks
         else:
             chunks = self.data_buffer.chunks[0]
+        # This is the block size recommended by chunking
         block_size = chunk_size = chunks[0] if self._transpose else chunks[1]
-        min_block_size = 10000
-        while block_size < min_block_size:
-            block_size += chunk_size
+        # If memory supports, then increase the block size to a multiple of the chunk size
+        mem = load_params().memory_limit
+        block_rows = self.shape[1] if self._transpose else self.shape[0]
+        num_blocks = mem // (block_rows * block_size * self.dtype.itemsize)
+        num_blocks = min(num_blocks, 100)
+        if num_blocks < 1:
+            warnings.warn('Memory limit is too low to support minimum block size', RuntimeWarning)
+        else:
+            block_size = num_blocks * chunk_size
+        # Don't return a block size that's longer than the long axis
+        block_size = min(block_size, (self.shape[0] if self._transpose else self.shape[1]))
         return block_size
 
     def join(self, other_source: 'MappedSource') -> 'MappedSource':

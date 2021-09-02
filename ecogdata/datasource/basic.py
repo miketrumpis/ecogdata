@@ -230,6 +230,7 @@ class ElectrodeDataSource:
                 chans_per_block = max(1, int(max_memory / T / bytes_per_samp))
             else:
                 chans_per_block = 16
+        chans_per_block = min(chans_per_block, C)
         return DataSourceBlockIter(self, axis=0, block_length=chans_per_block, return_slice=return_slice, **kwargs)
 
     def batch_change_rate(self, new_rate_ratio, new_source, antialias_aligned=False, aggregate_aligned=True,
@@ -350,7 +351,9 @@ class ElectrodeDataSource:
             out = out.reshape(*dims)
         return out
 
-
+    # TODO: these reductions will presently fail if the memory limit is small enough to cause iteration to yield
+    #  single rows or columns -- I'm not sure where it makes sense to maintain 2D iteration outputs, since a data
+    #  iterator with a block size of 1 could be expected to return a squeezed array
     def min(self, axis=None, out=None, keepdims=False, **kwargs):
         if len(kwargs):
             warn('These arguments are not supported: {}'.format([k for k in kwargs]), UserWarning)
@@ -359,7 +362,10 @@ class ElectrodeDataSource:
         for block in itr:
             b_min = block.min(axis=axis)
             if first_min:
-                out.fill(np.iinfo(out.dtype).max)
+                if out.dtype in np.sctypes['int']:
+                    out.fill(np.iinfo(out.dtype).max)
+                else:
+                    out.fill(np.inf)
                 first_min = False
             out = np.minimum(b_min, out)
         return self._end_reduce_method(out, axis, keepdims)
@@ -373,7 +379,10 @@ class ElectrodeDataSource:
         for block in itr:
             b_max = block.max(axis=axis)
             if first_max:
-                out.fill(np.iinfo(out.dtype).min)
+                if out.dtype in np.sctypes['int']:
+                    out.fill(np.iinfo(out.dtype).min)
+                else:
+                    out.fill(-np.inf)
                 first_max = False
             out = np.maximum(b_max, out)
         return self._end_reduce_method(out, axis, keepdims)
@@ -403,7 +412,6 @@ class ElectrodeDataSource:
             dtype = np.dtype('d')
         itr, dtype, out = self._setup_reduce_method(axis, dtype, out)
         for block in itr:
-            # TODO: just adding squares without mean subtraction??
             block **= 2
             out += block.sum(axis=axis).astype(dtype, copy=False)
         if axis is None:
@@ -411,11 +419,16 @@ class ElectrodeDataSource:
         else:
             n = self.shape[axis] - ddof
         out /= n
+        mu = self.sum(axis=axis) / n
+        out = out - (mu ** 2)
         return self._end_reduce_method(out, axis, keepdims)
 
     def std(self, axis=None, dtype=None, out=None, ddof=0, keepdims=np._NoValue):
         v = self.var(axis=axis, dtype=dtype, out=out, ddof=ddof, keepdims=keepdims)
-        np.sqrt(v, v)
+        if axis is not None:
+            np.sqrt(v, v)
+        else:
+            v = np.sqrt(v)
         return v
 
     def rereference_array(self, reference):
