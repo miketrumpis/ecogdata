@@ -57,9 +57,6 @@ class _pcontext:
     def switch_context(self, starter):
         oldstarter = self.context_name
         self.ctx = starter
-        # TODO: delete this when finished testing para-dev-2 branch
-        # if starter == 'spawn':  # and __name__ == '__main__':
-        #     self.ctx.freeze_support()
         try:
             yield
         finally:
