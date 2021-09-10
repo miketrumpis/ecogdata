@@ -394,18 +394,27 @@ zif_by_intan64_new = [32, 54, 36, 56, 40, 52, 42, 58, 38, 60, 48, None, 50, 59, 
                       1, 16, 3, 12, None, 14, 2, 24, 4, 20, 10, 22, 6, 26, 8, 30]
 
 
-# Nano-Z to ZIF map
-zif_by_nano_z = [18, 22, 26, 30, 34, 38, 42, None, 17, 21, 25, 29, 33, 37, 41, 45,
-                 19, 23, 27, 31, 35, 39, 43, 46, 16, 20, 24, 28, 32, 36, 40, 44, 14,
-                 13, 15, 12, 47, 50, 48, 49, 10, 9, 11, 8, 51, 54, 52, 53, 6, 5,
-                 7, 4, 55, 58, 56, 57, None, 2, 3, 1, 59, 61, 60, None]
+# Nano-Z to ZIF map via 3n1 pcb
+zif_by_3n1_nano_z = [18, 22, 26, 30, 34, 38, 42, None, 17, 21, 25, 29, 33, 37, 41, 45,
+                     19, 23, 27, 31, 35, 39, 43, 46, 16, 20, 24, 28, 32, 36, 40, 44, 14,
+                     13, 15, 12, 47, 50, 48, 49, 10, 9, 11, 8, 51, 54, 52, 53, 6, 5,
+                     7, 4, 55, 58, 56, 57, None, 2, 3, 1, 59, 61, 60, None]
+
+
+# Nano-Z to ZIF map via P4 pcb
+zif_by_p4_nano_z = [55, 57, 59, 61, None, 1, 3, 4, 44, 46, 48, 50, 52, 54, 56, 58, 26, 24, 22, 20, 18, 16, 14, 5, 37,
+                    35, 33, 31, 29, 27, 25, 23, 53, 42,28, 39, 12, 7, 21, 60, 51, 40, 30, 41, 10, 9, 19, None, 49, 38,
+                    None, 43, 8, 11, 17, 2, 34, 47, 32, 45, 6, 13, 15, 36]
 
 
 zif_by_daq_lut = {'mux6': zif_by_mux6,
                   'mux6_15row': zif_by_mux6_15row,
                   'stim4': zif_by_stim4,
                   'intan64': zif_by_intan64,
-                  'intan64_new': zif_by_intan64_new}
+                  'intan64_new': zif_by_intan64_new,
+                  'nanoz_3n1': zif_by_3n1_nano_z,
+                  'nanoz_p4': zif_by_p4_nano_z}
+
 
 ## Human 256 v2 (direct map from grid to Intan RHD channels)
 h256_grid_by_channels = """J4, L4, G5, A8, D5, F7, C5, C8, F5, J8, D7, D9, H7, G8, H2, E9, H8, H4, K6, A5, E7, B5, 
