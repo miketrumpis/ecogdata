@@ -27,24 +27,25 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           path: ./wheelhouse/*.whl
+          retention-days: 7
 
-
-  install-dev:
-    strategy:
-      matrix:
-        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
-
-    name: "Verify dev env"
-    runs-on: "${{ matrix.os }}"
-
-    steps:
-      - uses: "actions/checkout@v2"
-      - uses: "actions/setup-python@v2"
-        with:
-          python-version: "3.8"
-      - name: "Setup env"
-        run: "python -m pip install numpy==1.19.5"
-      - name: "Install in dev mode"
-        run: "python -m pip install -e .[dev]"
-      - name: "Import package"
-        run: "python -c 'import ecogdata; print(ecogdata.__version__)'"
+#  Actually this whole job requires a full dependencies install!!
+#  install-dev:
+#    strategy:
+#      matrix:
+#        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
+#
+#    name: "Verify dev env"
+#    runs-on: "${{ matrix.os }}"
+#
+#    steps:
+#      - uses: "actions/checkout@v2"
+#      - uses: "actions/setup-python@v2"
+#        with:
+#          python-version: "3.8"
+#      - name: "Setup env"
+#        run: "python -m pip install numpy==1.19.5"
+#      - name: "Install in dev mode"
+#        run: "python -m pip install -e .[dev]"
+#      - name: "Import package"
+#        run: "python -c 'import ecogdata; print(ecogdata.__version__)'"
