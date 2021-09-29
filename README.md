@@ -1,5 +1,7 @@
 # ecogdata: data loading for Viventi lab recordings
 
+![example workflow](https://github.com/miketrumpis/ecogdata/actions/workflows/build_wheels.yml/badge.svg?branch=gh-workflow)
+
 This library provides data preprocessing and packaging for recording systems used by the Viventi lab for micro-electrocorticography. 
 
 * Data wrangling from numerous data acquisition systems:
