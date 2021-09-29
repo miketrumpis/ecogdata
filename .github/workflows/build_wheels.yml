@@ -24,6 +24,26 @@ jobs:
           # Run before build
           # CIBW_BEFORE_BUILD: python -m pip install numpy==1.19.5 Cython
 
+
+      # This job creates a url (??) for a single release payload -- doesn't seem right for this case where
+      # the artifact is a zip of multiple wheels
+#      - name: Create release tag
+#        id: create_url
+#        uses: actions/create-release@v1
+#        # Is this necessary?
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        with:
+#          # Example from https://stackoverflow.com/a/65650260/4200659
+#          # Using short SHA from 2nd step for tag and release name.
+#          # tag_name: ${{steps.short_sha.outputs.sha8}}
+#          # release_name: ${{steps.short_sha.outputs.sha8}}
+#          # Instead, just reuse the "latest" tag
+#          tag_name: "latest"
+#          release_name: "latest"
+#          draft: false
+#          prerelease: false
+
       - uses: actions/upload-artifact@v2
         with:
           path: ./wheelhouse/*.whl
