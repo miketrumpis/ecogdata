@@ -6,8 +6,10 @@
 build
 ecogdata.egg-info/
 .idea
+.tox
 sandbox
 scratch
 .ipynb_checkpoints
 docs/build
 docs/source/apidocs
+artifact

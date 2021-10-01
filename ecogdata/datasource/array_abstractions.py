@@ -485,6 +485,7 @@ class HDF5Buffer(MappedBuffer):
         out_arr = self.get_output_array(sl)
         i_slices, o_slices = tile_slices(sl, self.shape, self.chunks)
         # print('Slicing buffer as {}'.format(i_slices))
+        h5v = h5py.version.version_tuple
         for isl, osl in zip(i_slices, o_slices):
             if self._transpose_state:
                 # generally need to reverse the slice order
@@ -495,6 +496,9 @@ class HDF5Buffer(MappedBuffer):
                     osl = (Ellipsis,) + osl
                 # can't avoid making a copy here?
                 out_arr[osl] = self._array[isl].T
+            elif (h5v.major == 3 and h5v.minor == 1):
+                # new in h5py < 3.2: direct_read may be broken for different input/output shapes (PR #1796)
+                out_arr[osl] = self._array[isl]
             else:
                 # try a direct read, but this will fail if
                 # 1) there are negative steps going on (ValueError)
