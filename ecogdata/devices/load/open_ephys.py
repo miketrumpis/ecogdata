@@ -600,7 +600,7 @@ def load_open_ephys(exp_path, test, electrode, rec_num='auto', downsamp=1, useFs
     return loader.create_dataset()
 
 
-def load_open_ephys_impedance(exp_path, test, electrode, magphs=True, electrode_connections=()):
+def load_open_ephys_impedance(exp_path, test, magphs=True, electrode=None, electrode_connections=()):
 
     xml = osp.join(osp.join(exp_path, test), 'impedance_measurement.xml')
     if not osp.exists(xml):
@@ -616,14 +616,19 @@ def load_open_ephys_impedance(exp_path, test, electrode, magphs=True, electrode_
         mag[n] = float(ch.attrib['magnitude'])
         phs[n] = float(ch.attrib['phase'])
 
-    chan_map, gnd_chans, ref_chans = get_electrode_map(electrode, connectors=electrode_connections)
-    ix = np.arange(len(phs))
-    cx = np.setdiff1d(ix, np.union1d(gnd_chans, ref_chans))
-    chan_mag = mag[cx]
-    chan_phs = phs[cx]
+    if electrode:
+        chan_map, gnd_chans, ref_chans = get_electrode_map(electrode, connectors=electrode_connections)
+        ix = np.arange(len(phs))
+        cx = np.setdiff1d(ix, np.union1d(gnd_chans, ref_chans))
+        mag = mag[cx]
+        phs = phs[cx]
     if magphs:
-        return (chan_mag, chan_phs), chan_map
-    return chan_mag * np.exp(1j * chan_phs * np.pi / 180.0), chan_map
+        r_value = (mag, phs)
+    else:
+        r_value = mag * np.exp(1j * phs * np.pi / 180.0)
+    if electrode:
+        return r_value, chan_map
+    return r_value
 
 
 def debounce_trigger(pos_edges):
