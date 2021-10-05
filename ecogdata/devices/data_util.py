@@ -208,7 +208,7 @@ def parse_load_arguments(session, test, **load_kwargs):
             loader_kwargs[n] = test_info.get(n.lower())
     paths = (test_info.exp_path, test_info.nwk_path)
 
-    return headstage, electrode, paths, extra_pos_args, loader_kwargs
+    return headstage, electrode, paths, tuple(extra_pos_args), loader_kwargs
 
 
 def find_loadable_files(session, recording, downsampled=False):
@@ -246,7 +246,7 @@ def find_loadable_files(session, recording, downsampled=False):
         if opt_args.get('resample_rate', None) is None:
             return None
     for location in paths:
-        args = (location, recording, electrode)
+        args = (location, recording, electrode) + pos_args
         try:
             loader = load_cls(*args, **opt_args)
             if downsampled:
