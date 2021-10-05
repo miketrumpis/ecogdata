@@ -1,13 +1,15 @@
 import os
 import os.path as osp
+import pandas as pd
 import numpy as np
 from glob import glob
-from ._globalconfig import new_SafeConfigParser, cfg_to_bunch, load_params
 import warnings
+from ._globalconfig import new_SafeConfigParser, cfg_to_bunch, load_params
+
 
 __all__ = ['session_groups', 'available_sessions', 'find_conf',
            'session_conf', 'session_info', 'locate_old_session',
-           'sessions_to_delta']
+           'sessions_to_delta', 'session_table']
 
 params = load_params()
 # _cpath is the single session config database path with
@@ -156,3 +158,91 @@ def sessions_to_delta(sessions, reference=None, num=False, sortable=False):
     else:
         deltas = ['Day {0}'.format(d) for d in deltas]
     return deltas
+
+
+# Framework for filtering some of the option values
+# (e.g. to decode that tones_tab = "1000" codes for clicks)
+class ValueFilter:
+
+    def __call__(self, s):
+        return s
+
+
+class DefaultFilter(ValueFilter):
+    pass
+
+
+class SwapVal(ValueFilter):
+
+    def __init__(self, input_val, output_val):
+        self.in_str = input_val.lower()
+        self.out_str = output_val
+
+    def __call__(self, s):
+        if s.lower() == self.in_str:
+            return self.out_str
+        return s
+
+
+_value_filters = {
+    'tones_tab': SwapVal('1000', 'clicks')
+}
+
+
+def filter_values(lookup):
+    for key in lookup:
+        new_val = _value_filters.get(key, DefaultFilter())(lookup[key])
+        lookup[key] = new_val
+    return lookup
+
+
+def session_table(session, global_params=False, source_info=True, path_info=True):
+    """
+    Create a Pandas DataFrame that tabulates the information in a session file.
+    Parameters
+    ----------
+    session : str
+        Session config file ("ini" syntax)
+    global_params : bool
+        If true, report all inherited global settings
+    source_info : bool
+        If true, report data file locations (if found)
+    path_info : bool
+        If true, report all path related settings
+
+    Returns
+    -------
+    tab: pd.DataFrame
+        Session info in table form
+
+    """
+    from ecogdata.devices.data_util import find_loadable_files
+    conf = session_conf(session)
+    top_level_info = conf.pop('session')
+    named_recordings = sorted([s for s in conf.sections if s != 'session'])
+    keys = set(top_level_info.keys())
+    for r in named_recordings:
+        keys.update(conf[r].keys())
+    if not global_params:
+        gp = set(load_params().keys())
+        keys.difference_update(gp)
+    if not path_info:
+        path_keys = {'nwk_path', 'exp_path', 'network_exp', 'local_exp', 'store_path'}
+        keys.difference_update(path_keys)
+    required_keys = ['headstage', 'electrode', 'exp_type']
+    other_keys = list(keys.difference(required_keys))
+    if source_info:
+        columns = list(required_keys) + ['primary_file', 'downsampled_file'] + list(other_keys)
+    else:
+        columns = list(required_keys) + list(other_keys)
+    tab = pd.DataFrame(columns=columns)
+    for r in named_recordings:
+        rec = top_level_info.copy()
+        rec.update(conf[r])
+        tab_row = dict([(k, rec.get(k, 'unknown')) for k in required_keys + other_keys])
+        tab_row = filter_values(tab_row)
+        if source_info:
+            tab_row['primary_file'] = find_loadable_files(session, r, downsampled=False)
+            tab_row['downsampled_file'] = find_loadable_files(session, r, downsampled=True)
+        tab = tab.append(pd.DataFrame(index=[r], data=tab_row))
+    return tab

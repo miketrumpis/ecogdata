@@ -1,19 +1,40 @@
+import os
 import numpy as np
 import gc
 import inspect
 from warnings import warn
-
-from ecogdata.util import mat_to_flat
-from ecogdata.channel_map import ChannelMap, map_intersection
-
-from ecogdata.expconfig import *
-from ecogdata.expconfig.exp_descr import join_experiments
-from .load import *
+from ..channel_map import map_intersection
+from ..expconfig import session_conf, load_params
+from ..expconfig.config_decode import (Parameter,
+                                       Path,
+                                       TypedParam,
+                                       BoolOrNum,
+                                       NSequence,
+                                       NoneOrStr,
+                                       uniform_bunch_case)
+from ..expconfig.exp_descr import join_experiments, build_experiment
+from .load import (load_wireless,        # -- Several of these might be dropped
+                   load_blackrock,
+                   load_ddc,
+                   load_afe,
+                   load_afe_aug21,
+                   load_openephys_ddc,
+                   load_active,
+                   load_mux,
+                   load_open_ephys,
+                   load_rhd,
+                   active_headstages,
+                   mux_headstages,
+                   FileLoader,
+                   OpenEphysLoader,
+                   translate_legacy_config_options,
+                   RHDLoader,
+                   ActiveLoader,
+                   DataPathError)
 from .load.util import convert_tdms
-
-import ecogdata.parallel.sharedmem as shm
-from ecogdata.expconfig.config_decode import Parameter, TypedParam, BoolOrNum, NSequence, NoneOrStr, uniform_bunch_case
-from ecogdata.datasource import ElectrodeDataSource, MappedSource, PlainArraySource
+from ..util import Bunch
+from ..parallel import sharedmem as shm
+from ..datasource import ElectrodeDataSource, MappedSource, PlainArraySource
 
 
 _loading = dict(
@@ -35,6 +56,15 @@ for hs in mux_headstages:
 for hs in ('active',) + active_headstages:
     _loading[hs] = load_active
 
+# A table that returns the correct loader and (potentially) an argument translator
+_loader_classes = {
+    'oephys': (OpenEphysLoader, translate_legacy_config_options),
+    'intan_rhd': (RHDLoader, None),
+    'active': (ActiveLoader, None)
+}
+
+for hs in active_headstages:
+    _loader_classes[hs] = (ActiveLoader, None)
 
 _converts_tdms = ('stim_mux64', 'mux3', 'mux4',
                   'mux5', 'mux6', 'mux7', 'mux7_lg', 'active') + \
@@ -102,32 +132,28 @@ post_load_params = {
 }
 
 
-def load_experiment_auto(session, test, **load_kwargs):
+def parse_load_arguments(session, test, **load_kwargs):
     """
-    Loads a recording from the session database system. Hardware and
-    multiple other parameters are interpreted/parsed from the database 
-    config file. Any arguments specified in load_kwargs take precedence
-    and must be literal (e.g. already parsed).
+    Combine loader instructions from the combination of config-file settings and call arguments.
 
     Parameters
     ----------
-
-    session: str
-        Name of recording session in 'group/session-name' syntax
-    test: str
-        Base name (no extension) of recording. If this is also a section
-        in the config file, then further information is taken from that
-        section.
+    session : str
+        Name of recording session file
+    test : str
+        Name of recording to prepare to load
+    load_kwargs : dict
+        Optional load arguments to overwrite and/or supplement config-file settings
 
     Returns
     -------
-    dataset: ElectrodeDataSource
-    
+    headstage: str
+    electrode: str
+    paths: sequence
+    extra_pos_arg: tuple
+    loader_kwargs: dict
+
     """
-
-    if np.iterable(test) and not isinstance(test, str):
-        return load_datasets(session, test, load_kwargs=load_kwargs)
-
     cfg = session_conf(session, params_table=params_table)
     test_info = cfg.session
     # fill in session info with any specific instructions for the test
@@ -180,23 +206,109 @@ def load_experiment_auto(session, test, **load_kwargs):
     for n in post_load_params.keys():
         if n.lower() in test_info:
             loader_kwargs[n] = test_info.get(n.lower())
+    paths = (test_info.exp_path, test_info.nwk_path)
 
+    return headstage, electrode, paths, extra_pos_args, loader_kwargs
+
+
+def find_loadable_files(session, recording, downsampled=False):
+    """
+    Find the first available loadable primary file for a session & recording
+
+    Parameters
+    ----------
+    session : str
+        Session config file ("ini" format)
+    recording : str
+        Recording name
+    downsampled : bool
+        If true, and if the config file has a downsampling setting,
+        look for a downsampled source file
+
+    Returns
+    -------
+    source_path: str
+        The data file path (or None if nothing was found)
+
+    """
+    headstage, electrode, paths, pos_args, opt_args = parse_load_arguments(session, recording)
+    if headstage not in _loader_classes:
+        return 'unknown daq type {}'.format(headstage)
+    load_cls, opt_parser = _loader_classes[headstage]
+    if opt_parser:
+        putative_args = (paths[0], recording, electrode)
+        opt_args = opt_parser(*putative_args, **opt_args)
+    if not downsampled:
+        opt_args['resample_rate'] = None
+    else:
+        # Return None (or n/a or unknown) if a downsampled file is asked for,
+        # but was not specified in the settings
+        if opt_args.get('resample_rate', None) is None:
+            return None
+    for location in paths:
+        args = (location, recording, electrode)
+        try:
+            loader = load_cls(*args, **opt_args)
+            if downsampled:
+                if loader.new_downsamp_file is None:
+                    return loader.data_file
+                else:
+                    return None
+            else:
+                if loader.can_load_primary_data_file:
+                    return loader.primary_data_file
+                else:
+                    return None
+        except DataPathError:
+            pass
+    return None
+
+
+def load_experiment_auto(session, test, **load_kwargs):
+    """
+    Loads a recording from the session database system. Hardware and
+    multiple other parameters are interpreted/parsed from the database 
+    config file. Any arguments specified in load_kwargs take precedence
+    and must be literal (e.g. already parsed).
+
+    Parameters
+    ----------
+
+    session: str
+        Name of recording session in 'group/session-name' syntax
+    test: str
+        Base name (no extension) of recording. If this is also a section
+        in the config file, then further information is taken from that
+        section.
+
+    Returns
+    -------
+    dataset: ElectrodeDataSource
+    
+    """
+
+    if np.iterable(test) and not isinstance(test, str):
+        return load_datasets(session, test, load_kwargs=load_kwargs)
+
+    headstage, electrode, paths, extra_pos_args, loader_kwargs = parse_load_arguments(session, test, **load_kwargs)
+    remote_path, local_path = paths
+    params = load_params()
     if headstage in _converts_tdms:
         clear = params.clear_temp_converted
         post_fn = convert_tdms(
-            test, test_info.nwk_path, test_info.exp_path,
+            test, remote_path, local_path,
             accepted=('.h5', '.mat'), clear=clear
         )
 
     try:
-        exp_path = test_info.exp_path
+        exp_path = local_path
         dset = load_experiment_manual(
             exp_path, test, headstage, electrode, *extra_pos_args, **loader_kwargs
         )
 
     except (IOError, DataPathError) as e:
         try:
-            exp_path = test_info.nwk_path
+            exp_path = remote_path
             dset = load_experiment_manual(
                 exp_path, test, headstage, electrode, *extra_pos_args, **loader_kwargs
             )

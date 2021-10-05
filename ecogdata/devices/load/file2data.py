@@ -145,6 +145,10 @@ class FileLoader:
         else:
             return data_files[0]
 
+    @property
+    def can_load_primary_data_file(self):
+        return os.path.exists(self.primary_data_file)
+
     def raw_sample_rate(self):
         """
         Return full sampling rate (or -1 if there is no raw data file)

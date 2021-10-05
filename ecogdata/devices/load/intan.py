@@ -5,7 +5,7 @@ import json
 from .file2data import FileLoader
 
 
-__all__ = ['load_rhd']
+__all__ = ['load_rhd', 'RHDLoader']
 
 
 def load_rhd(experiment_path, test, electrode, load_channels=None, units='uV', bandpass=(), notches=(),
