@@ -225,7 +225,7 @@ def test_channel_slicing_with_mask():
 
 
 def test_big_slicing_exception():
-    import ecogdata.expconfig._globalconfig as globalconfig
+    import ecogdata.expconfig.global_config as globalconfig
     f = _create_hdf5()
     data = f['data']
     globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
@@ -240,7 +240,7 @@ def test_big_slicing_exception():
 
 
 def test_big_slicing_allowed():
-    import ecogdata.expconfig._globalconfig as globalconfig
+    import ecogdata.expconfig.global_config as globalconfig
     f = _create_hdf5()
     data = f['data']
     globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0
@@ -255,7 +255,7 @@ def test_big_slicing_allowed():
 
 
 def test_big_slicing_allowed_always():
-    import ecogdata.expconfig._globalconfig as globalconfig
+    import ecogdata.expconfig.global_config as globalconfig
     f = _create_hdf5()
     data = f['data']
     globalconfig.OVERRIDE['memory_limit'] = data.size * data.dtype.itemsize / 2.0

@@ -1,5 +1,5 @@
-from ._globalconfig import *
-from ._expconfig import *
+from .global_config import *
+from .config_tools import *
 from .config_decode import *
 from .exp_descr import build_experiment
 

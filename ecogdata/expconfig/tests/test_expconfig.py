@@ -1,6 +1,6 @@
 import random
 import string
-from .._expconfig import *
+from ..config_tools import *
 
 
 def randomword(length):
