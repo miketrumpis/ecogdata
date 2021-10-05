@@ -1,5 +1,3 @@
 import warnings
-with warnings.catch_warnings() as w:
-    warnings.simplefilter("always")
-    warnings.warn('This module has been renamed: import from ecogdata.expconfig.config_tools', DeprecationWarning)
+warnings.warn('This module has been renamed: import from ecogdata.expconfig.config_tools', FutureWarning)
 from .config_tools import *

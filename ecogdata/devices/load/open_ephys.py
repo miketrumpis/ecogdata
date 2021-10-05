@@ -538,10 +538,15 @@ def translate_legacy_config_options(*args, **options):
     loader_options = set(get_default_args(OpenEphysLoader).keys())
     extra_args = opt_keys.difference(loader_options)
     if len(extra_args):
-        warnings.warn('Extra arguments were dropped {}'.format(extra_args), DeprecationWarning)
+        warnings.warn('Extra arguments were dropped {}'.format(extra_args), FutureWarning)
     # just silently drop this one
     for k in extra_args:
         loader_kwargs.pop(k, None)
+    # Anticipate some crappy values that might be specified alongside real information in "usefs" or "downsamp"
+    if 'resample_rate' in loader_kwargs:
+        rate = loader_kwargs['resample_rate']
+        if isinstance(rate, (int, float)) and rate <= 0:
+            loader_kwargs['resample_rate'] = None
     if loader_kwargs.get('resample_rate', None) is None:
         # If possible, rename useFs to resample_rate
         if useFs > 0:
