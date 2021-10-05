@@ -212,9 +212,6 @@ class FileLoader:
                 else:
                     # use the preferred path with the preferred extension (always .h5)
                     new_downsamp_file = os.path.join(search_dirs[0], new_downsamp_file) + '.h5'
-                    # create the path if necessary
-                    if not os.path.exists(search_dirs[0]):
-                        mkdir_p(search_dirs[0])
         else:
             new_downsamp_file = None
 
@@ -482,7 +479,9 @@ class FileLoader:
             downsamp_file = (self.new_downsamp_file if self.save_downsamp else '')
             print('Downsampling to {} Hz from file {} to file {}'.format(self.resample_rate, self.data_file,
                                                                          downsamp_file))
-            # data_file = make_rhd_downsample(self.data_file, self.resample_rate, downsamp_file=downsamp_file)
+            downsamp_path = os.path.split(downsamp_file)[0]
+            if not os.path.exists(downsamp_path):
+                mkdir_p(downsamp_path)
             data_file = self.create_downsample_file(self.data_file, self.resample_rate, downsamp_file)
             file_is_temp = not self.save_downsamp
             self.units_scale = convert_scale(1, 'uv', self.units)
