@@ -24,7 +24,8 @@ branch = true
 source = ["ecogdata"]
 
 [tool.coverage.paths]
-source = ["ecogdata", ".tox/*/site-packages"]
+# source = ["ecogdata", ".tox/*/site-packages"]
+source = ['ecogdata']
 
 [tool.coverage.report]
 show_missing = true

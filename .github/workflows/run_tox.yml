@@ -33,10 +33,10 @@ jobs:
           python -VV
           python -m site
           python -m pip install --upgrade pip setuptools
-          python -m pip install --upgrade coverage[toml] virtualenv tox tox-gh-actions
+          python -m pip install --upgrade coverage[toml] virtualenv tox tox-gh-actions tox-wheel
       - name: "Run tox targets for ${{ matrix.python-version }}"
         # run: "python -m tox"
-        run: tox
+        run: tox --wheel
 #        env:
 #          PLATFORM: ${{ matrix.platform }}
 
