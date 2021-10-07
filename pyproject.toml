@@ -21,11 +21,11 @@ skip = ["pp*", "cp310-macos*"]
 [tool.coverage.run]
 parallel = true
 branch = true
-source = ["ecogdata"]
+source = ["src/ecogdata"]
 
 [tool.coverage.paths]
 # source = ["ecogdata", ".tox/*/site-packages"]
-source = ['ecogdata']
+source = ['src/ecogdata']
 
 [tool.coverage.report]
 show_missing = true

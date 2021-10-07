@@ -12,7 +12,7 @@
 #
 import os
 import sys
-_path_to_ecogdata = os.path.abspath('../../')
+_path_to_ecogdata = os.path.abspath('../../src/')
 sys.path.insert(0, _path_to_ecogdata)
 import sphinx_rtd_theme
 

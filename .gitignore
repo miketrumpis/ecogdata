@@ -1,8 +1,8 @@
 *~
 .DS_Store
 *.pyc
-*.so
-*.c
+# *.so
+# *.c
 build
 ecogdata.egg-info/
 .idea
