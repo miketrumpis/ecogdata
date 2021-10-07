@@ -188,9 +188,12 @@ class FileLoader:
         data_file = self.primary_data_file
         units_scale = convert_scale(self.scale_to_uv, 'uv', self.units)
 
-        # Find the full sample rate, if the full resolution file even exists (otherwise it's still possible to load a
-        # downsample file).
-        full_samp_rate = self.raw_sample_rate()
+        # Find the full sample rate, if the full resolution file even exists
+        # (otherwise it's still possible to load a downsample file).
+        if self.can_load_primary_data_file:
+            full_samp_rate = self.raw_sample_rate()
+        else:
+            full_samp_rate = None
 
         # For a new sample rate (that is different than the full rate), determine if a pre-saved file can be used.
         if self.resample_rate and self.resample_rate != full_samp_rate:
