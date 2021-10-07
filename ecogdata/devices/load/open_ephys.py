@@ -35,7 +35,7 @@ _srates = (1000, 1250, 1500, 2000, 2500, 3000, 1e4 / 3,
 def get_robust_samplingrate(rec_path):
     settings = glob(osp.join(rec_path, 'settings*.xml'))
     if not len(settings):
-        return None
+        raise IOError('This recording is missing the settings.xml file: {}'.format(rec_path))
     xml = settings[0]
     root = etree.ElementTree(file=xml).getroot()
     sc = root.findall('SIGNALCHAIN')
