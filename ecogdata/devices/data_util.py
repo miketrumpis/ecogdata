@@ -245,6 +245,7 @@ def find_loadable_files(session, recording, downsampled=False):
         # but was not specified in the settings
         if opt_args.get('resample_rate', None) is None:
             return None
+    # return first source found
     for location in paths:
         args = (location, recording, electrode) + pos_args
         try:
@@ -252,15 +253,12 @@ def find_loadable_files(session, recording, downsampled=False):
             if downsampled:
                 if loader.new_downsamp_file is None:
                     return loader.data_file
-                else:
-                    return None
             else:
                 if loader.can_load_primary_data_file:
                     return loader.primary_data_file
-                else:
-                    return None
         except DataPathError:
             pass
+    # if nothing found, return None
     return None
 
 
