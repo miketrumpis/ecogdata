@@ -211,7 +211,7 @@ def parse_load_arguments(session, test, **load_kwargs):
     return headstage, electrode, paths, tuple(extra_pos_args), loader_kwargs
 
 
-def find_loadable_files(session, recording, downsampled=False):
+def find_loadable_files(session: str, recording: str, downsampled: bool=False, create_downsampled: bool=False):
     """
     Find the first available loadable primary file for a session & recording
 
@@ -224,6 +224,9 @@ def find_loadable_files(session, recording, downsampled=False):
     downsampled : bool
         If true, and if the config file has a downsampling setting,
         look for a downsampled source file
+    create_downsampled : bool
+        If downsampled is True, but only a primary file is found, then
+        create a downsampled file and return the path
 
     Returns
     -------
@@ -250,11 +253,16 @@ def find_loadable_files(session, recording, downsampled=False):
         args = (location, recording, electrode) + pos_args
         try:
             loader = load_cls(*args, **opt_args)
+            primary = loader.can_load_primary_data_file
             if downsampled:
                 if loader.new_downsamp_file is None:
                     return loader.data_file
+                if primary and create_downsampled:
+                    return loader.create_downsample_file(loader.data_file,
+                                                         loader.resample_rate,
+                                                         loader.new_downsamp_file)
             else:
-                if loader.can_load_primary_data_file:
+                if primary:
                     return loader.primary_data_file
         except DataPathError:
             pass
