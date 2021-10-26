@@ -14,7 +14,6 @@ if __name__ == '__main__':
     prs = argparse.ArgumentParser(description='Convert TDMS to HDF5')
     prs.add_argument('tdms_file', nargs='+', help='path to the TDMS file', type=str)
     prs.add_argument('h5_file', nargs='+', help='name of the HDF5 file to create', type=str)
-    prs.add_argument('-p', '--permutation', type=str, default='', help='file with table of channel permutations')
     prs.add_argument('-m', '--memmap', help='use disk mapping for large files', action='store_true')
     prs.add_argument('-z', '--compression', type=int, default=0, help='use zlib level # compression in HDF5')
     prs.add_argument('-b', '--batch', help='Batch process all matching files', action='store_true')
@@ -56,4 +55,4 @@ if __name__ == '__main__':
     for tf, hf in zip(all_tdms, all_h5):
         if hf:
             print(tf, '\t', hf)
-            tdms_to_hdf5(tf, hf, chan_map=args.permutation, memmap=args.memmap, compression_level=args.compression)
+            tdms_to_hdf5(tf, hf, memmap=args.memmap, compression_level=args.compression)
