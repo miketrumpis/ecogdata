@@ -116,13 +116,20 @@ def tdms_to_hdf5(tdms_file, h5_file, load_data=True, chan_map='', memmap=True, c
 
         tdms_file = nptdms.TdmsFile(tdms_file, memmap_dir=map_dir)
         # assume for now there is only a single group -- see more files later
-        t_group = tdms_file.groups()[0]
 
-        g_obj = tdms_file.object(t_group)
-        chans = tdms_file.group_channels(t_group)
+        # Catch an API change (older version first)
+        try:
+            t_group = tdms_file.groups()[0]
+            group = tdms_file.object(t_group)
+            chans = tdms_file.group_channels(t_group)
+        except AttributeError:
+            group = tdms_file.groups()[0]
+            # Headstage channels and BNC channels are presently lumped into the "data" HDF5 array.. it might make sense
+            # to separate them
+            chans = group.channels()
 
         n_col = len(chans)
-        n_row = chans[0].number_values
+        n_row = len(chans[0])
 
         # The H5 file will be constructed as follows:
         #  * create a Group for the info section
@@ -135,7 +142,7 @@ def tdms_to_hdf5(tdms_file, h5_file, load_data=True, chan_map='', memmap=True, c
             OverSampling='OSR'
         )
         h5_info = h5_file.create_group(h5_file.root, 'info')
-        for (key, val) in g_obj.properties.items():
+        for (key, val) in group.properties.items():
             if isinstance(val, str):
                 # pytables doesn't support strings as arrays
                 arr = h5_file.create_vlarray(h5_info, key, atom=tables.ObjectAtom())
@@ -151,13 +158,13 @@ def tdms_to_hdf5(tdms_file, h5_file, load_data=True, chan_map='', memmap=True, c
 
         # do extra extra conversions
         try:
-            num_chan = g_obj.properties['nrColumns'] + g_obj.properties['nrBNCs']
+            num_chan = group.properties['nrColumns'] + group.properties['nrBNCs']
             h5_file.create_array(h5_file.root, 'numChan', num_chan)
         except KeyError:
             pass
         try:
-            mux_ratio = g_obj.properties['OverSampling'] * g_obj.properties['nrRows']
-            Fs = float(g_obj.properties['SamplingRate']) / mux_ratio
+            mux_ratio = group.properties['OverSampling'] * group.properties['nrRows']
+            Fs = float(group.properties['SamplingRate']) / mux_ratio
             h5_file.create_array(h5_file.root, 'Fs', Fs)
         except KeyError:
             print('Could not determine sampling rate')
