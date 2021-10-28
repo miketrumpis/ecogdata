@@ -19,13 +19,13 @@ except AttributeError:
 dirs = list(numpy_include_dirs)
 
 
-slepian_projection = Extension(
-    'ecogdata.filt.time._slepian_projection',
-    ['src/ecogdata/filt/time/_slepian_projection.pyx'],
-    include_dirs = dirs, 
-    libraries=(['m'] if os.name != 'nt' else []),
-    extra_compile_args=['-O3']
-    )
+# slepian_projection = Extension(
+#     'ecogdata.filt.time._slepian_projection',
+#     ['src/ecogdata/filt/time/_slepian_projection.pyx'],
+#     include_dirs = dirs,
+#     libraries=(['m'] if os.name != 'nt' else []),
+#     extra_compile_args=['-O3']
+#     )
 
 
 if __name__=='__main__':
@@ -35,7 +35,7 @@ if __name__=='__main__':
         package_dir={'': 'src'},
         packages=find_packages(where='src'),
         scripts=glob('scripts/*.py'),
-        ext_modules=cythonize([slepian_projection]),
+        # ext_modules=cythonize([slepian_projection]),
         # cmdclass={'build_ext': build_ext},
         package_data={'ecogdata.expconfig': ['*.txt']}
     )
