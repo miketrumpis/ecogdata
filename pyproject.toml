@@ -12,6 +12,13 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+
 # Tell cibuildwheel to skip all pypy versions, and python 3.10 for macos (currently broken)
 [tool.cibuildwheel]
 
