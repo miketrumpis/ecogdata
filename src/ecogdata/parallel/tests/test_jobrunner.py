@@ -6,10 +6,6 @@ from ecogdata.parallel.mproc import parallel_context
 from . import with_start_methods
 
 
-if __name__ == '__main__':
-    mp.freeze_context()
-
-
 @with_start_methods
 def test_process_types():
     jr = JobRunner(np.var)
