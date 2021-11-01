@@ -1,7 +1,7 @@
 from numpy.testing import assert_almost_equal
 import numpy as np
 
-from ecogdata.filt.time.projection_filters import slepian_projection  #, moving_projection, _moving_projection_preserve
+from ecogdata.filt.time.projection_filters import slepian_projection  , moving_projection, _moving_projection_preserve
 
 
 def gen_sig(am=False, w0=80, bw=30, nfreqs=10):
@@ -108,73 +108,73 @@ def test_projection_return_types():
     assert y1.dtype in np.sctypes['complex']
 
 
-# def test_moving_projection_recon():
-#     """Does the projection filter preserve a lowpass signal?"""
-#     nb = gen_sig(w0=0, bw=50, nfreqs=20)
-#     N = 100
-#     nb_est = moving_projection(nb, N, 75, Fs=1000.0)
-#     # I guess < 0.1% error is good -- sometimes boundary effects, so
-#     # check within interior of signal
-#     err = nb_est[N:-N] - nb[N:-N]
-#     rel_error = np.sum(err ** 2) / np.sum(nb[N:-N] ** 2)
-#     assert rel_error < 1e-3
-#
-#
-# def test_moving_projection_sizes():
-#     for M in (200, 1000, 10000):
-#         x = np.random.randn(M)
-#         for N in (100, 500, 800):
-#             if N > M:
-#                 continue
-#             try:
-#                 y = moving_projection(x, N, 0.1)
-#                 assert len(y) == len(x)
-#             except:
-#                 assert False, 'shapes failed: M={0}, N={1}'.format(M, N)
-#
-#
-# def test_twodim_moving_projection():
-#     """Check consistency in 2-dimensional calculation"""
-#
-#     x = np.random.randn(2000)
-#     x = np.row_stack((x,) * 10)
-#     y = moving_projection(x, 200, 5/200.)
-#
-#     err = y - y[0]
-#     assert np.sum(err ** 2) < 1e-8
-#
-#
-# def test_multidim_moving_projection():
-#     """Check consistency in multidimensional calculation"""
-#
-#     x_ = np.random.randn(2000)
-#
-#     x = np.empty((5, 10, 2000))
-#     x[:] = x_
-#     y = moving_projection(x, 200, 5/200.)
-#
-#     err = y - y[0, 0]
-#     assert np.sum(err ** 2) < 1e-8
-#
-#
-# def test_consistency():
-#     """Check consistency between optimized and regular methods"""
-#
-#     x = np.random.randn(10000)
-#
-#     y1 = moving_projection(x, 200, 5/200.)
-#     y2 = _moving_projection_preserve(x, 200, 5/200.)
-#     # return y1, y2
-#     err = y1 - y2
-#     assert np.sum(err ** 2) < 1e-8
-#
-#
-# def test_return_types():
-#
-#     x = np.random.randn(2000)
-#
-#     y1 = moving_projection(x, 200, 5/200., f0=6/200., baseband=False)
-#     assert y1.dtype not in np.sctypes['complex']
-#
-#     y2 = moving_projection(x, 200, 5/200., f0=6/200., baseband=True)
-#     assert y2.dtype in np.sctypes['complex']
+def test_moving_projection_recon():
+    """Does the projection filter preserve a lowpass signal?"""
+    nb = gen_sig(w0=0, bw=50, nfreqs=20)
+    N = 100
+    nb_est = moving_projection(nb, N, 75, Fs=1000.0)
+    # I guess < 0.1% error is good -- sometimes boundary effects, so
+    # check within interior of signal
+    err = nb_est[N:-N] - nb[N:-N]
+    rel_error = np.sum(err ** 2) / np.sum(nb[N:-N] ** 2)
+    assert rel_error < 1e-3
+
+
+def test_moving_projection_sizes():
+    for M in (200, 1000, 10000):
+        x = np.random.randn(M)
+        for N in (100, 500, 800):
+            if N > M:
+                continue
+            try:
+                y = moving_projection(x, N, 0.1)
+                assert len(y) == len(x)
+            except:
+                assert False, 'shapes failed: M={0}, N={1}'.format(M, N)
+
+
+def test_twodim_moving_projection():
+    """Check consistency in 2-dimensional calculation"""
+
+    x = np.random.randn(2000)
+    x = np.row_stack((x,) * 10)
+    y = moving_projection(x, 200, 5/200.)
+
+    err = y - y[0]
+    assert np.sum(err ** 2) < 1e-8
+
+
+def test_multidim_moving_projection():
+    """Check consistency in multidimensional calculation"""
+
+    x_ = np.random.randn(2000)
+
+    x = np.empty((5, 10, 2000))
+    x[:] = x_
+    y = moving_projection(x, 200, 5/200.)
+
+    err = y - y[0, 0]
+    assert np.sum(err ** 2) < 1e-8
+
+
+def test_consistency():
+    """Check consistency between optimized and regular methods"""
+
+    x = np.random.randn(10000)
+
+    y1 = moving_projection(x, 200, 5/200.)
+    y2 = _moving_projection_preserve(x, 200, 5/200.)
+    # return y1, y2
+    err = y1 - y2
+    assert np.sum(err ** 2) < 1e-8
+
+
+def test_return_types():
+
+    x = np.random.randn(2000)
+
+    y1 = moving_projection(x, 200, 5/200., f0=6/200., baseband=False)
+    assert y1.dtype not in np.sctypes['complex']
+
+    y2 = moving_projection(x, 200, 5/200., f0=6/200., baseband=True)
+    assert y2.dtype in np.sctypes['complex']

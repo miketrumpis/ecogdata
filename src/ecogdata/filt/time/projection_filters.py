@@ -3,7 +3,7 @@ from numpy.lib.stride_tricks import as_strided
 from ecogdata.util import input_as_2d, dpss_windows
 from ecogdata.parallel.array_split import split_at
 
-__all__ = ['slepian_projection']  #, 'moving_projection']
+__all__ = ['slepian_projection', 'moving_projection']
 
 
 @input_as_2d(out_arr=0)
@@ -221,139 +221,139 @@ def _moving_projection_preserve(
     return y
 
 
-# try:
-#     from ._slepian_projection import \
-#         lowpass_moving_projection, bandpass_moving_projection
-#
-#     # parallel appears safe! (also input as 2d should wrap input splitting)
-#     @input_as_2d(out_arr=0)
-#     def moving_projection_serial(
-#             x, N, BW, Fs=1.0, f0=0, Kmax=None, baseband=True,
-#             weight_eigen=True, window=np.hanning, min_conc=None,
-#             dpss=None, save_dpss=False
-#     ):
-#         """
-#         Perform the "moving" projection filter on a (relatively short)
-#         signal x. The projection basis is computed for an N-dimensional
-#         space, and staggered length-N blocks of x are filtered by the
-#         projection. Since blocks are offset by one sample, each point in
-#         the output is represented N times (with zero padding at the
-#         beginning and end of the signal). The final output is a weighted
-#         sum of these estimates.
-#
-#         Parameters
-#         ----------
-#         x : ndarray
-#             Signal to filter.
-#         N : int
-#             Length of blocks (N < len(x))
-#         BW : float
-#             Half bandwidth of the lowpass projection (with respect to Fs).
-#             (In other words, BW sets the corner frequency of a lowpass.)
-#         Fs : float, optional
-#             Sampling frequency of x.
-#         f0 : float, optional
-#             Center frequency of the bandpass (defaut is 0 for lowpass)
-#         Kmax : int, optional
-#             Maximum number of basis vectors for projection. Kmax < 2*N*BW/Fs - 1
-#         baseband : {True | False}
-#             Return the complex baseband (lowpass) reconstruction of a
-#             bandpass signal (only applies to f0 > 0).
-#         weight_eigen : bool, optional
-#             Weight the reconstruction vectors by eigenvalue (default True).
-#             The lowpass energy concentration of a particular vector is
-#             reflected by its eigenvalue (higher is better).
-#         window : callable, optional
-#             The method, if given, returns a window the length of its argument.
-#             This window will be used to weight the projection values.
-#         min_conc : float
-#             Only keep DPSS filters with spectral concentration (eigenvalues)
-#             above this minimum. No check is made that there will be a usable
-#             number of surviving DPSS.
-#         dpss : ndarray
-#             Pre-computed Slepian functions for given time-bandwidth product
-#         save_dpss : bool
-#             Return the Slepian functions for current time-bandwidth product
-#             along with the filtered timeseries
-#
-#         Returns
-#         -------
-#         y : ndarray
-#             Lowpass projection of x.
-#
-#         Notes
-#         -----
-#         Since this method depends on projections of staggered blocks of
-#         length N, expect poorer reconstruction accuracy within N samples
-#         of the beginning and end of the signal window.
-#
-#         Method from "Projection Filters for Data Analysis", D.J. Thomson, 1996
-#
-#         MT: moving_projection_test.py demos various projections
-#
-#         """
-#
-#         M = x.shape[-1]
-#         T = N / Fs
-#         TW = int(round(2 * T * BW) / 2.0)
-#         K = 2 * TW - 1
-#         if K < 1:
-#             min_bw = 1 / T
-#             err = 'BW is too small for the window size: minimum BW={0}'.format(min_bw)
-#             raise ValueError(err)
-#
-#         # if f0 > 0, then it also has to be > BW/2
-#         if abs(f0) > 0:
-#             # if abs(f0) < BW/2.0:
-#             ##     raise ValueError('A bandpass center has to satisfy abs(f0) > BW/2')
-#             f0 = f0 / float(Fs)
-#         else:
-#             f0 = False
-#
-#         if dpss is not None:
-#             dpss, eigs = dpss
-#         else:
-#             dpss, eigs = dpss_windows(N, TW, K)
-#             if min_conc is not None:
-#                 keep = eigs > min_conc
-#                 dpss = dpss[keep]
-#
-#
-#         if weight_eigen:
-#             wf = K * eigs / eigs.sum()
-#         else:
-#             wf = np.ones(K, 'd')
-#
-#         wt = window(N)
-#         wt = wt / wt.sum()
-#         if f0:
-#             if baseband:
-#                 y = np.zeros(x.shape, 'D')
-#                 y_flat = y.view(dtype='d')
-#                 y_re = y_flat[..., 0::2]
-#                 y_im = y_flat[..., 1::2]
-#             else:
-#                 y_re = np.zeros_like(x)
-#                 # make dummy array to satisfy Cython signature
-#                 y_im = np.empty((x.shape[0], 1), 'd')
-#             for i in range(x.shape[0]):
-#                 bandpass_moving_projection(
-#                     x[i].astype('d'), dpss, wf, wt, y_re[i], y_im[i],
-#                     f0, baseband=baseband
-#                 )
-#             if not baseband:
-#                 y = y_re
-#         else:
-#             y = np.zeros(x.shape, 'd')
-#             for i in range(x.shape[0]):
-#                 lowpass_moving_projection(x[i].astype('d'), dpss, wf, wt, y[i])
-#         if save_dpss:
-#             return y, (dpss, eigs)
-#         return y
-#
-#
-#     moving_projection = split_at()(moving_projection_serial)
-#
-# except ImportError:
-#     raise
-#     # moving_projection = split_at()(_moving_projection_preserve)
+try:
+    from ._slepian_projection import \
+        lowpass_moving_projection, bandpass_moving_projection
+
+    # parallel appears safe! (also input as 2d should wrap input splitting)
+    @input_as_2d(out_arr=0)
+    def moving_projection_serial(
+            x, N, BW, Fs=1.0, f0=0, Kmax=None, baseband=True,
+            weight_eigen=True, window=np.hanning, min_conc=None,
+            dpss=None, save_dpss=False
+    ):
+        """
+        Perform the "moving" projection filter on a (relatively short)
+        signal x. The projection basis is computed for an N-dimensional
+        space, and staggered length-N blocks of x are filtered by the
+        projection. Since blocks are offset by one sample, each point in
+        the output is represented N times (with zero padding at the
+        beginning and end of the signal). The final output is a weighted
+        sum of these estimates.
+
+        Parameters
+        ----------
+        x : ndarray
+            Signal to filter.
+        N : int
+            Length of blocks (N < len(x))
+        BW : float
+            Half bandwidth of the lowpass projection (with respect to Fs).
+            (In other words, BW sets the corner frequency of a lowpass.)
+        Fs : float, optional
+            Sampling frequency of x.
+        f0 : float, optional
+            Center frequency of the bandpass (defaut is 0 for lowpass)
+        Kmax : int, optional
+            Maximum number of basis vectors for projection. Kmax < 2*N*BW/Fs - 1
+        baseband : {True | False}
+            Return the complex baseband (lowpass) reconstruction of a
+            bandpass signal (only applies to f0 > 0).
+        weight_eigen : bool, optional
+            Weight the reconstruction vectors by eigenvalue (default True).
+            The lowpass energy concentration of a particular vector is
+            reflected by its eigenvalue (higher is better).
+        window : callable, optional
+            The method, if given, returns a window the length of its argument.
+            This window will be used to weight the projection values.
+        min_conc : float
+            Only keep DPSS filters with spectral concentration (eigenvalues)
+            above this minimum. No check is made that there will be a usable
+            number of surviving DPSS.
+        dpss : ndarray
+            Pre-computed Slepian functions for given time-bandwidth product
+        save_dpss : bool
+            Return the Slepian functions for current time-bandwidth product
+            along with the filtered timeseries
+
+        Returns
+        -------
+        y : ndarray
+            Lowpass projection of x.
+
+        Notes
+        -----
+        Since this method depends on projections of staggered blocks of
+        length N, expect poorer reconstruction accuracy within N samples
+        of the beginning and end of the signal window.
+
+        Method from "Projection Filters for Data Analysis", D.J. Thomson, 1996
+
+        MT: moving_projection_test.py demos various projections
+
+        """
+
+        M = x.shape[-1]
+        T = N / Fs
+        TW = int(round(2 * T * BW) / 2.0)
+        K = 2 * TW - 1
+        if K < 1:
+            min_bw = 1 / T
+            err = 'BW is too small for the window size: minimum BW={0}'.format(min_bw)
+            raise ValueError(err)
+
+        # if f0 > 0, then it also has to be > BW/2
+        if abs(f0) > 0:
+            # if abs(f0) < BW/2.0:
+            ##     raise ValueError('A bandpass center has to satisfy abs(f0) > BW/2')
+            f0 = f0 / float(Fs)
+        else:
+            f0 = False
+
+        if dpss is not None:
+            dpss, eigs = dpss
+        else:
+            dpss, eigs = dpss_windows(N, TW, K)
+            if min_conc is not None:
+                keep = eigs > min_conc
+                dpss = dpss[keep]
+
+
+        if weight_eigen:
+            wf = K * eigs / eigs.sum()
+        else:
+            wf = np.ones(K, 'd')
+
+        wt = window(N)
+        wt = wt / wt.sum()
+        if f0:
+            if baseband:
+                y = np.zeros(x.shape, 'D')
+                y_flat = y.view(dtype='d')
+                y_re = y_flat[..., 0::2]
+                y_im = y_flat[..., 1::2]
+            else:
+                y_re = np.zeros_like(x)
+                # make dummy array to satisfy Cython signature
+                y_im = np.empty((x.shape[0], 1), 'd')
+            for i in range(x.shape[0]):
+                bandpass_moving_projection(
+                    x[i].astype('d'), dpss, wf, wt, y_re[i], y_im[i],
+                    f0, baseband=baseband
+                )
+            if not baseband:
+                y = y_re
+        else:
+            y = np.zeros(x.shape, 'd')
+            for i in range(x.shape[0]):
+                lowpass_moving_projection(x[i].astype('d'), dpss, wf, wt, y[i])
+        if save_dpss:
+            return y, (dpss, eigs)
+        return y
+
+
+    moving_projection = split_at()(moving_projection_serial)
+
+except ImportError:
+    raise
+    # moving_projection = split_at()(_moving_projection_preserve)
