@@ -28,7 +28,7 @@ skip = ["pp*", "cp310-macos*"]
 [tool.coverage.run]
 parallel = true
 branch = true
-concurrency = ['multiprocess']
+concurrency = ['multiprocess', 'multiprocessing']
 source = ["src/ecogdata"]
 
 [tool.coverage.paths]
