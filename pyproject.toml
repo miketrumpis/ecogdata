@@ -17,9 +17,9 @@ addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
-# Allow deselect with -m "not winthread"
+# Allow deselect with -m "not ghskip"
 markers = [
-    "winthread: marks tests as being poorly behaved in virtualized windows under github-actions"
+    "ghskip: marks tests as being poorly behaved in virtualized platforms under github-actions"
 ]
 
 
