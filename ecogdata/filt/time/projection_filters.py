@@ -355,4 +355,5 @@ try:
     moving_projection = split_at()(moving_projection_serial)
 
 except ImportError:
-    moving_projection = split_at()(_moving_projection_preserve)
+    raise
+    # moving_projection = split_at()(_moving_projection_preserve)
