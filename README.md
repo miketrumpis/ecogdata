@@ -23,6 +23,7 @@ With conda, you can use the provided YAML file to create a working environment.
 
 ```bash
 $ conda env create --file conda_env.yml --name <your-env-name>
+$ conda activate <your-env-name>
 ```
 
 Then clone ecogdata:
