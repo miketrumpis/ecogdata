@@ -1,0 +1,46 @@
+name: py3env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - cython
+  - decorator
+  - envisage
+  - h5py>=3.1
+  - ipython
+  - jupyter_core
+  - lxml
+  - matplotlib>=3.3
+  - mpmath
+  - multiprocess
+  - nbsphinx
+  - nitime>=0.9
+  - nptdms
+  - numpy<1.21
+  - pandas
+  - patsy
+  - pip
+  - pyface
+  - pyqt>=5.12
+  - pyqtgraph>=0.12
+  - pytables
+  - pytest
+  - python<=3.10
+  - pytz
+  - pywavelets
+  - qtpy
+  - scikit-image
+  - scikit-learn
+  - scipy
+  - seaborn
+  - setuptools
+  - six
+  - sphinx
+  - statsmodels
+  - tblib
+  - tqdm
+  - traits
+  - traitsui
+  - wheel
+  - pip:
+    - scaleogram
