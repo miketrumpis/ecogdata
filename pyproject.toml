@@ -1,0 +1,43 @@
+[build-system]
+# For each Python version, build against the oldest numpy C_API_VERSION for
+# which binary numpy wheels exist, and then the newest version of numpy
+# implementing that C_API_VERSION.
+requires = [
+    "setuptools",
+    "wheel",
+    "oldest-supported-numpy",
+    "Cython",
+]
+build-backend = "setuptools.build_meta"
+
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+# Allow deselect with -m "not ghskip"
+markers = [
+    "ghskip: marks tests as being poorly behaved in virtualized platforms under github-actions"
+]
+
+
+# Tell cibuildwheel to skip all pypy versions, and python 3.10 for macos (currently broken)
+[tool.cibuildwheel]
+
+skip = ["pp*", "cp310-macos*"]
+
+
+[tool.coverage.run]
+parallel = true
+branch = true
+concurrency = ['multiprocess', 'multiprocessing']
+source = ["ecogdata"]
+
+[tool.coverage.paths]
+# source = ["ecogdata", ".tox/*/site-packages"]
+source = ['ecogdata']
+
+[tool.coverage.report]
+show_missing = true
