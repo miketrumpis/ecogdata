@@ -40,12 +40,12 @@ jobs:
           python -m site
           python -m pip install --upgrade pip setuptools
           python -m pip install --upgrade coverage[toml] virtualenv tox tox-gh-actions
-      - name: "Run tox targets for ${{ matrix.os }} ${{ matrix.python-version }}"
+      - name: "Run tox targets for ${{ matrix.platform }} ${{ matrix.python-version }}"
         run: "python -m tox"
-        if: matrix.os != 'windows-latest'
+        if: matrix.platform != 'windows-latest'
       - name: "Run tox targets for Windows ${{ matrix.python-version }}"
         run: python -m tox -- -m "not winthread"
-        if: matrix.os == 'windows-latest'
+        if: matrix.platform == 'windows-latest'
         # run: tox --wheel
 #        env:
 #          PLATFORM: ${{ matrix.platform }}
