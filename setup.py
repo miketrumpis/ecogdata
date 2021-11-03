@@ -16,7 +16,7 @@ header_dirs = list(numpy_include_dirs)
 if __name__ == "__main__":
     filter_extension = setuptools.Extension(
         'ecogdata.filt.time._slepian_projection',
-        ['src/ecogdata/filt/time/_slepian_projection.pyx'],
+        ['ecogdata/filt/time/_slepian_projection.pyx'],
         include_dirs = header_dirs,
         libraries=(['m'] if os.name != 'nt' else []),
         extra_compile_args=['-O3']
