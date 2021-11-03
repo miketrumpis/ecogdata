@@ -19,52 +19,49 @@ This library provides data preprocessing and packaging for recording systems use
 ## Install
 
 Preliminary: set up your virtualenv or conda env. 
-If using pip, install numpy (and scipy why not) manually before batch installing.
-**Skip this if using conda.**
+With conda, you can use the provided YAML file to create a working environment. 
 
 ```bash
-$ pip install numpy
-$ pip install scipy
+$ conda env create --file conda_env.yml --name <your-env-name>
 ```
 
-Then clone and install ecogdata and dependencies:
+Then clone ecogdata:
 
 ```bash
 $ git clone https://github.com/miketrumpis/ecogdata.git
 ```
 
-Pip:
-
-```bash
-$ pip install -r ecogdata/requirements.txt
-```
-
-Conda: **change "tables" to "pytables" in requirements.txt** (and add conda forge channel to your settings to avoid "-c")
-
-```bash
-$ conda install -c conda-forge -n <your-env-name> --file requirements.txt
-```
-
-Last, install ecogdata in any way you choose. 
+Last, use pip to install ecogdata in any way you choose. 
 I use "editable" mode to avoid re-installing after git pulls: pip install -e 
 
 ```bash
-$ pip install -e ./ecogdata
+$ python -m pip install -e ./ecogdata
 ```
 
-Run tests to check install:
+Note that pip needs to differentiate installing from a path versus from PyPI, hence the contrived "./" path syntax.
+If this is not working in a non-unix command terminal, then do this instead (and likewise for the following instructions):
 
 ```bash
-$ python -m pytest ecogdata
+$ cd ecogdata
+$ python -m pip install -e .
+```
+
+To run tests on the source code, install a variation package and run ``pytest``.
+(If using conda, you may want to install pytest through conda.)
+
+```bash
+$ python -m pip install -e ./ecogdata[test]
+$ python -m pytest ecogdata/ecogdata
 ```
 
 ## Docs & demo notebooks
 
-To build API documentation and usage demos, first install requirements in requirements-docs.txt.
-Then:
+To build API documentation and usage demos, first install docs requirements ([docs] package variation) and run ``sphinx``.
+(If using conda, you may want to install the docs requirements in ``setup.cfg`` through conda.)
 
 ```bash
-$ cd docs
+$ python -m pip install -e ./ecogdata[docs]
+$ cd ecogdata/docs
 $ make all
 ```
 

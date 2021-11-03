@@ -21,9 +21,6 @@ jobs:
         env:
           # Only build on CPython and PyPy >=3
           CIBW_BUILD: "cp3?-*"
-          # Run before build
-          # CIBW_BEFORE_BUILD: python -m pip install numpy==1.19.5 Cython
-
 
       # This job creates a url (??) for a single release payload -- doesn't seem right for this case where
       # the artifact is a zip of multiple wheels
@@ -49,23 +46,3 @@ jobs:
           path: ./wheelhouse/*.whl
           retention-days: 7
 
-#  Actually this whole job requires a full dependencies install!!
-#  install-dev:
-#    strategy:
-#      matrix:
-#        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
-#
-#    name: "Verify dev env"
-#    runs-on: "${{ matrix.os }}"
-#
-#    steps:
-#      - uses: "actions/checkout@v2"
-#      - uses: "actions/setup-python@v2"
-#        with:
-#          python-version: "3.8"
-#      - name: "Setup env"
-#        run: "python -m pip install numpy==1.19.5"
-#      - name: "Install in dev mode"
-#        run: "python -m pip install -e .[dev]"
-#      - name: "Import package"
-#        run: "python -c 'import ecogdata; print(ecogdata.__version__)'"
