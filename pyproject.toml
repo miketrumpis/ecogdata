@@ -17,6 +17,11 @@ addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
+# Allow deselect with -m "not winthread"
+markers = [
+    "winthread: marks tests as being poorly behaved in virtualized windows under github-actions"
+]
+
 
 # Tell cibuildwheel to skip all pypy versions, and python 3.10 for macos (currently broken)
 [tool.cibuildwheel]

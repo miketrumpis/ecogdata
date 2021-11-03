@@ -115,6 +115,7 @@ def hates_eights(n):
     return n
 
 
+@pytest.mark.winthread
 @with_start_methods
 def test_skipped_excpetions():
     jobs = JobRunner(hates_eights, n_workers=4)
@@ -124,6 +125,7 @@ def test_skipped_excpetions():
     assert all([r[i] == i for i in range(10) if i != 8]), 'non-exceptions not returned correctly'
 
 
+@pytest.mark.winthread
 @with_start_methods
 def test_raised_exceptions():
     # testing raising after the fact
