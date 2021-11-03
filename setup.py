@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import os
+from glob import glob
 import setuptools
-# from Cython.Build import cythonize
 import numpy
 
 try:
@@ -21,4 +21,4 @@ if __name__ == "__main__":
         libraries=(['m'] if os.name != 'nt' else []),
         extra_compile_args=['-O3']
     )
-    setuptools.setup(ext_modules=[filter_extension])
+    setuptools.setup(ext_modules=[filter_extension], scripts=glob('scripts/*.py'))
