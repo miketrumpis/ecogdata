@@ -483,7 +483,8 @@ class FileLoader:
             print('Downsampling to {} Hz from file {} to file {}'.format(self.resample_rate, self.data_file,
                                                                          downsamp_file))
             downsamp_path = os.path.split(downsamp_file)[0]
-            if not os.path.exists(downsamp_path):
+            # if a downsample file needs to be saved, make sure the path exists
+            if len(downsamp_path) and not os.path.exists(downsamp_path):
                 mkdir_p(downsamp_path)
             data_file = self.create_downsample_file(self.data_file, self.resample_rate, downsamp_file)
             file_is_temp = not self.save_downsamp
