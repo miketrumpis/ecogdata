@@ -13,3 +13,6 @@ scratch
 docs/build
 docs/source/apidocs
 artifact
+# tox etc
+.tox
+.coverage*
