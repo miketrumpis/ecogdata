@@ -1,4 +1,4 @@
-name: CI
+name: Tested on Linux, MacOS, Windows
 
 on: [push, pull_request]
 

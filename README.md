@@ -1,6 +1,7 @@
 # ecogdata: data loading for Viventi lab recordings
 
-![example workflow](https://github.com/miketrumpis/ecogdata/actions/workflows/build_wheels.yml/badge.svg?branch=master)
+![building workflow](https://github.com/miketrumpis/ecogdata/actions/workflows/build_wheels.yml/badge.svg?branch=master)
+![tox workflow](https://github.com/miketrumpis/ecogdata/actions/workflows/run_tox.yml/badge.svg?branch=master)
 [![codecov](https://codecov.io/gh/miketrumpis/ecogdata/branch/master/graph/badge.svg?token=H1ROCJZPC7)](https://codecov.io/gh/miketrumpis/ecogdata)
 
 This library provides data preprocessing and packaging for recording systems used by the Viventi lab for micro-electrocorticography. 
