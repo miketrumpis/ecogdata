@@ -76,6 +76,20 @@ class ChannelMap(list):
     def pads_up(self):
         return self._pads_up
 
+    @property
+    def dx(self):
+        if np.iterable(self.pitch):
+            return self.pitch[1]
+        else:
+            return self.pitch
+
+    @property
+    def dy(self):
+        if np.iterable(self.pitch):
+            return self.pitch[0]
+        else:
+            return self.pitch
+
     @classmethod
     def from_index(cls, ij, shape, col_major=True, pitch=1.0, pads_up=False):
         """Return a ChannelMap from a list of matrix index pairs (e.g. [(0, 3), (2, 1), ...])
@@ -449,7 +463,11 @@ class ChannelMap(list):
 
 
 class CoordinateChannelMap(ChannelMap):
-    "A map of sample vector(s) to a coordinate space."
+    """A map of sample vector(s) to a coordinate space.
+    """
+
+    dx = None
+    dy = None
 
     def __init__(self, coordinates, geometry='auto', pitch=1.0, col_major=False):
         """
