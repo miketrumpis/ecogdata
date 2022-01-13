@@ -396,8 +396,8 @@ class ChannelMap(list):
             self_map = False
             if discretemap:
                 uvalues = np.sort(np.unique(arr))
+                bounds = np.r_[uvalues - 0.5, uvalues[-1] + 0.5]
                 kwargs.setdefault('clim', (uvalues.min(), uvalues.max()))
-                bounds = uvalues
                 kwargs.setdefault('norm', BoundaryNorm(bounds, 256))
 
         if arr.shape != self.geometry:
@@ -420,7 +420,10 @@ class ChannelMap(list):
                 ax.add_patch(r)
         # ax.set_ylim(ext[2:][::-1])
         if cbar:
-            cb = f.colorbar(im, ax=ax, use_gridspec=True)
+            if discretemap:
+                cb = f.colorbar(im, ax=ax, ticks=uvalues, use_gridspec=True)
+            else:
+                cb = f.colorbar(im, ax=ax, use_gridspec=True)
             cb.solids.set_edgecolor('face')
             if self_map:
                 cb.set_ticks([0.25, 0.75])
