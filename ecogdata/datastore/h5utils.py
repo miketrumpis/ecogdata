@@ -109,7 +109,7 @@ def save_bunch(f, path, b, mode='a', overwrite_paths=False, compress_arrays=0, s
     for key, val in items:
         if isinstance(val, FileLoader):
             loader_saved = True
-        if isinstance(val, np.ndarray) and len(val):
+        if isinstance(val, np.ndarray) and len(val.shape):
             atom = tables.Atom.from_dtype(val.dtype)
             if compress_arrays:
                 filters = tables.Filters(
