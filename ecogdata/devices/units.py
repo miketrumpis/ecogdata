@@ -57,7 +57,7 @@ scale_up = dict([('f', 'p'), ('p', 'n'), ('n', 'u'), ('u', 'm'), ('m', '')])
 scale_dn = dict([(hi, lo) for (lo, hi) in scale_up.items()])
 
 
-def best_scaling_step(x, unit_scale, allow_up=False):
+def best_scaling_step(x, unit_scale, allow_up=False, upper=None, lower=None):
     """
     Find best step size for characteristic size x of given unit scale.
     Unit scale is provided as a units string: e.g. 'nA', or 'uV'
@@ -79,11 +79,17 @@ def best_scaling_step(x, unit_scale, allow_up=False):
         unit = unit_scale[1:]
 
     scaling = 1
+    if upper is None:
+        upper = 0
+    if lower is None:
+        lower = 0
     if allow_up:
         while x > 100:
             try:
                 x /= 1e3
                 scaling /= 1e3
+                upper /= 1e3
+                lower /= 1e3
                 mag_scale = scale_up[mag_scale]
             except KeyError:
                 pass
@@ -91,12 +97,18 @@ def best_scaling_step(x, unit_scale, allow_up=False):
         try:
             x *= 1e3
             scaling *= 1e3
+            upper *= 1e3
+            lower *= 1e3
             mag_scale = scale_dn[mag_scale]
         except KeyError:
             print('scale smaller than femto')
             return (x, scaling, mag_scale)
 
     scale_range = np.array([1, 2, 5, 10, 20, 50, 100, 200, 500])
+    if upper:
+        scale_range = scale_range[scale_range < upper]
+    if lower:
+        scale_range = scale_range[scale_range > lower]
     if np.any(x == scale_range):
         step_size = int(x)
     else:
