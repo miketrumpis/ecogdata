@@ -102,6 +102,8 @@ class ChannelMap(list):
             j = ij[:, 1]
         else:
             i, j = zip(*ij)
+        if shape is None:
+            shape = (max(i) + 1, max(j) + 1)
         map = mat_to_flat(shape, i, j, col_major=col_major)
         return cls(map, shape, col_major=col_major, pitch=pitch, pads_up=pads_up)
 
