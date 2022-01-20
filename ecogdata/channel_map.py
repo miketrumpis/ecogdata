@@ -380,8 +380,8 @@ class ChannelMap(list):
         """
         kwargs.setdefault('origin', 'upper')
         if ax is None:
-            import matplotlib.pyplot as pp
-            f = pp.figure()
+            import matplotlib.pyplot as plt
+            f = plt.figure()
             ax = f.add_subplot(111)
         else:
             f = ax.figure
@@ -400,7 +400,8 @@ class ChannelMap(list):
                 uvalues = np.sort(np.unique(arr))
                 bounds = np.r_[uvalues - 0.5, uvalues[-1] + 0.5]
                 kwargs.setdefault('clim', (uvalues.min() - 0.5, uvalues.max() + 0.5))
-                kwargs.setdefault('norm', BoundaryNorm(bounds, 256))
+                n_colors = plt.cm.get_cmap(kwargs.get('cmap', None)).N
+                kwargs.setdefault('norm', BoundaryNorm(bounds, n_colors))
 
         if arr.shape != self.geometry:
             arr = self.embed(arr, fill=fill)
@@ -556,8 +557,8 @@ class CoordinateChannelMap(ChannelMap):
     ):
         y, x = self.to_mat()
         if ax is None:
-            import matplotlib.pyplot as pp
-            f = pp.figure()
+            import matplotlib.pyplot as plt
+            f = plt.figure()
             ax = f.add_subplot(111)
         else:
             f = ax.figure
