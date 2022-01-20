@@ -399,7 +399,7 @@ class ChannelMap(list):
             if discretemap:
                 uvalues = np.sort(np.unique(arr))
                 bounds = np.r_[uvalues - 0.5, uvalues[-1] + 0.5]
-                kwargs.setdefault('clim', (uvalues.min(), uvalues.max()))
+                kwargs.setdefault('clim', (uvalues.min() - 0.5, uvalues.max() + 0.5))
                 kwargs.setdefault('norm', BoundaryNorm(bounds, 256))
 
         if arr.shape != self.geometry:
