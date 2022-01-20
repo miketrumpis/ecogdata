@@ -400,7 +400,7 @@ class ChannelMap(list):
                 uvalues = np.sort(np.unique(arr))
                 bounds = np.r_[uvalues - 0.5, uvalues[-1] + 0.5]
                 kwargs.setdefault('clim', (uvalues.min() - 0.5, uvalues.max() + 0.5))
-                n_colors = plt.cm.get_cmap(kwargs.get('cmap', None)).N
+                n_colors = cm.get_cmap(kwargs.get('cmap', None)).N
                 kwargs.setdefault('norm', BoundaryNorm(bounds, n_colors))
 
         if arr.shape != self.geometry:
