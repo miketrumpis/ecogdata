@@ -7,12 +7,16 @@ from ecogdata.util import input_as_2d, nextpow2
 
 from ..blocks import BlockedSignal
 
+
 def bfilter(b, a, x, out=None, bsize=0, axis=-1, zi=None, filtfilt=False):
     """
     Apply linear filter inplace over the (possibly blocked) axis of x.
     If implementing a blockwise filtering for extra large runs, take
     advantage of initial and final conditions for continuity between
     blocks.
+
+    Update: The filter was typically specified by the (b, a) transfer function.
+    If a is None and b.ndim == 2, then b will be treated as second-order sections.
     """
     if not bsize:
         bsize = x.shape[axis]
@@ -22,20 +26,32 @@ def bfilter(b, a, x, out=None, bsize=0, axis=-1, zi=None, filtfilt=False):
         out = True
     else:
         out = False
-
+    b = np.asarray(b)
+    use_sos = b.ndim == 2
     if zi is not None:
         zii = zi.copy()
     else:
         try:
-            zii = signal.lfilter_zi(b, a)
+            if use_sos:
+                zii = signal.sosfilt_zi(b)
+            else:
+                zii = signal.lfilter_zi(b, a)
         except LinAlgError:
             # the integrating filter doesn't have valid zi
             zii = np.array([0.0])
         
+    # need to slice the first vector of filter values from x
+    xc_sl = [slice(None)] * x.ndim
+    xc_sl[axis] = slice(0, 1)
+    xc_sl = tuple(xc_sl)
+    # and for TF initial conditions, multiply it outside of the filter axis
     zi_sl = [np.newaxis] * x.ndim
     zi_sl[axis] = slice(None)
-    xc_sl = [slice(None)] * x.ndim
-    xc_sl[axis] = slice(0,1)
+    # and for SOS, the first slice always slices the number of sections
+    if use_sos:
+        zi_sl.insert(0, slice(None))
+    zi_sl = tuple(zi_sl)
+
     zi = None
     x_iter = x_blk.fwd()
     if out:
@@ -47,8 +63,11 @@ def bfilter(b, a, x, out=None, bsize=0, axis=-1, zi=None, filtfilt=False):
         else:
             xo = xc
         if zi is None:
-            zi = zii[ tuple(zi_sl) ] * xc[ tuple(xc_sl) ]
-        xcf, zi = signal.lfilter(b, a, xc, axis=axis, zi=zi)
+            zi = zii[zi_sl] * xc[xc_sl]
+        if use_sos:
+            xcf, zi = signal.sosfilt(b, xc, axis=axis, zi=zi)
+        else:
+            xcf, zi = signal.lfilter(b, a, xc, axis=axis, zi=zi)
         xo[:] = xcf
 
     if not filtfilt:
@@ -64,8 +83,11 @@ def bfilter(b, a, x, out=None, bsize=0, axis=-1, zi=None, filtfilt=False):
     for n in range(len(x_blk)):
         xc = next(x_iter)
         if zi is None:
-            zi = zii[ tuple(zi_sl) ] * xc[ tuple(xc_sl) ]
-        xcf, zi = signal.lfilter(b, a, xc, axis=axis, zi=zi)
+            zi = zii[zi_sl] * xc[xc_sl]
+        if use_sos:
+            xcf, zi = signal.sosfilt(b, xc, axis=axis, zi=zi)
+        else:
+            xcf, zi = signal.lfilter(b, a, xc, axis=axis, zi=zi)
         xc[:] = xcf
     del xc
     del x_blk
