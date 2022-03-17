@@ -318,7 +318,8 @@ class MappedSource(ElectrodeDataSource):
         block_size = chunk_size = chunks[0] if self._transpose else chunks[1]
         # If memory supports, then increase the block size to a multiple of the chunk size
         mem = load_params().memory_limit
-        block_rows = self.shape[1] if self._transpose else self.shape[0]
+        # block_rows = self.shape[1] if self._transpose else self.shape[0]
+        block_rows = self.shape[0]
         num_blocks = mem // (block_rows * block_size * self.dtype.itemsize)
         num_blocks = min(num_blocks, 100)
         if num_blocks < 1:
@@ -326,7 +327,7 @@ class MappedSource(ElectrodeDataSource):
         else:
             block_size = num_blocks * chunk_size
         # Don't return a block size that's longer than the long axis
-        block_size = min(block_size, (self.shape[0] if self._transpose else self.shape[1]))
+        block_size = int(min(block_size, self.shape[1]))
         return block_size
 
     def join(self, other_source: 'MappedSource') -> 'MappedSource':
