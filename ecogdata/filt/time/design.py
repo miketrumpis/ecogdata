@@ -130,22 +130,23 @@ def notch(fcut, Fs=2.0, nwid=3.0, npo=None, nzo=3):
 
 def plot_filt(
         b, a, Fs=2.0, n=2048, log=True, logx=False, db=False, 
-        filtfilt=False, phase=False, ax=None, minx=1e-5, **plot_kws
+        filtfilt=False, phase=False, ax=None, minx=1e-5, maxx=None, **plot_kws
         ):
-    import matplotlib.pyplot as pp
-
+    import matplotlib.pyplot as plt
+    if maxx is None:
+        maxx = Fs / 2
     if logx:
-        hi = np.log10( Fs/2. )
+        hi = np.log10(maxx)
         lo = np.log10(minx)
         w = np.logspace(lo, hi, n)
     else:
-        w = np.linspace(0, Fs/2.0, n) 
+        w = np.linspace(minx, maxx, n)
     _, f = signal.freqz(b, a, worN=w * (2*np.pi/Fs))
     if ax:
-        pp.sca(ax)
+        plt.sca(ax)
         fig = ax.figure
     else:
-        fig = pp.figure()
+        fig = plt.figure()
     if filtfilt:
         m = np.abs(f)**2
     else:
@@ -158,22 +159,22 @@ def plot_filt(
     if db:
         m = 20*np.log(m)
     if logx and log:
-        pp.loglog( w, m, **plot_kws )
-        pp.ylabel('Magnitude')
+        plt.loglog( w, m, **plot_kws )
+        plt.ylabel('Magnitude')
     elif log:
-        pp.semilogy( w, m, **plot_kws )
-        pp.ylabel('Magnitude')
+        plt.semilogy( w, m, **plot_kws )
+        plt.ylabel('Magnitude')
     elif logx:
-        pp.semilogx( w, m, **plot_kws )
-        pp.ylabel('Magnitude (dB)' if db else 'Magnitude')
+        plt.semilogx( w, m, **plot_kws )
+        plt.ylabel('Magnitude (dB)' if db else 'Magnitude')
     else:
-        pp.plot( w, m, **plot_kws )
-        pp.ylabel('Magnitude (dB)' if db else 'Magnitude')
-    pp.xlabel('Frequency (Hz)')
-    pp.title('Frequency response' + (' (filtfilt)' if filtfilt else ''))
-    if phase:
+        plt.plot( w, m, **plot_kws )
+        plt.ylabel('Magnitude (dB)' if db else 'Magnitude')
+    plt.xlabel('Frequency (Hz)')
+    plt.title('Frequency response' + (' (filtfilt)' if filtfilt else ''))
+    if not filtfilt and phase:
         plot_kws['ls'] = '--'
-        ax2 = pp.gca().twinx()
+        ax2 = plt.gca().twinx()
         ax2.plot( w, np.angle(f), **plot_kws )
         ax2.set_ylabel('radians')
     return fig
