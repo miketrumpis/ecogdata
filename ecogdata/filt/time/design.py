@@ -2,9 +2,8 @@
 Simple filter design wrappings
 """
 import numpy as np
-import scipy.signal.filter_design as fdesign
 import scipy.signal as signal
-from scipy import poly
+from numpy import poly
 
 __all__ = [ 'butter_bp', 
             'cheby1_bp', 
@@ -36,15 +35,15 @@ def butter_bp(lo=0, hi=0, Fs=2.0, ord=3):
     # note: "lo" corresponds to highpass cutoff
     #       "hi" corresponds to lowpass cutoff
     freqs, btype = _bandpass_params(lo, hi)
-    return fdesign.butter(ord, 2*freqs/Fs, btype=btype)
+    return signal.butter(ord, 2*freqs/Fs, btype=btype)
     
 def cheby1_bp(ripple, lo=0, hi=0, Fs=2.0, ord=3):
     freqs, btype = _bandpass_params(lo, hi)
-    return fdesign.cheby1(ord, ripple, 2*freqs/Fs, btype=btype)
+    return signal.cheby1(ord, ripple, 2*freqs/Fs, btype=btype)
     
 def cheby2_bp(rstop, lo=0, hi=0, Fs=2.0, ord=3):
     freqs, btype = _bandpass_params(lo, hi)
-    return fdesign.cheby2(ord, rstop, 2*freqs/Fs, btype=btype)
+    return signal.cheby2(ord, rstop, 2*freqs/Fs, btype=btype)
 
 def ellip_bp(atten, ripple, lo=0, hi=0, hp_width=0, lp_width=0, Fs=2.0):
     if hp_width == 0 and lo > 0:
